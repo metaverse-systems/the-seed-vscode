@@ -81,19 +81,19 @@
     "eslint": "^6.8.0",
     "glob": "^7.1.6",
     "minimist": ">=1.2.2",
-    "mocha": "^7.2.0",
+    "mocha": "^10.1.0",
     "typescript": "^3.9.6"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/metaversesystems/the-seed-vscode.git"
+    "url": "git+https://github.com/metaverse-systems/the-seed-vscode.git"
   },
   "author": "Tim Schwartz <tim@metaverse.systems>",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/metaversesystems/the-seed-vscode/issues"
+    "url": "https://github.com/metaverse-systems/the-seed-vscode/issues"
   },
-  "homepage": "https://github.com/metaversesystems/the-seed-vscode#readme",
+  "homepage": "https://github.com/metaverse-systems/the-seed-vscode#readme",
   "dependencies": {
     "@metaverse-systems/the-seed": "file:../the-seed",
     "ansi-regex": "^4.1.1"
