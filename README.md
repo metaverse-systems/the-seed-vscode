@@ -6,8 +6,13 @@ This **VSCode extension** provides tools for working with [@metaverse-systems/th
 
 ## 🚀 Features
 
-- **Create ResourcePaks**
-- **Manage The Seed project configuration**
+- **Create ResourcePaks** — scaffold new resource packages within a scope
+- **Configure Project** — set or update the project prefix path
+- **Add Scope** — create a new scope with author metadata
+- **Edit Scope** — update author details on an existing scope
+- **Delete Scope** — remove a scope with confirmation dialog
+- **List Scopes** — view all scope names and author details
+- **Show Config** — view full configuration (prefix + all scopes)
 
 ## 📦 Installation
 
@@ -46,7 +51,59 @@ _Coming soon_
    ```
    The Seed: Configure Project
    ```
-3. Follow the on-screen prompts.
+3. Enter your prefix path (e.g., `/home/user/the-seed`) and press Enter.
+
+### **3️⃣ Add a Scope**
+1. Open the **Command Palette**.
+2. Run:
+   ```
+   The Seed: Add Scope
+   ```
+3. Enter the scope name, author name, email, and URL when prompted.
+
+### **4️⃣ List Scopes**
+1. Open the **Command Palette**.
+2. Run:
+   ```
+   The Seed: List Scopes
+   ```
+3. View all configured scopes in the **Output** panel ("The Seed" channel).
+
+### **5️⃣ Show Configuration**
+1. Open the **Command Palette**.
+2. Run:
+   ```
+   The Seed: Show Config
+   ```
+3. View the full configuration (prefix + all scopes) in the **Output** panel.
+
+### **6️⃣ Edit a Scope**
+1. Open the **Command Palette**.
+2. Run:
+   ```
+   The Seed: Edit Scope
+   ```
+3. Select a scope from the picker, then update the author fields.
+
+### **7️⃣ Delete a Scope**
+1. Open the **Command Palette**.
+2. Run:
+   ```
+   The Seed: Delete Scope
+   ```
+3. Select a scope, then confirm deletion in the modal dialog.
+
+## 📋 Commands Reference
+
+| Command | Description |
+|---------|-------------|
+| `The Seed: Create ResourcePak` | Create a new resource package in a scope |
+| `The Seed: Configure Project` | Set or update the project prefix path |
+| `The Seed: Add Scope` | Create a new scope with author metadata |
+| `The Seed: Edit Scope` | Update author details on an existing scope |
+| `The Seed: Delete Scope` | Remove a scope (with confirmation) |
+| `The Seed: List Scopes` | View all scope names and author details |
+| `The Seed: Show Config` | View full config (prefix + all scopes) |
 
 ## 🛠️ Development & Debugging
 - Run `npm run compile` to bundle the extension.

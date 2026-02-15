@@ -2,27 +2,78 @@ import * as vscode from "vscode";
 import { askQuestions } from "./askQuestions";
 import ResourcePak from "@metaverse-systems/the-seed/dist/ResourcePak";
 import Config from "@metaverse-systems/the-seed/dist/Config";
+import { createOutputChannel } from "./outputChannel";
+import { wrapCommand } from "./commands/wrapCommand";
+import { configureProject } from "./commands/configureProject";
+import { addScope } from "./commands/addScope";
+import { listScopes } from "./commands/listScopes";
+import { showConfig } from "./commands/showConfig";
+import { editScope } from "./commands/editScope";
+import { deleteScope } from "./commands/deleteScope";
 
 export function activate(context: vscode.ExtensionContext) {
-  let disposable = vscode.commands.registerCommand(
+  const outputChannel = createOutputChannel();
+  context.subscriptions.push(outputChannel);
+
+  // Existing command: Create ResourcePak
+  const createResourcePakDisposable = vscode.commands.registerCommand(
     "the-seed.createResourcePak",
-    async () => {
+    wrapCommand(async (oc) => {
       const config = new Config();
       const rp = new ResourcePak(config);
 
       const questions = rp.askName();
-	  const answers = await askQuestions(questions);
+      const answers = await askQuestions(questions);
 
       if (!answers.scopeName || !answers.pakName) {
-		return;
-	  }
+        return;
+      }
 
       rp.createPackage(answers.scopeName, answers.pakName);
       vscode.window.showInformationMessage(`ResourcePak '${answers.pakName}' created in scope '${answers.scopeName}'`);
-    }
+    }, outputChannel)
   );
 
-  context.subscriptions.push(disposable);
+  // New commands
+  const configureProjectDisposable = vscode.commands.registerCommand(
+    "the-seed.configureProject",
+    wrapCommand(configureProject, outputChannel)
+  );
+
+  const showConfigDisposable = vscode.commands.registerCommand(
+    "the-seed.showConfig",
+    wrapCommand(showConfig, outputChannel)
+  );
+
+  const listScopesDisposable = vscode.commands.registerCommand(
+    "the-seed.listScopes",
+    wrapCommand(listScopes, outputChannel)
+  );
+
+  const addScopeDisposable = vscode.commands.registerCommand(
+    "the-seed.addScope",
+    wrapCommand(addScope, outputChannel)
+  );
+
+  const editScopeDisposable = vscode.commands.registerCommand(
+    "the-seed.editScope",
+    wrapCommand(editScope, outputChannel)
+  );
+
+  const deleteScopeDisposable = vscode.commands.registerCommand(
+    "the-seed.deleteScope",
+    wrapCommand(deleteScope, outputChannel)
+  );
+
+  context.subscriptions.push(
+    createResourcePakDisposable,
+    configureProjectDisposable,
+    showConfigDisposable,
+    listScopesDisposable,
+    addScopeDisposable,
+    editScopeDisposable,
+    deleteScopeDisposable
+  );
 }
 
 export function deactivate() {}

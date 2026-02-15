@@ -13,7 +13,8 @@ export async function askQuestions(questions: any[]): Promise<{ [key: string]: a
     } else {
       response = await vscode.window.showInputBox({
         prompt: question.message,
-        placeHolder: question.default || "",
+        value: question.default || '',
+        placeHolder: question.message,
       });
     }
 

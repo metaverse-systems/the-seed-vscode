@@ -12,13 +12,37 @@
   "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
-  "commands": [
-    {
-      "command": "the-seed.createResourcePak",
-      "title": "The Seed: Create ResourcePak"
-    }
-  ]
-},
+    "commands": [
+      {
+        "command": "the-seed.createResourcePak",
+        "title": "The Seed: Create ResourcePak"
+      },
+      {
+        "command": "the-seed.configureProject",
+        "title": "The Seed: Configure Project"
+      },
+      {
+        "command": "the-seed.showConfig",
+        "title": "The Seed: Show Config"
+      },
+      {
+        "command": "the-seed.listScopes",
+        "title": "The Seed: List Scopes"
+      },
+      {
+        "command": "the-seed.addScope",
+        "title": "The Seed: Add Scope"
+      },
+      {
+        "command": "the-seed.editScope",
+        "title": "The Seed: Edit Scope"
+      },
+      {
+        "command": "the-seed.deleteScope",
+        "title": "The Seed: Delete Scope"
+      }
+    ]
+  },
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
@@ -30,12 +54,14 @@
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
+    "@types/sinon": "^21.0.0",
     "@types/vscode": "^1.97.0",
     "@typescript-eslint/eslint-plugin": "^8.22.0",
     "@typescript-eslint/parser": "^8.22.0",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
     "eslint": "^9.19.0",
+    "sinon": "^21.0.1",
     "typescript": "^5.7.3"
   },
   "dependencies": {
