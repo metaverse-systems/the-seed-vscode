@@ -260,3 +260,96 @@
   display: flex;
   gap: 4px;
 }
+
+/* Templates Section */
+.template-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.template-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  margin-top: 4px;
+  border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.3));
+  border-radius: 3px;
+  background: var(--vscode-editor-background);
+}
+
+.template-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.template-form-label {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+.template-form-error {
+  font-size: 11px;
+  color: var(--vscode-inputValidation-errorForeground, var(--vscode-editorError-foreground, #f44));
+}
+
+.template-form-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.template-success {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  margin-bottom: 8px;
+  background: var(--vscode-inputValidation-infoBackground, rgba(0, 128, 0, 0.1));
+  border: 1px solid var(--vscode-inputValidation-infoBorder, #0a0);
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.template-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  margin-bottom: 8px;
+  background: var(--vscode-inputValidation-warningBackground, rgba(255, 140, 0, 0.1));
+  border: 1px solid var(--vscode-editorWarning-foreground, #ff8c00);
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.template-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  margin-bottom: 8px;
+  background: var(--vscode-inputValidation-errorBackground, rgba(255, 0, 0, 0.1));
+  border: 1px solid var(--vscode-inputValidation-errorBorder, #f44);
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.template-dismiss {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: 14px;
+}
+
+.templates-no-scopes {
+  padding: 8px 0;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+}

@@ -1,5 +1,8 @@
 import * as assert from 'assert';
+import * as fs from 'fs';
+import * as path from 'path';
 import { handleMessage } from '../../panels/messageHandler';
+import Config from '@metaverse-systems/the-seed/dist/Config';
 
 suite('messageHandler', () => {
   test('unknown command responds with error', async () => {
@@ -235,5 +238,208 @@ suite('messageHandler', () => {
       const found = response!.payload.scopes.find((s) => s.name === uniqueScope);
       assert.ok(!found, 'Deleted scope should not be in payload');
     }
+  });
+
+  suite('createTemplate', () => {
+    // Helper: ensure a scope exists for template tests
+    async function ensureTestScope(scopeName: string) {
+      await handleMessage({
+        command: 'addScope',
+        requestId: 'template-setup',
+        data: {
+          scopeName,
+          authorName: 'Template Tester',
+          authorEmail: 'template@test.com',
+          authorUrl: 'https://template.test',
+        },
+      });
+    }
+
+    // Helper: clean up created template directory
+    function cleanupTemplateDir(projectPath: string) {
+      if (fs.existsSync(projectPath)) {
+        fs.rmSync(projectPath, { recursive: true, force: true });
+      }
+    }
+
+    test('successful component creation returns templateCreated', async () => {
+      const uniqueScope = `@template-comp-${Date.now()}`;
+      const templateName = `test-comp-${Date.now()}`;
+      await ensureTestScope(uniqueScope);
+
+      const config = new Config();
+      config.loadConfig();
+      const projectPath = path.join(
+        config.config.prefix,
+        'projects',
+        uniqueScope,
+        templateName
+      );
+
+      try {
+        const response = await handleMessage({
+          command: 'createTemplate',
+          requestId: 'test-create-comp',
+          data: {
+            templateType: 'component',
+            scopeName: uniqueScope,
+            templateName,
+          },
+        });
+
+        assert.ok(response, 'Should return a response');
+        assert.strictEqual(response!.type, 'templateCreated');
+        if (response!.type === 'templateCreated') {
+          assert.strictEqual(response!.requestId, 'test-create-comp');
+          assert.strictEqual(response!.payload.projectPath, projectPath);
+          assert.strictEqual(response!.payload.templateType, 'component');
+          assert.ok(
+            fs.existsSync(projectPath),
+            'Project directory should exist on disk'
+          );
+        }
+      } finally {
+        cleanupTemplateDir(projectPath);
+        await handleMessage({
+          command: 'deleteScope',
+          requestId: 'cleanup',
+          data: { scopeName: uniqueScope },
+        });
+      }
+    });
+
+    test('existing directory returns templateExists', async () => {
+      const uniqueScope = `@template-exists-${Date.now()}`;
+      const templateName = `test-exists-${Date.now()}`;
+      await ensureTestScope(uniqueScope);
+
+      const config = new Config();
+      config.loadConfig();
+      const projectPath = path.join(
+        config.config.prefix,
+        'projects',
+        uniqueScope,
+        templateName
+      );
+
+      try {
+        // Create the directory first
+        fs.mkdirSync(projectPath, { recursive: true });
+
+        const response = await handleMessage({
+          command: 'createTemplate',
+          requestId: 'test-exists',
+          data: {
+            templateType: 'component',
+            scopeName: uniqueScope,
+            templateName,
+          },
+        });
+
+        assert.ok(response, 'Should return a response');
+        assert.strictEqual(response!.type, 'templateExists');
+        if (response!.type === 'templateExists') {
+          assert.strictEqual(response!.requestId, 'test-exists');
+          assert.strictEqual(response!.payload.projectPath, projectPath);
+        }
+      } finally {
+        cleanupTemplateDir(projectPath);
+        await handleMessage({
+          command: 'deleteScope',
+          requestId: 'cleanup',
+          data: { scopeName: uniqueScope },
+        });
+      }
+    });
+
+    test('system type scaffolds correctly', async () => {
+      const uniqueScope = `@template-sys-${Date.now()}`;
+      const templateName = `test-sys-${Date.now()}`;
+      await ensureTestScope(uniqueScope);
+
+      const config = new Config();
+      config.loadConfig();
+      const projectPath = path.join(
+        config.config.prefix,
+        'projects',
+        uniqueScope,
+        templateName
+      );
+
+      try {
+        const response = await handleMessage({
+          command: 'createTemplate',
+          requestId: 'test-create-sys',
+          data: {
+            templateType: 'system',
+            scopeName: uniqueScope,
+            templateName,
+          },
+        });
+
+        assert.ok(response, 'Should return a response');
+        assert.strictEqual(response!.type, 'templateCreated');
+        if (response!.type === 'templateCreated') {
+          assert.strictEqual(response!.payload.templateType, 'system');
+          // System templates should include .pc.in
+          assert.ok(
+            fs.existsSync(path.join(projectPath, `${templateName}.pc.in`)),
+            'System template should have .pc.in file'
+          );
+        }
+      } finally {
+        cleanupTemplateDir(projectPath);
+        await handleMessage({
+          command: 'deleteScope',
+          requestId: 'cleanup',
+          data: { scopeName: uniqueScope },
+        });
+      }
+    });
+
+    test('program type scaffolds without .pc.in', async () => {
+      const uniqueScope = `@template-prog-${Date.now()}`;
+      const templateName = `test-prog-${Date.now()}`;
+      await ensureTestScope(uniqueScope);
+
+      const config = new Config();
+      config.loadConfig();
+      const projectPath = path.join(
+        config.config.prefix,
+        'projects',
+        uniqueScope,
+        templateName
+      );
+
+      try {
+        const response = await handleMessage({
+          command: 'createTemplate',
+          requestId: 'test-create-prog',
+          data: {
+            templateType: 'program',
+            scopeName: uniqueScope,
+            templateName,
+          },
+        });
+
+        assert.ok(response, 'Should return a response');
+        assert.strictEqual(response!.type, 'templateCreated');
+        if (response!.type === 'templateCreated') {
+          assert.strictEqual(response!.payload.templateType, 'program');
+          // Program templates should NOT have .pc.in
+          assert.ok(
+            !fs.existsSync(path.join(projectPath, `${templateName}.pc.in`)),
+            'Program template should not have .pc.in file'
+          );
+        }
+      } finally {
+        cleanupTemplateDir(projectPath);
+        await handleMessage({
+          command: 'deleteScope',
+          requestId: 'cleanup',
+          data: { scopeName: uniqueScope },
+        });
+      }
+    });
   });
 });

@@ -1,14 +1,19 @@
+import * as vscode from 'vscode';
 import Config from '@metaverse-systems/the-seed/dist/Config';
 import Scopes from '@metaverse-systems/the-seed/dist/Scopes';
+import Template from '@metaverse-systems/the-seed/dist/Template';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { createTemplatePackage } from '../templateRuntime';
 import type {
   WebviewToExtensionMessage,
   ExtensionToWebviewMessage,
   ConfigPayload,
   ScopeEntry,
   ScopeFormData,
+  TemplateFormData,
+  TemplateCreatedPayload,
 } from '../types/messages';
 
 function getConfigDir(): string {
@@ -145,6 +150,53 @@ export async function handleMessage(
           type: 'scopeDeleted',
           requestId: message.requestId,
           payload: buildConfigPayload(config, false),
+        };
+      }
+
+      case 'createTemplate': {
+        const config = new Config();
+        config.loadConfig();
+        const { templateType, scopeName, templateName } = message.data;
+
+        // Check if a workspace folder is open
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        const hasWorkspace = workspaceFolders && workspaceFolders.length > 0;
+
+        // Determine target path based on workspace state
+        let projectPath: string;
+        if (hasWorkspace) {
+          // Create in the first workspace folder
+          projectPath = path.join(workspaceFolders[0].uri.fsPath, templateName);
+        } else {
+          // Use default prefix-based path
+          projectPath = path.join(
+            config.config.prefix,
+            'projects',
+            scopeName,
+            templateName
+          );
+        }
+
+        if (fs.existsSync(projectPath)) {
+          return {
+            type: 'templateExists',
+            requestId: message.requestId,
+            payload: { projectPath },
+          };
+        }
+
+        const template = new Template(config);
+        template.type = templateType;
+        createTemplatePackage(template, scopeName, templateName, projectPath);
+
+        return {
+          type: 'templateCreated',
+          requestId: message.requestId,
+          payload: {
+            projectPath,
+            templateType,
+            openFolder: !hasWorkspace, // Open folder if no workspace was open
+          } as TemplateCreatedPayload,
         };
       }
 

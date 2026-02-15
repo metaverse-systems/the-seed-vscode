@@ -8,7 +8,7 @@ suite('Extension Test Suite', () => {
     sinon.restore();
   });
 
-  // T017: Command registration tests (all 7 commands)
+  // T017: Command registration tests (all 10 commands)
   suite('Command Registration', () => {
     const expectedCommands = [
       'the-seed.createResourcePak',
@@ -18,6 +18,9 @@ suite('Extension Test Suite', () => {
       'the-seed.addScope',
       'the-seed.editScope',
       'the-seed.deleteScope',
+      'the-seed.createComponentTemplate',
+      'the-seed.createSystemTemplate',
+      'the-seed.createProgramTemplate',
     ];
 
     for (const commandId of expectedCommands) {

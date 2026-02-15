@@ -58,6 +58,18 @@
       {
         "command": "the-seed.deleteScope",
         "title": "The Seed: Delete Scope"
+      },
+      {
+        "command": "the-seed.createComponentTemplate",
+        "title": "The Seed: Create Component Template"
+      },
+      {
+        "command": "the-seed.createSystemTemplate",
+        "title": "The Seed: Create System Template"
+      },
+      {
+        "command": "the-seed.createProgramTemplate",
+        "title": "The Seed: Create Program Template"
       }
     ]
   },
@@ -72,6 +84,7 @@
     "test": "vscode-test"
   },
   "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
     "@types/react": "^19.2.14",

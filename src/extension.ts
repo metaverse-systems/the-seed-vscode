@@ -10,6 +10,9 @@ import { listScopes } from "./commands/listScopes";
 import { showConfig } from "./commands/showConfig";
 import { editScope } from "./commands/editScope";
 import { deleteScope } from "./commands/deleteScope";
+import { createComponentTemplate } from "./commands/createComponentTemplate";
+import { createSystemTemplate } from "./commands/createSystemTemplate";
+import { createProgramTemplate } from "./commands/createProgramTemplate";
 import { TheSeedViewProvider } from "./panels/TheSeedViewProvider";
 
 export function activate(context: vscode.ExtensionContext) {
@@ -75,6 +78,21 @@ export function activate(context: vscode.ExtensionContext) {
     wrapCommand(deleteScope, outputChannel)
   );
 
+  const createComponentTemplateDisposable = vscode.commands.registerCommand(
+    "the-seed.createComponentTemplate",
+    wrapCommand(createComponentTemplate, outputChannel)
+  );
+
+  const createSystemTemplateDisposable = vscode.commands.registerCommand(
+    "the-seed.createSystemTemplate",
+    wrapCommand(createSystemTemplate, outputChannel)
+  );
+
+  const createProgramTemplateDisposable = vscode.commands.registerCommand(
+    "the-seed.createProgramTemplate",
+    wrapCommand(createProgramTemplate, outputChannel)
+  );
+
   context.subscriptions.push(
     createResourcePakDisposable,
     configureProjectDisposable,
@@ -82,7 +100,10 @@ export function activate(context: vscode.ExtensionContext) {
     listScopesDisposable,
     addScopeDisposable,
     editScopeDisposable,
-    deleteScopeDisposable
+    deleteScopeDisposable,
+    createComponentTemplateDisposable,
+    createSystemTemplateDisposable,
+    createProgramTemplateDisposable
   );
 }
 

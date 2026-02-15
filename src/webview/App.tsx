@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { getVsCodeApi } from './hooks/useVsCodeApi';
 import { ConfigurationSection } from './components/ConfigurationSection';
+import { TemplatesSection } from './components/TemplatesSection';
 import type {
   ExtensionToWebviewMessage,
   ConfigPayload,
@@ -15,6 +16,12 @@ export const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [pendingOverwrite, setPendingOverwrite] = useState<string | null>(null);
   const [pendingOverwriteData, setPendingOverwriteData] = useState<ScopeFormData | null>(null);
+
+  // Template state
+  const [templateCreating, setTemplateCreating] = useState(false);
+  const [templateSuccess, setTemplateSuccess] = useState<{ message: string; path: string } | null>(null);
+  const [templateError, setTemplateError] = useState<string | null>(null);
+  const [templateExistsWarning, setTemplateExistsWarning] = useState<string | null>(null);
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent<ExtensionToWebviewMessage>) => {
@@ -41,8 +48,23 @@ export const App: React.FC = () => {
         case 'scopeExists':
           setPendingOverwrite(message.payload.scopeName);
           break;
+        case 'templateCreated':
+          setTemplateCreating(false);
+          setTemplateSuccess({
+            message: `${message.payload.templateType.charAt(0).toUpperCase() + message.payload.templateType.slice(1)} created successfully`,
+            path: message.payload.projectPath,
+          });
+          setTemplateError(null);
+          setTemplateExistsWarning(null);
+          break;
+        case 'templateExists':
+          setTemplateCreating(false);
+          setTemplateExistsWarning(message.payload.projectPath);
+          break;
         case 'error':
           setError(message.payload.message);
+          setTemplateCreating(false);
+          setTemplateError(message.payload.message);
           break;
       }
     };
@@ -99,6 +121,21 @@ export const App: React.FC = () => {
     setPendingOverwriteData(null);
   };
 
+  const handleCreateTemplate = (
+    templateType: 'component' | 'system' | 'program',
+    scopeName: string,
+    templateName: string
+  ) => {
+    setTemplateCreating(true);
+    setTemplateError(null);
+    setTemplateExistsWarning(null);
+    vscode.postMessage({
+      command: 'createTemplate',
+      requestId: crypto.randomUUID(),
+      data: { templateType, scopeName, templateName },
+    });
+  };
+
   return (
     <div className="app-container">
       {error && (
@@ -127,6 +164,18 @@ export const App: React.FC = () => {
         onDeleteScope={handleDeleteScope}
         pendingOverwrite={pendingOverwrite}
         onCancelOverwrite={handleCancelOverwrite}
+      />
+      <div className="section-divider" />
+      <TemplatesSection
+        scopes={config?.scopes ?? []}
+        onCreateTemplate={handleCreateTemplate}
+        loading={templateCreating}
+        success={templateSuccess}
+        error={templateError}
+        existsWarning={templateExistsWarning}
+        onDismissSuccess={() => setTemplateSuccess(null)}
+        onDismissError={() => setTemplateError(null)}
+        onDismissWarning={() => setTemplateExistsWarning(null)}
       />
     </div>
   );

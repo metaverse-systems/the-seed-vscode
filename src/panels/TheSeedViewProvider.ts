@@ -33,6 +33,16 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider {
       const response = await handleMessage(message);
       if (response) {
         webviewView.webview.postMessage(response);
+
+        // If template was created and openFolder flag is set, open the new folder
+        if (
+          response.type === 'templateCreated' &&
+          response.payload.openFolder &&
+          response.payload.projectPath
+        ) {
+          const folderUri = vscode.Uri.file(response.payload.projectPath);
+          vscode.commands.executeCommand('vscode.openFolder', folderUri);
+        }
       }
     });
 
