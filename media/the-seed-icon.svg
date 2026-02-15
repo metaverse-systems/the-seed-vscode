@@ -1,0 +1,8 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Seed shape: a sprouting seed icon -->
+  <path d="M12 2C10.5 2 9 3.5 9 5.5C9 7 10 8.5 12 10C14 8.5 15 7 15 5.5C15 3.5 13.5 2 12 2Z" fill="currentColor"/>
+  <path d="M12 10V19" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M12 14C10 12.5 7 12 5 13C7 14 9 15 12 14Z" fill="currentColor"/>
+  <path d="M12 16C14 14.5 17 14 19 15C17 16 14 17 12 16Z" fill="currentColor"/>
+  <path d="M8 19C8 19 10 20 12 20C14 20 16 19 16 19" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+</svg>

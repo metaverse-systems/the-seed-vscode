@@ -10,10 +10,20 @@ import { listScopes } from "./commands/listScopes";
 import { showConfig } from "./commands/showConfig";
 import { editScope } from "./commands/editScope";
 import { deleteScope } from "./commands/deleteScope";
+import { TheSeedViewProvider } from "./panels/TheSeedViewProvider";
 
 export function activate(context: vscode.ExtensionContext) {
   const outputChannel = createOutputChannel();
   context.subscriptions.push(outputChannel);
+
+  // Register the Webview panel provider for the activity bar
+  const viewProvider = new TheSeedViewProvider(context.extensionUri);
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(
+      TheSeedViewProvider.viewType,
+      viewProvider
+    )
+  );
 
   // Existing command: Create ResourcePak
   const createResourcePakDisposable = vscode.commands.registerCommand(

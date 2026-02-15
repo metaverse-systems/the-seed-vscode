@@ -12,6 +12,24 @@
   "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "the-seed-sidebar",
+          "title": "The Seed",
+          "icon": "media/the-seed-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "the-seed-sidebar": [
+        {
+          "type": "webview",
+          "id": "the-seed.mainView",
+          "name": "The Seed"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "the-seed.createResourcePak",
@@ -44,8 +62,10 @@
     ]
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
+    "vscode:prepublish": "npm run build",
     "compile": "tsc -p ./",
+    "build:webview": "vite build --config vite.config.webview.mts",
+    "build": "npm run compile && npm run build:webview",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
@@ -54,17 +74,26 @@
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "@types/sinon": "^21.0.0",
     "@types/vscode": "^1.97.0",
+    "@types/vscode-webview": "^1.57.5",
     "@typescript-eslint/eslint-plugin": "^8.22.0",
     "@typescript-eslint/parser": "^8.22.0",
+    "@vitejs/plugin-react": "^5.1.4",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
     "eslint": "^9.19.0",
     "sinon": "^21.0.1",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vite": "^7.3.1"
   },
   "dependencies": {
-    "@metaverse-systems/the-seed": "^1.0.4"
+    "@metaverse-systems/the-seed": "^1.0.4",
+    "@vscode-elements/elements": "^2.5.0",
+    "@vscode-elements/react-elements": "^2.4.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
   }
 }

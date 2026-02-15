@@ -1,0 +1,262 @@
+/* Global styles for The Seed Webview Panel */
+
+.app-container {
+  padding: 0 12px 12px 12px;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground);
+}
+
+/* Error Banner */
+.error-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  background: var(--vscode-inputValidation-errorBackground, rgba(255, 0, 0, 0.1));
+  border: 1px solid var(--vscode-inputValidation-errorBorder, #f44);
+  border-radius: 3px;
+}
+
+.error-icon {
+  flex-shrink: 0;
+}
+
+.error-dismiss {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: 14px;
+}
+
+/* Section Layout */
+.section-layout {
+  margin-bottom: 12px;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  padding: 6px 0;
+  user-select: none;
+}
+
+.section-header:hover {
+  opacity: 0.8;
+}
+
+.section-chevron {
+  display: inline-block;
+  transition: transform 0.15s ease;
+  font-size: 10px;
+  color: var(--vscode-foreground);
+}
+
+.section-chevron.collapsed {
+  transform: rotate(-90deg);
+}
+
+.section-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vscode-sideBarSectionHeader-foreground, var(--vscode-foreground));
+}
+
+.section-content {
+  padding: 4px 0 8px 0;
+}
+
+.section-divider {
+  height: 1px;
+  background: var(--vscode-sideBarSectionHeader-border, var(--vscode-widget-border, rgba(128, 128, 128, 0.2)));
+  margin: 8px 0;
+}
+
+/* Prefix Editor */
+.prefix-editor {
+  margin-bottom: 4px;
+}
+
+.prefix-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--vscode-foreground);
+  opacity: 0.8;
+}
+
+.prefix-display-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.prefix-value {
+  word-break: break-all;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 12px;
+}
+
+.prefix-default-badge {
+  opacity: 0.6;
+  font-style: italic;
+}
+
+.prefix-edit-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.prefix-actions {
+  display: flex;
+  gap: 4px;
+}
+
+/* Scopes List */
+.scopes-list {
+  margin-top: 4px;
+}
+
+.scopes-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--vscode-foreground);
+  opacity: 0.8;
+}
+
+.scopes-empty {
+  padding: 8px 0;
+  color: var(--vscode-descriptionForeground);
+}
+
+.scopes-empty-hint {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.scope-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 6px 4px;
+  border-radius: 3px;
+}
+
+.scope-row:hover {
+  background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.1));
+}
+
+.scope-row-editing {
+  background: var(--vscode-editor-background);
+  border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.3));
+  padding: 8px;
+  border-radius: 3px;
+}
+
+.scope-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.scope-name {
+  font-weight: 600;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 12px;
+}
+
+.scope-author {
+  font-size: 12px;
+}
+
+.scope-detail {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  word-break: break-all;
+}
+
+.scope-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.scope-edit-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.scope-edit-fields label {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+.scope-edit-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+/* Scope Form */
+.scope-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  margin-top: 8px;
+  border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.3));
+  border-radius: 3px;
+  background: var(--vscode-editor-background);
+}
+
+.scope-form label {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+.scope-form-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+/* Confirm Dialog */
+.confirm-dialog-overlay {
+  margin-top: 8px;
+}
+
+.confirm-dialog {
+  padding: 10px;
+  border: 1px solid var(--vscode-editorWarning-foreground, #ff8c00);
+  border-radius: 3px;
+  background: var(--vscode-editor-background);
+}
+
+.confirm-dialog-message {
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  gap: 4px;
+}
