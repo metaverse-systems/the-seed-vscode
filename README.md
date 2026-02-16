@@ -10,6 +10,9 @@ This **VSCode extension** provides tools for working with [@metaverse-systems/th
 - **Add Resource** — register files as resources in a ResourcePak (Command Palette + sidebar)
 - **Build ResourcePak** — compile a ResourcePak into a `.pak` binary (Command Palette + sidebar)
 - **ResourcePaks Sidebar Section** — collapsible webview section with Create, Add Resource, and Build actions; auto-detects workspace ResourcePaks
+- **Check Dependencies** — verify libecs-cpp and libthe-seed installation status (Command Palette + sidebar)
+- **Install Dependencies** — clone and build missing dependencies with streaming output, cancellation, and progress (Command Palette + sidebar)
+- **Dependencies Sidebar Section** — auto-checks on render, per-library status indicators, target selector, Check and Install actions
 - **Configure Project** — set or update the project prefix path
 - **Add Scope** — create a new scope with author metadata
 - **Edit Scope** — update author details on an existing scope
@@ -109,6 +112,8 @@ _Coming soon_
 | `The Seed: Delete Scope` | Remove a scope (with confirmation) |
 | `The Seed: List Scopes` | View all scope names and author details |
 | `The Seed: Show Config` | View full config (prefix + all scopes) |
+| `The Seed: Check Dependencies` | Check libecs-cpp and libthe-seed installation for a target |
+| `The Seed: Install Dependencies` | Clone and build missing dependencies for a target |
 
 ## 🛠️ Development & Debugging
 - Run `npm run compile` to bundle the extension.

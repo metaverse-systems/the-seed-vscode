@@ -5,17 +5,20 @@ import { runBuildSteps } from '../build/buildRunner';
 import { detectBuildableProject } from '../build/projectDetector';
 import type { TheSeedViewProvider } from '../panels/TheSeedViewProvider';
 import type { BuildStatusPayload } from '../types/messages';
-
-/** Module-level active build lock */
-let activeBuild: AbortController | null = null;
+import { acquireOperationLock, releaseOperationLock, getOperationLock } from '../operationLock';
 
 export function getActiveBuild(): AbortController | null {
-  return activeBuild;
+  const lock = getOperationLock();
+  if (lock.active && lock.type === 'build') {
+    return lock.abortController;
+  }
+  return null;
 }
 
 export function cancelActiveBuild(): boolean {
-  if (activeBuild) {
-    activeBuild.abort();
+  const lock = getOperationLock();
+  if (lock.active && lock.type === 'build' && lock.abortController) {
+    lock.abortController.abort();
     return true;
   }
   return false;
@@ -63,11 +66,16 @@ async function executeBuild(
   outputChannel: vscode.OutputChannel,
   viewProvider: TheSeedViewProvider
 ): Promise<void> {
-  // Single build lock
-  if (activeBuild) {
-    vscode.window.showWarningMessage('A build is already in progress.');
+  // Shared operation lock (mutual exclusion with install)
+  const lockResult = acquireOperationLock('build');
+  if (!lockResult.success) {
+    const msg = lockResult.heldBy === 'install'
+      ? 'Cannot build while an install operation is in progress.'
+      : 'A build is already in progress.';
+    vscode.window.showWarningMessage(msg);
     return;
   }
+  const activeBuild = lockResult.abortController!;
 
   // Detect buildable project
   const activeEditor = vscode.window.activeTextEditor;
@@ -142,8 +150,6 @@ async function executeBuild(
   outputChannel.appendLine(`Project: ${projectPath}`);
   outputChannel.appendLine(`${'═'.repeat(60)}\n`);
 
-  activeBuild = new AbortController();
-
   const broadcastStatus = (payload: BuildStatusPayload) => {
     viewProvider.postMessage({ type: 'buildStatus', payload });
   };
@@ -158,7 +164,7 @@ async function executeBuild(
       async (progress, token) => {
         // Bridge VS Code CancellationToken → AbortSignal
         const cancelListener = token.onCancellationRequested(() => {
-          activeBuild?.abort();
+          activeBuild.abort();
           cancelListener.dispose();
         });
 
@@ -193,7 +199,7 @@ async function executeBuild(
                 timestamp: new Date().toISOString(),
               });
             },
-            signal: activeBuild!.signal,
+            signal: activeBuild.signal,
           });
 
           if (!result.success) {
@@ -233,6 +239,6 @@ async function executeBuild(
       }
     );
   } finally {
-    activeBuild = null;
+    releaseOperationLock();
   }
 }

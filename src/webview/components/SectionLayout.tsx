@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface SectionLayoutProps {
   title: string;
@@ -12,6 +12,12 @@ export const SectionLayout: React.FC<SectionLayoutProps> = ({
   defaultCollapsed = false,
 }) => {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
+
+  useEffect(() => {
+    if (defaultCollapsed) {
+      setCollapsed(true);
+    }
+  }, [defaultCollapsed]);
 
   return (
     <div className="section-layout">

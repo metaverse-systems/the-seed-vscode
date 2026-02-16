@@ -14,6 +14,7 @@ import { createComponentTemplate } from "./commands/createComponentTemplate";
 import { createSystemTemplate } from "./commands/createSystemTemplate";
 import { createProgramTemplate } from "./commands/createProgramTemplate";
 import { buildNativeCommand, buildWindowsCommand, buildIncrementalCommand } from "./commands/buildNative";
+import { checkDependenciesCommand, installDependenciesCommand } from "./commands/dependencyCommands";
 import { TheSeedViewProvider } from "./panels/TheSeedViewProvider";
 import { detectResourcePak } from "./utils/detectResourcePak";
 import * as fs from "fs";
@@ -235,6 +236,18 @@ export function activate(context: vscode.ExtensionContext) {
     }, outputChannel)
   );
 
+  // Check Dependencies command
+  const checkDependenciesDisposable = vscode.commands.registerCommand(
+    "the-seed.checkDependencies",
+    wrapCommand(checkDependenciesCommand(outputChannel), outputChannel)
+  );
+
+  // Install Dependencies command
+  const installDependenciesDisposable = vscode.commands.registerCommand(
+    "the-seed.installDependencies",
+    wrapCommand(installDependenciesCommand(outputChannel, viewProvider), outputChannel)
+  );
+
   context.subscriptions.push(
     createResourcePakDisposable,
     configureProjectDisposable,
@@ -250,7 +263,9 @@ export function activate(context: vscode.ExtensionContext) {
     buildWindowsDisposable,
     buildIncrementalDisposable,
     addResourceDisposable,
-    buildResourcePakDisposable
+    buildResourcePakDisposable,
+    checkDependenciesDisposable,
+    installDependenciesDisposable
   );
 }
 

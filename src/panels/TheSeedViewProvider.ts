@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { handleMessage } from './messageHandler';
-import type { ExtensionToWebviewMessage, BuildStatusPayload } from '../types/messages';
+import type { ExtensionToWebviewMessage, BuildStatusPayload, DependencyStatusPayload, InstallProgressPayload } from '../types/messages';
 
 export class TheSeedViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'the-seed.mainView';
@@ -8,6 +8,8 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
   private _readyReceived = false;
   private _currentBuildStatus: BuildStatusPayload | null = null;
+  private _currentDependencyStatus: DependencyStatusPayload | null = null;
+  private _currentInstallProgress: InstallProgressPayload | null = null;
 
   constructor(private readonly _extensionUri: vscode.Uri) {}
 
@@ -66,6 +68,14 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider {
         if (this._currentBuildStatus) {
           this.postMessage({ type: 'buildStatus', payload: this._currentBuildStatus });
         }
+        // Push current dependency status so the webview catches up
+        if (this._currentDependencyStatus) {
+          this.postMessage({ type: 'dependencyStatus', payload: this._currentDependencyStatus });
+        }
+        // Push current install progress if install is running
+        if (this._currentInstallProgress) {
+          this.postMessage({ type: 'installDependenciesProgress', payload: this._currentInstallProgress });
+        }
       }
     });
   }
@@ -78,6 +88,16 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider {
   public postMessage(message: ExtensionToWebviewMessage): void {
     if (message.type === 'buildStatus') {
       this._currentBuildStatus = message.payload;
+    }
+    if (message.type === 'dependencyStatus') {
+      this._currentDependencyStatus = message.payload;
+    }
+    if (message.type === 'installDependenciesProgress') {
+      this._currentInstallProgress = message.payload;
+      // Clear progress on terminal states
+      if (message.payload.state === 'completed' || message.payload.state === 'failed' || message.payload.state === 'cancelled') {
+        this._currentInstallProgress = null;
+      }
     }
     if (this._view?.visible) {
       this._view.webview.postMessage(message);

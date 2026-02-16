@@ -16,7 +16,11 @@ export type WebviewToExtensionMessage =
   | { command: 'createResourcePak'; requestId: string; data: ResourcePakFormData }
   | { command: 'browseResourceFile'; requestId: string }
   | { command: 'addResource'; requestId: string; data: AddResourceData }
-  | { command: 'buildResourcePak'; requestId: string; data: BuildResourcePakData };
+  | { command: 'buildResourcePak'; requestId: string; data: BuildResourcePakData }
+  | { command: 'checkDependencies'; requestId: string; data: { target: 'native' | 'windows' } }
+  | { command: 'installDependencies'; requestId: string; data: { target: 'native' | 'windows' } }
+  | { command: 'cancelInstallDependencies'; requestId: string }
+  | { command: 'getDependencyStatus'; requestId: string };
 
 export interface ScopeFormData {
   scopeName: string;
@@ -71,7 +75,11 @@ export type ExtensionToWebviewMessage =
   | { type: 'resourceFileBrowsed'; requestId: string; payload: ResourceFileBrowsedPayload }
   | { type: 'resourceAdded'; requestId: string; payload: ResourceAddedPayload }
   | { type: 'resourcePakBuilt'; requestId: string; payload: ResourcePakBuiltPayload }
-  | { type: 'resourcePakBuildProgress'; payload: ResourcePakBuildProgressPayload };
+  | { type: 'resourcePakBuildProgress'; payload: ResourcePakBuildProgressPayload }
+  | { type: 'dependencyStatus'; requestId?: string; payload: DependencyStatusPayload }
+  | { type: 'installDependenciesStarted'; requestId: string }
+  | { type: 'installDependenciesCancelled'; requestId: string }
+  | { type: 'installDependenciesProgress'; payload: InstallProgressPayload };
 
 export interface TemplateCreatedPayload {
   projectPath: string;
@@ -158,6 +166,33 @@ export interface ResourcePakBuildProgressPayload {
   currentResource?: string;
   resourceIndex?: number;
   totalResources?: number;
+  errorMessage?: string;
+  timestamp: string;
+}
+
+// ── Dependency Types ────────────────────────────────────────
+
+export interface LibraryStatus {
+  name: string;
+  installed: boolean;
+}
+
+export interface DependencyStatusPayload {
+  target: string;
+  libraries: LibraryStatus[];
+  checking: boolean;
+  timestamp: string;
+}
+
+export type InstallState = 'idle' | 'running' | 'completed' | 'failed' | 'cancelled';
+
+export interface InstallProgressPayload {
+  state: InstallState;
+  target: string;
+  currentLibrary?: string;
+  currentStep?: string;
+  stepIndex?: number;
+  totalSteps?: number;
   errorMessage?: string;
   timestamp: string;
 }

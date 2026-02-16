@@ -20,8 +20,13 @@ import type {
   AddResourceData,
   BuildResourcePakData,
   ResourcePakFormData,
+  DependencyStatusPayload,
+  InstallProgressPayload,
 } from '../types/messages';
 import { getActiveBuild, cancelActiveBuild } from '../commands/buildNative';
+import { checkLibEcs, checkLibTheSeed, getInstallSteps } from '@metaverse-systems/the-seed/dist/Dependencies';
+import { runBuildSteps } from '../build/buildRunner';
+import { acquireOperationLock, releaseOperationLock, getOperationLock } from '../operationLock';
 
 function getConfigDir(): string {
   return path.join(os.homedir(), 'the-seed');
@@ -40,6 +45,26 @@ export function updateBuildStatus(status: BuildStatusPayload): void {
 
 export function getCurrentBuildStatus(): BuildStatusPayload {
   return currentBuildStatus;
+}
+
+// Dependency status tracking for getDependencyStatus / late-joining
+let currentDependencyStatus: DependencyStatusPayload | null = null;
+let currentInstallProgress: InstallProgressPayload | null = null;
+
+export function updateDependencyStatus(status: DependencyStatusPayload): void {
+  currentDependencyStatus = status;
+}
+
+export function getCurrentDependencyStatus(): DependencyStatusPayload | null {
+  return currentDependencyStatus;
+}
+
+export function updateInstallProgress(progress: InstallProgressPayload | null): void {
+  currentInstallProgress = progress;
+}
+
+export function getCurrentInstallProgress(): InstallProgressPayload | null {
+  return currentInstallProgress;
 }
 
 function buildConfigPayload(config: Config, isDefault: boolean): ConfigPayload {
@@ -514,6 +539,230 @@ export async function handleMessage(
             pakFilePath,
             resourceCount: pkgData.resources.length,
           },
+        };
+      }
+
+      // ── Dependency Handlers ─────────────────────────────────
+
+      case 'checkDependencies': {
+        const config = new Config();
+        config.loadConfig();
+
+        if (!config.config.prefix || config.config.prefix === '') {
+          return {
+            type: 'error',
+            requestId: message.requestId,
+            payload: { message: 'No prefix configured. Configure a project first.' },
+          };
+        }
+
+        const target = message.data.target;
+        const ecsInstalled = checkLibEcs(config, target);
+        const seedInstalled = checkLibTheSeed(config, target);
+
+        const status: DependencyStatusPayload = {
+          target,
+          libraries: [
+            { name: 'libecs-cpp', installed: ecsInstalled },
+            { name: 'libthe-seed', installed: seedInstalled },
+          ],
+          checking: false,
+          timestamp: new Date().toISOString(),
+        };
+
+        currentDependencyStatus = status;
+
+        return {
+          type: 'dependencyStatus',
+          requestId: message.requestId,
+          payload: status,
+        };
+      }
+
+      case 'getDependencyStatus': {
+        if (currentDependencyStatus) {
+          return {
+            type: 'dependencyStatus',
+            requestId: message.requestId,
+            payload: currentDependencyStatus,
+          };
+        }
+        // Never checked — return null-like payload
+        return {
+          type: 'dependencyStatus',
+          requestId: message.requestId,
+          payload: {
+            target: 'native',
+            libraries: [],
+            checking: false,
+            timestamp: new Date().toISOString(),
+          },
+        };
+      }
+
+      case 'installDependencies': {
+        const config = new Config();
+        config.loadConfig();
+
+        if (!config.config.prefix || config.config.prefix === '') {
+          return {
+            type: 'error',
+            requestId: message.requestId,
+            payload: { message: 'No prefix configured. Configure a project first.' },
+          };
+        }
+
+        // Check operation lock
+        const currentLock = getOperationLock();
+        if (currentLock.active) {
+          const opType = currentLock.type === 'build' ? 'build' : 'install';
+          return {
+            type: 'error',
+            requestId: message.requestId,
+            payload: { message: `Cannot install: a ${opType} operation is in progress.` },
+          };
+        }
+
+        const target = message.data.target;
+
+        // Check which libraries are missing
+        const steps = getInstallSteps(config, target);
+        if (steps.length === 0) {
+          return {
+            type: 'error',
+            requestId: message.requestId,
+            payload: { message: `All dependencies are already installed for ${target}.` },
+          };
+        }
+
+        // Acquire lock
+        const lockResult = acquireOperationLock('install');
+        if (!lockResult.success) {
+          return {
+            type: 'error',
+            requestId: message.requestId,
+            payload: { message: `Cannot install: a ${lockResult.heldBy} operation is in progress.` },
+          };
+        }
+
+        const abortController = lockResult.abortController!;
+
+        // Acknowledge start
+        if (pushMessage) {
+          pushMessage({
+            type: 'installDependenciesStarted',
+            requestId: message.requestId,
+          });
+        }
+
+        // Run install asynchronously
+        (async () => {
+          try {
+            const result = await runBuildSteps(steps, {
+              cwd: config.config.prefix,
+              onStdout: () => {},
+              onStderr: () => {},
+              onStepStart: (step, index, total) => {
+                const progressPayload: InstallProgressPayload = {
+                  state: 'running',
+                  target,
+                  currentLibrary: step.label.split(' ')[1] || step.label,
+                  currentStep: step.label,
+                  stepIndex: index + 1,
+                  totalSteps: total,
+                  timestamp: new Date().toISOString(),
+                };
+                currentInstallProgress = progressPayload;
+                if (pushMessage) {
+                  pushMessage({
+                    type: 'installDependenciesProgress',
+                    payload: progressPayload,
+                  });
+                }
+              },
+              signal: abortController.signal,
+            });
+
+            if (!result.success) {
+              if (result.cancelledAtStep !== undefined) {
+                const cancelPayload: InstallProgressPayload = {
+                  state: 'cancelled',
+                  target,
+                  timestamp: new Date().toISOString(),
+                };
+                currentInstallProgress = null;
+                if (pushMessage) {
+                  pushMessage({
+                    type: 'installDependenciesProgress',
+                    payload: cancelPayload,
+                  });
+                }
+              } else {
+                const failPayload: InstallProgressPayload = {
+                  state: 'failed',
+                  target,
+                  errorMessage: 'Installation step failed with non-zero exit code',
+                  timestamp: new Date().toISOString(),
+                };
+                currentInstallProgress = null;
+                if (pushMessage) {
+                  pushMessage({
+                    type: 'installDependenciesProgress',
+                    payload: failPayload,
+                  });
+                }
+              }
+            } else {
+              const completePayload: InstallProgressPayload = {
+                state: 'completed',
+                target,
+                timestamp: new Date().toISOString(),
+              };
+              currentInstallProgress = null;
+              if (pushMessage) {
+                pushMessage({
+                  type: 'installDependenciesProgress',
+                  payload: completePayload,
+                });
+              }
+            }
+
+            // Auto-refresh dependency status
+            const ecsInstalled = checkLibEcs(config, target);
+            const seedInstalled = checkLibTheSeed(config, target);
+            const refreshStatus: DependencyStatusPayload = {
+              target,
+              libraries: [
+                { name: 'libecs-cpp', installed: ecsInstalled },
+                { name: 'libthe-seed', installed: seedInstalled },
+              ],
+              checking: false,
+              timestamp: new Date().toISOString(),
+            };
+            currentDependencyStatus = refreshStatus;
+            if (pushMessage) {
+              pushMessage({
+                type: 'dependencyStatus',
+                payload: refreshStatus,
+              });
+            }
+          } finally {
+            releaseOperationLock();
+          }
+        })();
+
+        // Return null since we handle async responses via pushMessage
+        return null;
+      }
+
+      case 'cancelInstallDependencies': {
+        const lock = getOperationLock();
+        if (lock.active && lock.type === 'install' && lock.abortController) {
+          lock.abortController.abort();
+        }
+        return {
+          type: 'installDependenciesCancelled',
+          requestId: message.requestId,
         };
       }
 

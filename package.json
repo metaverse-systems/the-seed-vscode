@@ -2,7 +2,7 @@
   "name": "the-seed-vscode",
   "displayName": "the-seed-vscode",
   "description": "",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "engines": {
     "vscode": "^1.97.0"
   },
@@ -90,6 +90,14 @@
       {
         "command": "the-seed.buildResourcePak",
         "title": "The Seed: ResourcePak Build"
+      },
+      {
+        "command": "the-seed.checkDependencies",
+        "title": "The Seed: Check Dependencies"
+      },
+      {
+        "command": "the-seed.installDependencies",
+        "title": "The Seed: Install Dependencies"
       }
     ]
   },

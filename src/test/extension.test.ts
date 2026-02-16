@@ -23,6 +23,8 @@ suite('Extension Test Suite', () => {
       'the-seed.createProgramTemplate',
       'the-seed.addResource',
       'the-seed.buildResourcePak',
+      'the-seed.checkDependencies',
+      'the-seed.installDependencies',
     ];
 
     for (const commandId of expectedCommands) {

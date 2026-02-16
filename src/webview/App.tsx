@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { getVsCodeApi } from './hooks/useVsCodeApi';
 import { ConfigurationSection } from './components/ConfigurationSection';
+import { DependenciesSection } from './components/DependenciesSection';
 import { TemplatesSection } from './components/TemplatesSection';
 import { BuildSection } from './components/BuildSection';
 import { ResourcePakSection } from './components/ResourcePakSection';
@@ -11,6 +12,8 @@ import type {
   BuildStatusPayload,
   ResourcePakStatusPayload,
   ResourcePakBuildProgressPayload,
+  DependencyStatusPayload,
+  InstallProgressPayload,
 } from '../types/messages';
 import '@vscode-elements/elements';
 
@@ -40,6 +43,15 @@ export const App: React.FC = () => {
   const [resourcePakBuildProgress, setResourcePakBuildProgress] = useState<ResourcePakBuildProgressPayload | null>(null);
   const [browsedFilePath, setBrowsedFilePath] = useState<string | null>(null);
   const [browsedFileName, setBrowsedFileName] = useState<string | null>(null);
+
+  // Dependency state (per-target)
+  const [nativeDepStatus, setNativeDepStatus] = useState<DependencyStatusPayload | null>(null);
+  const [windowsDepStatus, setWindowsDepStatus] = useState<DependencyStatusPayload | null>(null);
+  const [isCheckingNative, setIsCheckingNative] = useState(false);
+  const [isCheckingWindows, setIsCheckingWindows] = useState(false);
+  const [isInstalling, setIsInstalling] = useState(false);
+  const [installProgress, setInstallProgress] = useState<InstallProgressPayload | null>(null);
+  const [installError, setInstallError] = useState<string | null>(null);
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent<ExtensionToWebviewMessage>) => {
@@ -140,6 +152,41 @@ export const App: React.FC = () => {
             setResourcePakLoading(false);
           }
           break;
+        case 'dependencyStatus':
+          if (message.payload.target === 'native') {
+            setNativeDepStatus(message.payload);
+            setIsCheckingNative(false);
+          } else {
+            setWindowsDepStatus(message.payload);
+            setIsCheckingWindows(false);
+          }
+          // If install was running and we get a status update, it means auto-refresh after install
+          if (isInstalling) {
+            setIsInstalling(false);
+            setInstallProgress(null);
+          }
+          break;
+        case 'installDependenciesStarted':
+          setIsInstalling(true);
+          setInstallError(null);
+          break;
+        case 'installDependenciesCancelled':
+          setIsInstalling(false);
+          setInstallProgress(null);
+          break;
+        case 'installDependenciesProgress':
+          setInstallProgress(message.payload);
+          if (message.payload.state === 'completed') {
+            setIsInstalling(false);
+            setInstallError(null);
+          } else if (message.payload.state === 'failed') {
+            setIsInstalling(false);
+            setInstallError(message.payload.errorMessage ?? 'Installation failed');
+          } else if (message.payload.state === 'cancelled') {
+            setIsInstalling(false);
+            setInstallProgress(null);
+          }
+          break;
       }
     };
 
@@ -148,6 +195,17 @@ export const App: React.FC = () => {
     vscode.postMessage({
       command: 'getResourcePakStatus',
       requestId: crypto.randomUUID(),
+    });
+    // Auto-check dependencies for both targets on mount
+    vscode.postMessage({
+      command: 'checkDependencies',
+      requestId: crypto.randomUUID(),
+      data: { target: 'native' },
+    });
+    vscode.postMessage({
+      command: 'checkDependencies',
+      requestId: crypto.randomUUID(),
+      data: { target: 'windows' },
     });
 
     return () => window.removeEventListener('message', handleMessage);
@@ -283,6 +341,39 @@ export const App: React.FC = () => {
     });
   };
 
+  // Dependency handlers
+  const handleCheckDependencies = (target: 'native' | 'windows') => {
+    if (target === 'native') {
+      setIsCheckingNative(true);
+    } else {
+      setIsCheckingWindows(true);
+    }
+    setInstallError(null);
+    vscode.postMessage({
+      command: 'checkDependencies',
+      requestId: crypto.randomUUID(),
+      data: { target },
+    });
+  };
+
+  const handleInstallDependencies = (target: 'native' | 'windows') => {
+    setIsInstalling(true);
+    setInstallError(null);
+    setInstallProgress(null);
+    vscode.postMessage({
+      command: 'installDependencies',
+      requestId: crypto.randomUUID(),
+      data: { target },
+    });
+  };
+
+  const handleCancelInstallDependencies = () => {
+    vscode.postMessage({
+      command: 'cancelInstallDependencies',
+      requestId: crypto.randomUUID(),
+    });
+  };
+
   return (
     <div className="app-container">
       {error && (
@@ -311,6 +402,20 @@ export const App: React.FC = () => {
         onDeleteScope={handleDeleteScope}
         pendingOverwrite={pendingOverwrite}
         onCancelOverwrite={handleCancelOverwrite}
+      />
+      <div className="section-divider" />
+      <DependenciesSection
+        nativeStatus={nativeDepStatus}
+        windowsStatus={windowsDepStatus}
+        isCheckingNative={isCheckingNative}
+        isCheckingWindows={isCheckingWindows}
+        isInstalling={isInstalling}
+        installProgress={installProgress}
+        installError={installError}
+        hasConfig={config !== null && config.prefix !== ''}
+        onCheck={handleCheckDependencies}
+        onInstall={handleInstallDependencies}
+        onCancelInstall={handleCancelInstallDependencies}
       />
       <div className="section-divider" />
       <TemplatesSection

@@ -4,6 +4,20 @@ All notable changes to the "the-seed-vscode" extension will be documented in thi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.0.2] - 2026-02-15
+
+### Added
+- **Check Dependencies** command — verify libecs-cpp and libthe-seed installation status via `pkg-config` for native or Windows targets (Command Palette + webview)
+- **Install Dependencies** command — clone and build missing dependencies from source with real-time output streaming, progress notification, and cancellation support (Command Palette + webview)
+- **Dependencies sidebar section** — auto-checks on render, per-library status indicators (✓/⚠), target selector dropdown, Check and Install action buttons
+- Shared operation lock for mutual exclusion between build and install operations
+- Dependency status tracking and replay for late-joining webview panels
+- Install progress tracking with per-step streaming updates
+
+### Changed
+- Refactored build commands to use shared operation lock instead of module-level variable
+- Builds now report operation type in mutual exclusion warnings (build vs install)
+
 ## [Unreleased]
 
 ### Added
