@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { SectionLayout } from './SectionLayout';
 import { TemplateForm } from './TemplateForm';
+import { ResourcePakForm } from './ResourcePakForm';
 import type { ScopeEntry } from '../../types/messages';
 
 type TemplateType = 'component' | 'system' | 'program';
@@ -12,27 +13,40 @@ interface TemplatesSectionProps {
     scopeName: string,
     templateName: string
   ) => void;
+  onCreateResourcePak: (scopeName: string, pakName: string) => void;
   loading: boolean;
   success: { message: string; path: string } | null;
   error: string | null;
   existsWarning: string | null;
+  resourcePakSuccess: string | null;
+  resourcePakError: string | null;
   onDismissSuccess: () => void;
   onDismissError: () => void;
   onDismissWarning: () => void;
+  onDismissResourcePakSuccess: () => void;
+  onDismissResourcePakError: () => void;
 }
+
+type ActiveForm = TemplateType | 'resourcepak';
 
 export const TemplatesSection: React.FC<TemplatesSectionProps> = ({
   scopes,
   onCreateTemplate,
+  onCreateResourcePak,
   loading,
   success,
   error,
   existsWarning,
+  resourcePakSuccess,
+  resourcePakError,
   onDismissSuccess,
   onDismissError,
   onDismissWarning,
+  onDismissResourcePakSuccess,
+  onDismissResourcePakError,
 }) => {
-  const [activeForm, setActiveForm] = useState<TemplateType | null>(null);
+  const [activeForm, setActiveForm] = useState<ActiveForm | null>(null);
+  const [rpCreating, setRpCreating] = useState(false);
 
   // Collapse form on successful creation
   useEffect(() => {
@@ -41,8 +55,16 @@ export const TemplatesSection: React.FC<TemplatesSectionProps> = ({
     }
   }, [success]);
 
+  // Collapse ResourcePak form on success
+  useEffect(() => {
+    if (resourcePakSuccess && activeForm === 'resourcepak') {
+      setActiveForm(null);
+      setRpCreating(false);
+    }
+  }, [resourcePakSuccess]);
+
   const handleSubmit = (scopeName: string, templateName: string) => {
-    if (activeForm) {
+    if (activeForm && activeForm !== 'resourcepak') {
       onCreateTemplate(activeForm, scopeName, templateName);
     }
   };
@@ -54,11 +76,24 @@ export const TemplatesSection: React.FC<TemplatesSectionProps> = ({
   };
 
   // Collapse form on successful creation
-  const handleButtonClick = (type: TemplateType) => {
+  const handleButtonClick = (type: ActiveForm) => {
     onDismissSuccess();
     onDismissError();
     onDismissWarning();
+    onDismissResourcePakSuccess();
+    onDismissResourcePakError();
     setActiveForm(type);
+  };
+
+  const handleRpSubmit = (scopeName: string, pakName: string) => {
+    setRpCreating(true);
+    onCreateResourcePak(scopeName, pakName);
+  };
+
+  const handleRpCancel = () => {
+    setActiveForm(null);
+    setRpCreating(false);
+    onDismissResourcePakError();
   };
 
   if (!scopes || scopes.length === 0) {
@@ -86,6 +121,19 @@ export const TemplatesSection: React.FC<TemplatesSectionProps> = ({
         </div>
       )}
 
+      {resourcePakSuccess && (
+        <div className="template-success" role="status">
+          <span>{resourcePakSuccess}</span>
+          <button
+            className="template-dismiss"
+            onClick={onDismissResourcePakSuccess}
+            aria-label="Dismiss success message"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {!activeForm && (
         <div className="template-buttons">
           <vscode-button onClick={() => handleButtonClick('component')}>
@@ -97,10 +145,13 @@ export const TemplatesSection: React.FC<TemplatesSectionProps> = ({
           <vscode-button onClick={() => handleButtonClick('program')}>
             Create Program
           </vscode-button>
+          <vscode-button onClick={() => handleButtonClick('resourcepak')}>
+            Create ResourcePak
+          </vscode-button>
         </div>
       )}
 
-      {activeForm && (
+      {activeForm && activeForm !== 'resourcepak' && (
         <>
           {existsWarning && (
             <div className="template-warning" role="alert">
@@ -132,6 +183,29 @@ export const TemplatesSection: React.FC<TemplatesSectionProps> = ({
             onSubmit={handleSubmit}
             onCancel={handleCancel}
             loading={loading}
+          />
+        </>
+      )}
+
+      {activeForm === 'resourcepak' && (
+        <>
+          {resourcePakError && (
+            <div className="template-error" role="alert">
+              <span>{resourcePakError}</span>
+              <button
+                className="template-dismiss"
+                onClick={onDismissResourcePakError}
+                aria-label="Dismiss error"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+          <ResourcePakForm
+            scopes={scopes}
+            onSubmit={handleRpSubmit}
+            onCancel={handleRpCancel}
+            loading={rpCreating}
           />
         </>
       )}

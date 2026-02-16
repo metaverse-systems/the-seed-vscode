@@ -487,4 +487,106 @@ suite('messageHandler', () => {
       }
     });
   });
+
+  suite('ResourcePak Messages', () => {
+    test('getResourcePakStatus responds with resourcePakStatus', async () => {
+      const response = await handleMessage({
+        command: 'getResourcePakStatus',
+        requestId: 'test-rpak-status-1',
+      });
+      assert.ok(response, 'Should return a response');
+      assert.strictEqual(response!.type, 'resourcePakStatus');
+      if (response!.type === 'resourcePakStatus') {
+        assert.strictEqual(response!.requestId, 'test-rpak-status-1');
+        assert.ok(typeof response!.payload.detected === 'boolean', 'Should have detected boolean');
+      }
+    });
+
+    test('createResourcePak responds with resourcePakCreated', async () => {
+      const uniqueScope = `@rpak-create-${Date.now()}`;
+      // First create the scope
+      await handleMessage({
+        command: 'addScope',
+        requestId: 'rpak-setup',
+        data: {
+          scopeName: uniqueScope,
+          authorName: 'RPak Tester',
+          authorEmail: 'rpak@test.com',
+          authorUrl: '',
+        },
+      });
+
+      const pakName = `test-pak-${Date.now()}`;
+      const response = await handleMessage({
+        command: 'createResourcePak',
+        requestId: 'test-rpak-create',
+        data: { scopeName: uniqueScope, pakName },
+      });
+
+      assert.ok(response, 'Should return a response');
+      assert.strictEqual(response!.type, 'resourcePakCreated');
+      if (response!.type === 'resourcePakCreated') {
+        assert.strictEqual(response!.requestId, 'test-rpak-create');
+        assert.strictEqual(response!.payload.scope, uniqueScope);
+        assert.strictEqual(response!.payload.pakName, pakName);
+        assert.ok(response!.payload.packageDir, 'Should have packageDir');
+        assert.ok(
+          fs.existsSync(response!.payload.packageDir),
+          'Package directory should exist on disk'
+        );
+      }
+
+      // Cleanup
+      if (response!.type === 'resourcePakCreated') {
+        fs.rmSync(response!.payload.packageDir, { recursive: true, force: true });
+      }
+      await handleMessage({
+        command: 'deleteScope',
+        requestId: 'cleanup',
+        data: { scopeName: uniqueScope },
+      });
+    });
+
+    test('addResource with missing file responds with error', async () => {
+      const response = await handleMessage({
+        command: 'addResource',
+        requestId: 'test-add-missing',
+        data: {
+          scope: '@nonexistent',
+          pakName: 'nopak',
+          resourceName: 'res1',
+          filePath: '/tmp/nonexistent-file-' + Date.now() + '.txt',
+          useDetectedPak: false,
+        },
+      });
+      assert.ok(response, 'Should return a response');
+      assert.strictEqual(response!.type, 'error');
+      if (response!.type === 'error') {
+        assert.ok(response!.payload.message.includes('not found'), 'Error should mention file not found');
+      }
+    });
+
+    test('buildResourcePak with missing pak sends failed progress', async () => {
+      const pushMessages: any[] = [];
+      const response = await handleMessage(
+        {
+          command: 'buildResourcePak',
+          requestId: 'test-build-missing',
+          data: {
+            scope: '@nonexistent',
+            pakName: 'nopak',
+            useDetectedPak: false,
+          },
+        },
+        (msg) => pushMessages.push(msg)
+      );
+      // Should return null and send failed progress
+      assert.strictEqual(response, null);
+      assert.ok(pushMessages.length > 0, 'Should have sent push messages');
+      const failMsg = pushMessages.find(
+        (m) => m.type === 'resourcePakBuildProgress' && m.payload.state === 'failed'
+      );
+      assert.ok(failMsg, 'Should have sent a failed progress message');
+    });
+  });
 });

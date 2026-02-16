@@ -8,7 +8,7 @@ suite('Extension Test Suite', () => {
     sinon.restore();
   });
 
-  // T017: Command registration tests (all 10 commands)
+  // T017: Command registration tests (all 10 commands + 2 new ResourcePak commands)
   suite('Command Registration', () => {
     const expectedCommands = [
       'the-seed.createResourcePak',
@@ -21,6 +21,8 @@ suite('Extension Test Suite', () => {
       'the-seed.createComponentTemplate',
       'the-seed.createSystemTemplate',
       'the-seed.createProgramTemplate',
+      'the-seed.addResource',
+      'the-seed.buildResourcePak',
     ];
 
     for (const commandId of expectedCommands) {
@@ -149,6 +151,50 @@ suite('Extension Test Suite', () => {
       await vscode.commands.executeCommand('the-seed.deleteScope');
 
       assert.ok(!showWarningStub.called, 'showWarningMessage should not be called after cancel');
+    });
+  });
+
+  // T023: Add Resource command tests
+  suite('Add Resource', () => {
+    test('should exit cleanly when file picker is cancelled', async () => {
+      // Stub askQuestions to provide scope + pakName
+      const showQuickPickStub = sinon.stub(vscode.window, 'showQuickPick').resolves('test-scope' as any);
+      const showInputBoxStub = sinon.stub(vscode.window, 'showInputBox').resolves('test-pak');
+      const showOpenDialogStub = sinon.stub(vscode.window, 'showOpenDialog').resolves(undefined);
+      const showInfoStub = sinon.stub(vscode.window, 'showInformationMessage').resolves(undefined);
+
+      await vscode.commands.executeCommand('the-seed.addResource');
+
+      // Should not show success since file picker was cancelled
+      assert.ok(!showInfoStub.called, 'showInformationMessage should not be called when file picker is cancelled');
+    });
+
+    test('should exit cleanly when resource name input is cancelled', async () => {
+      const showQuickPickStub = sinon.stub(vscode.window, 'showQuickPick').resolves('test-scope' as any);
+      const showInputBoxStub = sinon.stub(vscode.window, 'showInputBox');
+      showInputBoxStub.onFirstCall().resolves('test-pak');
+      showInputBoxStub.onSecondCall().resolves(undefined); // Cancel name input
+      const showOpenDialogStub = sinon.stub(vscode.window, 'showOpenDialog').resolves([
+        vscode.Uri.file('/tmp/test-file.txt'),
+      ] as any);
+      const showInfoStub = sinon.stub(vscode.window, 'showInformationMessage').resolves(undefined);
+
+      await vscode.commands.executeCommand('the-seed.addResource');
+
+      assert.ok(!showInfoStub.called, 'showInformationMessage should not be called when name input is cancelled');
+    });
+  });
+
+  // T028: Build ResourcePak command tests
+  suite('Build ResourcePak', () => {
+    test('should exit cleanly when scope selection is cancelled', async () => {
+      const showQuickPickStub = sinon.stub(vscode.window, 'showQuickPick').resolves(undefined);
+      const showInfoStub = sinon.stub(vscode.window, 'showInformationMessage').resolves(undefined);
+
+      await vscode.commands.executeCommand('the-seed.buildResourcePak');
+
+      // Command should exit without showing success
+      assert.ok(!showInfoStub.called, 'showInformationMessage should not be called when cancelled');
     });
   });
 });

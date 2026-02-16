@@ -44,5 +44,20 @@ declare namespace JSX {
       React.HTMLAttributes<HTMLElement>,
       HTMLElement
     >;
+    'vscode-single-select': React.DetailedHTMLProps<
+      React.HTMLAttributes<HTMLElement> & {
+        value?: string;
+        disabled?: boolean;
+        onChange?: (e: Event) => void;
+      },
+      HTMLElement
+    >;
+    'vscode-option': React.DetailedHTMLProps<
+      React.HTMLAttributes<HTMLElement> & {
+        value?: string;
+        selected?: boolean;
+      },
+      HTMLElement
+    >;
   }
 }

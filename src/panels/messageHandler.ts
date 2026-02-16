@@ -2,10 +2,12 @@ import * as vscode from 'vscode';
 import Config from '@metaverse-systems/the-seed/dist/Config';
 import Scopes from '@metaverse-systems/the-seed/dist/Scopes';
 import Template from '@metaverse-systems/the-seed/dist/Template';
+import ResourcePak from '@metaverse-systems/the-seed/dist/ResourcePak';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { createTemplatePackage } from '../templateRuntime';
+import { detectResourcePak } from '../utils/detectResourcePak';
 import type {
   WebviewToExtensionMessage,
   ExtensionToWebviewMessage,
@@ -15,6 +17,9 @@ import type {
   TemplateFormData,
   TemplateCreatedPayload,
   BuildStatusPayload,
+  AddResourceData,
+  BuildResourcePakData,
+  ResourcePakFormData,
 } from '../types/messages';
 import { getActiveBuild, cancelActiveBuild } from '../commands/buildNative';
 
@@ -66,7 +71,8 @@ function toScopeAnswers(data: ScopeFormData) {
 }
 
 export async function handleMessage(
-  message: WebviewToExtensionMessage
+  message: WebviewToExtensionMessage,
+  pushMessage?: (msg: ExtensionToWebviewMessage) => void
 ): Promise<ExtensionToWebviewMessage | null> {
   try {
     switch (message.command) {
@@ -255,6 +261,259 @@ export async function handleMessage(
           type: 'buildStatusResponse',
           requestId: message.requestId,
           payload: currentBuildStatus,
+        };
+      }
+
+      // ── ResourcePak Handlers ────────────────────────────────
+
+      case 'getResourcePakStatus': {
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders || workspaceFolders.length === 0) {
+          return {
+            type: 'resourcePakStatus',
+            requestId: message.requestId,
+            payload: { detected: false },
+          };
+        }
+        const detected = detectResourcePak(workspaceFolders[0].uri.fsPath);
+        return {
+          type: 'resourcePakStatus',
+          requestId: message.requestId,
+          payload: detected ?? { detected: false },
+        };
+      }
+
+      case 'createResourcePak': {
+        const config = new Config();
+        config.loadConfig();
+        const rp = new ResourcePak(config);
+        const { scopeName, pakName } = message.data;
+        const scope = scopeName.startsWith('@') ? scopeName : `@${scopeName}`;
+        rp.createPackage(scope, pakName);
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        const hasWorkspace = workspaceFolders && workspaceFolders.length > 0;
+        return {
+          type: 'resourcePakCreated',
+          requestId: message.requestId,
+          payload: {
+            scope,
+            pakName,
+            packageDir: rp.packageDir,
+            openFolder: !hasWorkspace,
+          },
+        };
+      }
+
+      case 'browseResourceFile': {
+        const result = await vscode.window.showOpenDialog({
+          canSelectFiles: true,
+          canSelectMany: false,
+          openLabel: 'Select Resource File',
+        });
+        if (!result || result.length === 0) {
+          return {
+            type: 'resourceFileBrowsed',
+            requestId: message.requestId,
+            payload: { filePath: null, fileName: null },
+          };
+        }
+        const selectedPath = result[0].fsPath;
+        return {
+          type: 'resourceFileBrowsed',
+          requestId: message.requestId,
+          payload: {
+            filePath: selectedPath,
+            fileName: path.basename(selectedPath),
+          },
+        };
+      }
+
+      case 'addResource': {
+        const config = new Config();
+        config.loadConfig();
+        const { scope, pakName, resourceName, filePath: srcFilePath, useDetectedPak } = message.data;
+
+        // Resolve package directory
+        let packageDir: string;
+        if (useDetectedPak) {
+          const workspaceFolders = vscode.workspace.workspaceFolders;
+          if (!workspaceFolders || workspaceFolders.length === 0) {
+            return {
+              type: 'error',
+              requestId: message.requestId,
+              payload: { message: 'No workspace folder open' },
+            };
+          }
+          packageDir = workspaceFolders[0].uri.fsPath;
+        } else {
+          packageDir = config.config.prefix + '/projects/' + scope + '/' + pakName;
+        }
+
+        // Validate source file exists
+        if (!fs.existsSync(srcFilePath)) {
+          return {
+            type: 'error',
+            requestId: message.requestId,
+            payload: { message: `File not found: ${srcFilePath}` },
+          };
+        }
+
+        // Read and check for duplicate resource name
+        const pkgPath = path.join(packageDir, 'package.json');
+        if (!fs.existsSync(pkgPath)) {
+          return {
+            type: 'error',
+            requestId: message.requestId,
+            payload: { message: `ResourcePak not found at ${packageDir}` },
+          };
+        }
+        const pkgData = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+        if (pkgData.resources && pkgData.resources.find((r: { name: string }) => r.name === resourceName)) {
+          return {
+            type: 'error',
+            requestId: message.requestId,
+            payload: { message: `Resource '${resourceName}' already exists in this ResourcePak` },
+          };
+        }
+
+        // Copy file to pak dir if not already there
+        const basename = path.basename(srcFilePath);
+        const destPath = path.join(packageDir, basename);
+        if (srcFilePath !== destPath) {
+          fs.copyFileSync(srcFilePath, destPath);
+        }
+
+        // Add resource via domain library
+        const rp = new ResourcePak(config);
+        rp.addResource(resourceName, basename, packageDir);
+
+        // Re-read to get updated resource count and size
+        const updatedPkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+        const addedResource = updatedPkg.resources.find((r: { name: string }) => r.name === resourceName);
+        return {
+          type: 'resourceAdded',
+          requestId: message.requestId,
+          payload: {
+            resourceName,
+            fileName: basename,
+            size: addedResource?.size ?? 0,
+            totalResources: updatedPkg.resources.length,
+          },
+        };
+      }
+
+      case 'buildResourcePak': {
+        const config = new Config();
+        config.loadConfig();
+        const { scope, pakName, useDetectedPak } = message.data;
+
+        // Resolve package directory
+        let packageDir: string;
+        if (useDetectedPak) {
+          const workspaceFolders = vscode.workspace.workspaceFolders;
+          if (!workspaceFolders || workspaceFolders.length === 0) {
+            return {
+              type: 'error',
+              requestId: message.requestId,
+              payload: { message: 'No workspace folder open' },
+            };
+          }
+          packageDir = workspaceFolders[0].uri.fsPath;
+        } else {
+          packageDir = config.config.prefix + '/projects/' + scope + '/' + pakName;
+        }
+
+        // Validate ResourcePak exists
+        const pkgPath = path.join(packageDir, 'package.json');
+        if (!fs.existsSync(pkgPath)) {
+          if (pushMessage) {
+            pushMessage({
+              type: 'resourcePakBuildProgress',
+              payload: {
+                state: 'failed',
+                errorMessage: `ResourcePak not found at ${packageDir}`,
+                timestamp: new Date().toISOString(),
+              },
+            });
+          }
+          return null;
+        }
+
+        const pkgData = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+        if (!pkgData.resources || pkgData.resources.length === 0) {
+          if (pushMessage) {
+            pushMessage({
+              type: 'resourcePakBuildProgress',
+              payload: {
+                state: 'failed',
+                errorMessage: 'No resources to build. Add resources before building.',
+                timestamp: new Date().toISOString(),
+              },
+            });
+          }
+          return null;
+        }
+
+        // Validate all resource files exist
+        for (const r of pkgData.resources) {
+          const resPath = path.join(packageDir, r.filename);
+          if (!fs.existsSync(resPath)) {
+            if (pushMessage) {
+              pushMessage({
+                type: 'resourcePakBuildProgress',
+                payload: {
+                  state: 'failed',
+                  errorMessage: `Resource file missing: ${r.filename}`,
+                  timestamp: new Date().toISOString(),
+                },
+              });
+            }
+            return null;
+          }
+        }
+
+        // Send progress: building
+        if (pushMessage) {
+          pushMessage({
+            type: 'resourcePakBuildProgress',
+            payload: {
+              state: 'building',
+              totalResources: pkgData.resources.length,
+              resourceIndex: 0,
+              timestamp: new Date().toISOString(),
+            },
+          });
+        }
+
+        // Perform build
+        const rp = new ResourcePak(config);
+        rp.build(packageDir);
+
+        // Determine output file
+        const [, name] = pkgData.name.split('/');
+        const pakFilePath = path.join(packageDir, name + '.pak');
+
+        // Send progress: completed
+        if (pushMessage) {
+          pushMessage({
+            type: 'resourcePakBuildProgress',
+            payload: {
+              state: 'completed',
+              totalResources: pkgData.resources.length,
+              resourceIndex: pkgData.resources.length,
+              timestamp: new Date().toISOString(),
+            },
+          });
+        }
+
+        return {
+          type: 'resourcePakBuilt',
+          requestId: message.requestId,
+          payload: {
+            pakName: pkgData.name,
+            pakFilePath,
+            resourceCount: pkgData.resources.length,
+          },
         };
       }
 

@@ -32,7 +32,9 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider {
       if (message.command === 'ready') {
         this._readyReceived = true;
       }
-      const response = await handleMessage(message);
+      const response = await handleMessage(message, (pushMsg) => {
+        webviewView.webview.postMessage(pushMsg);
+      });
       if (response) {
         webviewView.webview.postMessage(response);
 
@@ -43,6 +45,15 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider {
           response.payload.projectPath
         ) {
           const folderUri = vscode.Uri.file(response.payload.projectPath);
+          vscode.commands.executeCommand('vscode.openFolder', folderUri);
+        }
+
+        // After creating a ResourcePak, open its directory as the workspace
+        if (
+          response.type === 'resourcePakCreated' &&
+          response.payload.packageDir
+        ) {
+          const folderUri = vscode.Uri.file(response.payload.packageDir);
           vscode.commands.executeCommand('vscode.openFolder', folderUri);
         }
       }

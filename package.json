@@ -82,6 +82,14 @@
       {
         "command": "the-seed.buildIncremental",
         "title": "The Seed: Build (Incremental)"
+      },
+      {
+        "command": "the-seed.addResource",
+        "title": "The Seed: ResourcePak Add Resource"
+      },
+      {
+        "command": "the-seed.buildResourcePak",
+        "title": "The Seed: ResourcePak Build"
       }
     ]
   },

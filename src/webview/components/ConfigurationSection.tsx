@@ -33,14 +33,14 @@ export const ConfigurationSection: React.FC<ConfigurationSectionProps> = ({
 
   if (!config) {
     return (
-      <SectionLayout title="Configuration">
+      <SectionLayout title="Configuration" defaultCollapsed>
         <p>Loading configuration...</p>
       </SectionLayout>
     );
   }
 
   return (
-    <SectionLayout title="Configuration">
+    <SectionLayout title="Configuration" defaultCollapsed>
       <PrefixEditor
         prefix={config.prefix}
         isDefault={config.isDefault}

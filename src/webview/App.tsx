@@ -3,11 +3,14 @@ import { getVsCodeApi } from './hooks/useVsCodeApi';
 import { ConfigurationSection } from './components/ConfigurationSection';
 import { TemplatesSection } from './components/TemplatesSection';
 import { BuildSection } from './components/BuildSection';
+import { ResourcePakSection } from './components/ResourcePakSection';
 import type {
   ExtensionToWebviewMessage,
   ConfigPayload,
   ScopeFormData,
   BuildStatusPayload,
+  ResourcePakStatusPayload,
+  ResourcePakBuildProgressPayload,
 } from '../types/messages';
 import '@vscode-elements/elements';
 
@@ -27,6 +30,16 @@ export const App: React.FC = () => {
 
   // Build state
   const [buildStatus, setBuildStatus] = useState<BuildStatusPayload>({ state: 'idle', target: '' });
+
+  // ResourcePak state
+  const [resourcePakStatus, setResourcePakStatus] = useState<ResourcePakStatusPayload | null>(null);
+  const [resourcePakLoading, setResourcePakLoading] = useState(false);
+  const [resourcePakError, setResourcePakError] = useState<string | null>(null);
+  const [resourcePakCreateSuccess, setResourcePakCreateSuccess] = useState<string | null>(null);
+  const [resourcePakActionSuccess, setResourcePakActionSuccess] = useState<string | null>(null);
+  const [resourcePakBuildProgress, setResourcePakBuildProgress] = useState<ResourcePakBuildProgressPayload | null>(null);
+  const [browsedFilePath, setBrowsedFilePath] = useState<string | null>(null);
+  const [browsedFileName, setBrowsedFileName] = useState<string | null>(null);
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent<ExtensionToWebviewMessage>) => {
@@ -70,6 +83,8 @@ export const App: React.FC = () => {
           setError(message.payload.message);
           setTemplateCreating(false);
           setTemplateError(message.payload.message);
+          setResourcePakLoading(false);
+          setResourcePakError(message.payload.message);
           break;
         case 'buildStatus':
           setBuildStatus(message.payload);
@@ -83,11 +98,57 @@ export const App: React.FC = () => {
         case 'buildStatusResponse':
           setBuildStatus(message.payload);
           break;
+        case 'resourcePakStatus':
+          setResourcePakStatus(message.payload);
+          setResourcePakLoading(false);
+          break;
+        case 'resourcePakCreated':
+          setResourcePakLoading(false);
+          setResourcePakCreateSuccess(
+            `ResourcePak '${message.payload.pakName}' created in scope '${message.payload.scope}'`
+          );
+          setResourcePakError(null);
+          break;
+        case 'resourceFileBrowsed':
+          setBrowsedFilePath(message.payload.filePath);
+          setBrowsedFileName(message.payload.fileName);
+          setResourcePakLoading(false);
+          break;
+        case 'resourceAdded':
+          setResourcePakLoading(false);
+          setResourcePakActionSuccess(
+            `Resource '${message.payload.resourceName}' added (${message.payload.totalResources} total)`
+          );
+          setResourcePakError(null);
+          setBrowsedFilePath(null);
+          setBrowsedFileName(null);
+          // Refresh status to get updated resource count
+          vscode.postMessage({
+            command: 'getResourcePakStatus',
+            requestId: crypto.randomUUID(),
+          });
+          break;
+        case 'resourcePakBuilt':
+          setResourcePakLoading(false);
+          setResourcePakActionSuccess(
+            `ResourcePak built: ${message.payload.pakFilePath}`
+          );
+          break;
+        case 'resourcePakBuildProgress':
+          setResourcePakBuildProgress(message.payload);
+          if (message.payload.state === 'failed') {
+            setResourcePakLoading(false);
+          }
+          break;
       }
     };
 
     window.addEventListener('message', handleMessage);
     vscode.postMessage({ command: 'ready' });
+    vscode.postMessage({
+      command: 'getResourcePakStatus',
+      requestId: crypto.randomUUID(),
+    });
 
     return () => window.removeEventListener('message', handleMessage);
   }, []);
@@ -168,6 +229,60 @@ export const App: React.FC = () => {
     });
   };
 
+  // ResourcePak handlers
+  const handleCreateResourcePak = (scopeName: string, pakName: string) => {
+    setResourcePakLoading(true);
+    setResourcePakError(null);
+    setResourcePakCreateSuccess(null);
+    vscode.postMessage({
+      command: 'createResourcePak',
+      requestId: crypto.randomUUID(),
+      data: { scopeName, pakName },
+    });
+  };
+
+  const handleBrowseResourceFile = () => {
+    setResourcePakLoading(true);
+    setBrowsedFilePath(null);
+    setBrowsedFileName(null);
+    vscode.postMessage({
+      command: 'browseResourceFile',
+      requestId: crypto.randomUUID(),
+    });
+  };
+
+  const handleAddResource = (
+    scope: string,
+    pakName: string,
+    resourceName: string,
+    filePath: string,
+    useDetectedPak: boolean
+  ) => {
+    setResourcePakLoading(true);
+    setResourcePakError(null);
+    vscode.postMessage({
+      command: 'addResource',
+      requestId: crypto.randomUUID(),
+      data: { scope, pakName, resourceName, filePath, useDetectedPak },
+    });
+  };
+
+  const handleBuildResourcePak = (
+    scope: string,
+    pakName: string,
+    useDetectedPak: boolean
+  ) => {
+    setResourcePakLoading(true);
+    setResourcePakError(null);
+    setResourcePakActionSuccess(null);
+    setResourcePakBuildProgress(null);
+    vscode.postMessage({
+      command: 'buildResourcePak',
+      requestId: crypto.randomUUID(),
+      data: { scope, pakName, useDetectedPak },
+    });
+  };
+
   return (
     <div className="app-container">
       {error && (
@@ -201,13 +316,18 @@ export const App: React.FC = () => {
       <TemplatesSection
         scopes={config?.scopes ?? []}
         onCreateTemplate={handleCreateTemplate}
+        onCreateResourcePak={handleCreateResourcePak}
         loading={templateCreating}
         success={templateSuccess}
         error={templateError}
         existsWarning={templateExistsWarning}
+        resourcePakSuccess={resourcePakCreateSuccess}
+        resourcePakError={resourcePakError}
         onDismissSuccess={() => setTemplateSuccess(null)}
         onDismissError={() => setTemplateError(null)}
         onDismissWarning={() => setTemplateExistsWarning(null)}
+        onDismissResourcePakSuccess={() => setResourcePakCreateSuccess(null)}
+        onDismissResourcePakError={() => setResourcePakError(null)}
       />
       <div className="section-divider" />
       <BuildSection
@@ -215,6 +335,21 @@ export const App: React.FC = () => {
         hasProject={config !== null}
         onStartBuild={handleStartBuild}
         onCancelBuild={handleCancelBuild}
+      />
+      <div className="section-divider" />
+      <ResourcePakSection
+        status={resourcePakStatus}
+        loading={resourcePakLoading}
+        error={resourcePakError}
+        success={resourcePakActionSuccess}
+        buildProgress={resourcePakBuildProgress}
+        onBrowseResourceFile={handleBrowseResourceFile}
+        onAddResource={handleAddResource}
+        onBuildResourcePak={handleBuildResourcePak}
+        onDismissError={() => setResourcePakError(null)}
+        onDismissSuccess={() => setResourcePakActionSuccess(null)}
+        browsedFilePath={browsedFilePath}
+        browsedFileName={browsedFileName}
       />
     </div>
   );

@@ -7,6 +7,9 @@ This **VSCode extension** provides tools for working with [@metaverse-systems/th
 ## 🚀 Features
 
 - **Create ResourcePaks** — scaffold new resource packages within a scope
+- **Add Resource** — register files as resources in a ResourcePak (Command Palette + sidebar)
+- **Build ResourcePak** — compile a ResourcePak into a `.pak` binary (Command Palette + sidebar)
+- **ResourcePaks Sidebar Section** — collapsible webview section with Create, Add Resource, and Build actions; auto-detects workspace ResourcePaks
 - **Configure Project** — set or update the project prefix path
 - **Add Scope** — create a new scope with author metadata
 - **Edit Scope** — update author details on an existing scope
@@ -98,6 +101,8 @@ _Coming soon_
 | Command | Description |
 |---------|-------------|
 | `The Seed: Create ResourcePak` | Create a new resource package in a scope |
+| `The Seed: ResourcePak Add Resource` | Add a file as a resource to a ResourcePak |
+| `The Seed: ResourcePak Build` | Build a ResourcePak into a `.pak` binary |
 | `The Seed: Configure Project` | Set or update the project prefix path |
 | `The Seed: Add Scope` | Create a new scope with author metadata |
 | `The Seed: Edit Scope` | Update author details on an existing scope |

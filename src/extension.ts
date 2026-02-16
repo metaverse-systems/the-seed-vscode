@@ -15,6 +15,9 @@ import { createSystemTemplate } from "./commands/createSystemTemplate";
 import { createProgramTemplate } from "./commands/createProgramTemplate";
 import { buildNativeCommand, buildWindowsCommand, buildIncrementalCommand } from "./commands/buildNative";
 import { TheSeedViewProvider } from "./panels/TheSeedViewProvider";
+import { detectResourcePak } from "./utils/detectResourcePak";
+import * as fs from "fs";
+import * as path from "path";
 
 export function activate(context: vscode.ExtensionContext) {
   const outputChannel = createOutputChannel();
@@ -109,6 +112,129 @@ export function activate(context: vscode.ExtensionContext) {
     wrapCommand(buildIncrementalCommand(outputChannel, viewProvider), outputChannel)
   );
 
+  // Add Resource command (palette)
+  const addResourceDisposable = vscode.commands.registerCommand(
+    "the-seed.addResource",
+    wrapCommand(async (oc) => {
+      const config = new Config();
+      const rp = new ResourcePak(config);
+
+      // Try auto-detect
+      let packageDir: string | undefined;
+      const workspaceFolders = vscode.workspace.workspaceFolders;
+      if (workspaceFolders && workspaceFolders.length > 0) {
+        const detected = detectResourcePak(workspaceFolders[0].uri.fsPath);
+        if (detected) {
+          packageDir = detected.packageDir;
+          oc.appendLine(`[INFO] Auto-detected ResourcePak: ${detected.pakName}`);
+        }
+      }
+
+      // If not auto-detected, ask user for scope + pak name
+      if (!packageDir) {
+        const questions = rp.askName();
+        const answers = await askQuestions(questions);
+        if (!answers.scopeName || !answers.pakName) {
+          return;
+        }
+        packageDir = config.config.prefix + "/projects/" + answers.scopeName + "/" + answers.pakName;
+      }
+
+      // Validate ResourcePak exists
+      const pkgPath = path.join(packageDir, "package.json");
+      if (!fs.existsSync(pkgPath)) {
+        vscode.window.showErrorMessage(`ResourcePak not found at ${packageDir}`);
+        return;
+      }
+
+      // Open file picker
+      const fileResult = await vscode.window.showOpenDialog({
+        canSelectFiles: true,
+        canSelectMany: false,
+        openLabel: "Select Resource File",
+      });
+      if (!fileResult || fileResult.length === 0) {
+        return;
+      }
+      const selectedFile = fileResult[0].fsPath;
+
+      // Prompt for resource name
+      const resourceName = await vscode.window.showInputBox({
+        prompt: "Enter a name for this resource",
+        placeHolder: "my-resource",
+        validateInput: (value) => {
+          if (!value.trim()) return "Name is required";
+          if (!/^[a-zA-Z0-9][a-zA-Z0-9-]*$/.test(value)) {
+            return "Name must start with a letter or number and contain only letters, numbers, and hyphens";
+          }
+          return null;
+        },
+      });
+      if (!resourceName) {
+        return;
+      }
+
+      // Copy file to pak dir if needed
+      const basename = path.basename(selectedFile);
+      const destPath = path.join(packageDir, basename);
+      if (selectedFile !== destPath) {
+        fs.copyFileSync(selectedFile, destPath);
+      }
+
+      rp.addResource(resourceName, basename, packageDir);
+      vscode.window.showInformationMessage(
+        `Resource '${resourceName}' added to ResourcePak`
+      );
+    }, outputChannel)
+  );
+
+  // Build ResourcePak command (palette)
+  const buildResourcePakDisposable = vscode.commands.registerCommand(
+    "the-seed.buildResourcePak",
+    wrapCommand(async (oc) => {
+      const config = new Config();
+      const rp = new ResourcePak(config);
+
+      // Try auto-detect
+      let packageDir: string | undefined;
+      const workspaceFolders = vscode.workspace.workspaceFolders;
+      if (workspaceFolders && workspaceFolders.length > 0) {
+        const detected = detectResourcePak(workspaceFolders[0].uri.fsPath);
+        if (detected) {
+          packageDir = detected.packageDir;
+          oc.appendLine(`[INFO] Auto-detected ResourcePak: ${detected.pakName}`);
+        }
+      }
+
+      // If not auto-detected, ask user
+      if (!packageDir) {
+        const questions = rp.askName();
+        const answers = await askQuestions(questions);
+        if (!answers.scopeName || !answers.pakName) {
+          return;
+        }
+        packageDir = config.config.prefix + "/projects/" + answers.scopeName + "/" + answers.pakName;
+      }
+
+      // Validate
+      const pkgPath = path.join(packageDir, "package.json");
+      if (!fs.existsSync(pkgPath)) {
+        vscode.window.showErrorMessage(`ResourcePak not found at ${packageDir}`);
+        return;
+      }
+
+      rp.build(packageDir);
+
+      const pkgData = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+      const [, name] = pkgData.name.split("/");
+      const pakFilePath = path.join(packageDir, name + ".pak");
+
+      vscode.window.showInformationMessage(
+        `ResourcePak built successfully: ${pakFilePath}`
+      );
+    }, outputChannel)
+  );
+
   context.subscriptions.push(
     createResourcePakDisposable,
     configureProjectDisposable,
@@ -122,7 +248,9 @@ export function activate(context: vscode.ExtensionContext) {
     createProgramTemplateDisposable,
     buildNativeDisposable,
     buildWindowsDisposable,
-    buildIncrementalDisposable
+    buildIncrementalDisposable,
+    addResourceDisposable,
+    buildResourcePakDisposable
   );
 }
 

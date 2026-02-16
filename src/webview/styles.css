@@ -427,3 +427,27 @@
   color: var(--vscode-descriptionForeground);
   font-size: 12px;
 }
+
+/* ResourcePak Section */
+.resourcepak-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.resourcepak-detected {
+  padding: 4px 0;
+  font-size: 12px;
+}
+
+.resourcepak-detected-label {
+  color: var(--vscode-descriptionForeground);
+}
+
+.resourcepak-detected-name {
+  font-weight: bold;
+}
+
+.resourcepak-detected-count {
+  color: var(--vscode-descriptionForeground);
+}
