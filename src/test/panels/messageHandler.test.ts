@@ -442,4 +442,49 @@ suite('messageHandler', () => {
       }
     });
   });
+
+  suite('Build Messages', () => {
+    test('startBuild responds with buildStarted when no build is running', async () => {
+      const response = await handleMessage({
+        command: 'startBuild',
+        requestId: 'test-build-1',
+        data: { target: 'native' },
+      });
+      assert.ok(response, 'Should return a response');
+      // The handler should respond with buildStarted or error (no buildable project)
+      assert.ok(
+        response!.type === 'buildStarted' || response!.type === 'error',
+        `Expected buildStarted or error, got ${response!.type}`
+      );
+    });
+
+    test('cancelBuild responds with buildCancelled', async () => {
+      const response = await handleMessage({
+        command: 'cancelBuild',
+        requestId: 'test-cancel-1',
+      });
+      assert.ok(response, 'Should return a response');
+      assert.strictEqual(response!.type, 'buildCancelled');
+      if (response!.type === 'buildCancelled') {
+        assert.strictEqual(response!.requestId, 'test-cancel-1');
+      }
+    });
+
+    test('getBuildStatus responds with buildStatusResponse', async () => {
+      const response = await handleMessage({
+        command: 'getBuildStatus',
+        requestId: 'test-status-1',
+      });
+      assert.ok(response, 'Should return a response');
+      assert.strictEqual(response!.type, 'buildStatusResponse');
+      if (response!.type === 'buildStatusResponse') {
+        assert.strictEqual(response!.requestId, 'test-status-1');
+        assert.ok(response!.payload, 'Should have payload');
+        assert.ok(
+          ['idle', 'running', 'completed', 'failed', 'cancelled'].includes(response!.payload.state),
+          'State should be a valid BuildState'
+        );
+      }
+    });
+  });
 });

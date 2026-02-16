@@ -1,11 +1,13 @@
 import * as vscode from 'vscode';
 import { handleMessage } from './messageHandler';
+import type { ExtensionToWebviewMessage, BuildStatusPayload } from '../types/messages';
 
 export class TheSeedViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'the-seed.mainView';
 
   private _view?: vscode.WebviewView;
   private _readyReceived = false;
+  private _currentBuildStatus: BuildStatusPayload | null = null;
 
   constructor(private readonly _extensionUri: vscode.Uri) {}
 
@@ -49,8 +51,26 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider {
     webviewView.onDidChangeVisibility(() => {
       if (webviewView.visible && this._readyReceived) {
         this._refreshConfig();
+        // Push current build state so the webview catches up
+        if (this._currentBuildStatus) {
+          this.postMessage({ type: 'buildStatus', payload: this._currentBuildStatus });
+        }
       }
     });
+  }
+
+  /**
+   * Push a message to the webview without a preceding request.
+   * Silently drops the message if the webview is not visible.
+   * Tracks build status for late-joining webview.
+   */
+  public postMessage(message: ExtensionToWebviewMessage): void {
+    if (message.type === 'buildStatus') {
+      this._currentBuildStatus = message.payload;
+    }
+    if (this._view?.visible) {
+      this._view.webview.postMessage(message);
+    }
   }
 
   private async _refreshConfig(): Promise<void> {

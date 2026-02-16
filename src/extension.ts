@@ -13,6 +13,7 @@ import { deleteScope } from "./commands/deleteScope";
 import { createComponentTemplate } from "./commands/createComponentTemplate";
 import { createSystemTemplate } from "./commands/createSystemTemplate";
 import { createProgramTemplate } from "./commands/createProgramTemplate";
+import { buildNativeCommand, buildWindowsCommand, buildIncrementalCommand } from "./commands/buildNative";
 import { TheSeedViewProvider } from "./panels/TheSeedViewProvider";
 
 export function activate(context: vscode.ExtensionContext) {
@@ -93,6 +94,21 @@ export function activate(context: vscode.ExtensionContext) {
     wrapCommand(createProgramTemplate, outputChannel)
   );
 
+  const buildNativeDisposable = vscode.commands.registerCommand(
+    "the-seed.buildNative",
+    wrapCommand(buildNativeCommand(outputChannel, viewProvider), outputChannel)
+  );
+
+  const buildWindowsDisposable = vscode.commands.registerCommand(
+    "the-seed.buildWindows",
+    wrapCommand(buildWindowsCommand(outputChannel, viewProvider), outputChannel)
+  );
+
+  const buildIncrementalDisposable = vscode.commands.registerCommand(
+    "the-seed.buildIncremental",
+    wrapCommand(buildIncrementalCommand(outputChannel, viewProvider), outputChannel)
+  );
+
   context.subscriptions.push(
     createResourcePakDisposable,
     configureProjectDisposable,
@@ -103,7 +119,10 @@ export function activate(context: vscode.ExtensionContext) {
     deleteScopeDisposable,
     createComponentTemplateDisposable,
     createSystemTemplateDisposable,
-    createProgramTemplateDisposable
+    createProgramTemplateDisposable,
+    buildNativeDisposable,
+    buildWindowsDisposable,
+    buildIncrementalDisposable
   );
 }
 

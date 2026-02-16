@@ -2,10 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { getVsCodeApi } from './hooks/useVsCodeApi';
 import { ConfigurationSection } from './components/ConfigurationSection';
 import { TemplatesSection } from './components/TemplatesSection';
+import { BuildSection } from './components/BuildSection';
 import type {
   ExtensionToWebviewMessage,
   ConfigPayload,
   ScopeFormData,
+  BuildStatusPayload,
 } from '../types/messages';
 import '@vscode-elements/elements';
 
@@ -22,6 +24,9 @@ export const App: React.FC = () => {
   const [templateSuccess, setTemplateSuccess] = useState<{ message: string; path: string } | null>(null);
   const [templateError, setTemplateError] = useState<string | null>(null);
   const [templateExistsWarning, setTemplateExistsWarning] = useState<string | null>(null);
+
+  // Build state
+  const [buildStatus, setBuildStatus] = useState<BuildStatusPayload>({ state: 'idle', target: '' });
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent<ExtensionToWebviewMessage>) => {
@@ -65,6 +70,18 @@ export const App: React.FC = () => {
           setError(message.payload.message);
           setTemplateCreating(false);
           setTemplateError(message.payload.message);
+          break;
+        case 'buildStatus':
+          setBuildStatus(message.payload);
+          break;
+        case 'buildStarted':
+          // Acknowledged — status updates come via buildStatus pushes
+          break;
+        case 'buildCancelled':
+          // Acknowledged — status updates come via buildStatus pushes
+          break;
+        case 'buildStatusResponse':
+          setBuildStatus(message.payload);
           break;
       }
     };
@@ -136,6 +153,21 @@ export const App: React.FC = () => {
     });
   };
 
+  const handleStartBuild = (target: 'native' | 'windows' | 'incremental') => {
+    vscode.postMessage({
+      command: 'startBuild',
+      requestId: crypto.randomUUID(),
+      data: { target },
+    });
+  };
+
+  const handleCancelBuild = () => {
+    vscode.postMessage({
+      command: 'cancelBuild',
+      requestId: crypto.randomUUID(),
+    });
+  };
+
   return (
     <div className="app-container">
       {error && (
@@ -176,6 +208,13 @@ export const App: React.FC = () => {
         onDismissSuccess={() => setTemplateSuccess(null)}
         onDismissError={() => setTemplateError(null)}
         onDismissWarning={() => setTemplateExistsWarning(null)}
+      />
+      <div className="section-divider" />
+      <BuildSection
+        buildStatus={buildStatus}
+        hasProject={config !== null}
+        onStartBuild={handleStartBuild}
+        onCancelBuild={handleCancelBuild}
       />
     </div>
   );

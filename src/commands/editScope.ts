@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { askQuestions } from '../askQuestions';
 import Config from '@metaverse-systems/the-seed/dist/Config';
 import Scopes from '@metaverse-systems/the-seed/dist/Scopes';
+import type { ScopeAnswersType } from '@metaverse-systems/the-seed/dist/types';
 
 export async function editScope(outputChannel: vscode.OutputChannel): Promise<void> {
   const config = new Config();
@@ -36,7 +37,7 @@ export async function editScope(outputChannel: vscode.OutputChannel): Promise<vo
     return;
   }
 
-  scopes.createOrEditScope({ scopeName: selectedScope, ...answers });
+  scopes.createOrEditScope({ scopeName: selectedScope, ...answers } as unknown as ScopeAnswersType);
   config.saveConfig();
 
   outputChannel.appendLine(`Scope '${selectedScope}' updated.`);

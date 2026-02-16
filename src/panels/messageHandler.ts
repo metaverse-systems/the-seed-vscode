@@ -14,7 +14,9 @@ import type {
   ScopeFormData,
   TemplateFormData,
   TemplateCreatedPayload,
+  BuildStatusPayload,
 } from '../types/messages';
+import { getActiveBuild, cancelActiveBuild } from '../commands/buildNative';
 
 function getConfigDir(): string {
   return path.join(os.homedir(), 'the-seed');
@@ -22,6 +24,17 @@ function getConfigDir(): string {
 
 function getConfigFilePath(): string {
   return path.join(getConfigDir(), 'config.json');
+}
+
+// Build status tracking for getBuildStatus queries
+let currentBuildStatus: BuildStatusPayload = { state: 'idle', target: '' };
+
+export function updateBuildStatus(status: BuildStatusPayload): void {
+  currentBuildStatus = status;
+}
+
+export function getCurrentBuildStatus(): BuildStatusPayload {
+  return currentBuildStatus;
 }
 
 function buildConfigPayload(config: Config, isDefault: boolean): ConfigPayload {
@@ -197,6 +210,51 @@ export async function handleMessage(
             templateType,
             openFolder: !hasWorkspace, // Open folder if no workspace was open
           } as TemplateCreatedPayload,
+        };
+      }
+
+      case 'startBuild': {
+        // Check if a build is already running
+        if (getActiveBuild()) {
+          return {
+            type: 'error',
+            requestId: message.requestId,
+            payload: { message: 'A build is already in progress.' },
+          };
+        }
+
+        // The actual build execution is triggered via VS Code commands from the webview
+        // This handler acknowledges the request; the command handler does the work
+        const target = message.data.target;
+        const commandMap: Record<string, string> = {
+          'native': 'the-seed.buildNative',
+          'windows': 'the-seed.buildWindows',
+          'incremental': 'the-seed.buildIncremental',
+        };
+        const commandId = commandMap[target];
+        if (commandId) {
+          // Fire and forget — the command handler manages the full lifecycle
+          vscode.commands.executeCommand(commandId);
+        }
+        return {
+          type: 'buildStarted',
+          requestId: message.requestId,
+        };
+      }
+
+      case 'cancelBuild': {
+        cancelActiveBuild();
+        return {
+          type: 'buildCancelled',
+          requestId: message.requestId,
+        };
+      }
+
+      case 'getBuildStatus': {
+        return {
+          type: 'buildStatusResponse',
+          requestId: message.requestId,
+          payload: currentBuildStatus,
         };
       }
 

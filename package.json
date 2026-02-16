@@ -70,6 +70,18 @@
       {
         "command": "the-seed.createProgramTemplate",
         "title": "The Seed: Create Program Template"
+      },
+      {
+        "command": "the-seed.buildNative",
+        "title": "The Seed: Build Native"
+      },
+      {
+        "command": "the-seed.buildWindows",
+        "title": "The Seed: Build Windows"
+      },
+      {
+        "command": "the-seed.buildIncremental",
+        "title": "The Seed: Build (Incremental)"
       }
     ]
   },
@@ -103,9 +115,10 @@
     "vite": "^7.3.1"
   },
   "dependencies": {
-    "@metaverse-systems/the-seed": "^1.0.4",
+    "@metaverse-systems/the-seed": "file:../the-seed",
     "@vscode-elements/elements": "^2.5.0",
     "@vscode-elements/react-elements": "^2.4.0",
+    "fs-extra": "^11.3.3",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   }

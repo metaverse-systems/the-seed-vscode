@@ -16,7 +16,7 @@ export async function configureProject(outputChannel: vscode.OutputChannel): Pro
     return;
   }
 
-  config.parseAnswers(answers);
+  config.parseAnswers(answers as { prefix: string });
   config.saveConfig();
 
   outputChannel.appendLine(`Configuration saved. Prefix: ${config.config.prefix}`);
