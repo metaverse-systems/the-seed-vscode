@@ -5,6 +5,7 @@ import { DependenciesSection } from './components/DependenciesSection';
 import { TemplatesSection } from './components/TemplatesSection';
 import { BuildSection } from './components/BuildSection';
 import { ResourcePakSection } from './components/ResourcePakSection';
+import { PackagingSection } from './components/PackagingSection';
 import type {
   ExtensionToWebviewMessage,
   ConfigPayload,
@@ -14,6 +15,7 @@ import type {
   ResourcePakBuildProgressPayload,
   DependencyStatusPayload,
   InstallProgressPayload,
+  PackageStatusPayload,
 } from '../types/messages';
 import '@vscode-elements/elements';
 
@@ -52,6 +54,9 @@ export const App: React.FC = () => {
   const [isInstalling, setIsInstalling] = useState(false);
   const [installProgress, setInstallProgress] = useState<InstallProgressPayload | null>(null);
   const [installError, setInstallError] = useState<string | null>(null);
+
+  // Package state
+  const [packageStatus, setPackageStatus] = useState<PackageStatusPayload>({ state: 'idle', timestamp: new Date().toISOString() });
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent<ExtensionToWebviewMessage>) => {
@@ -186,6 +191,15 @@ export const App: React.FC = () => {
             setIsInstalling(false);
             setInstallProgress(null);
           }
+          break;
+        case 'packageStatus':
+          setPackageStatus(message.payload);
+          break;
+        case 'packageStarted':
+          // Acknowledged — status updates come via packageStatus pushes
+          break;
+        case 'packageStatusResponse':
+          setPackageStatus(message.payload);
           break;
       }
     };
@@ -374,6 +388,13 @@ export const App: React.FC = () => {
     });
   };
 
+  const handleStartPackage = () => {
+    vscode.postMessage({
+      command: 'startPackage',
+      requestId: crypto.randomUUID(),
+    });
+  };
+
   return (
     <div className="app-container">
       {error && (
@@ -455,6 +476,12 @@ export const App: React.FC = () => {
         onDismissSuccess={() => setResourcePakActionSuccess(null)}
         browsedFilePath={browsedFilePath}
         browsedFileName={browsedFileName}
+      />
+      <div className="section-divider" />
+      <PackagingSection
+        packageStatus={packageStatus}
+        hasProject={config !== null && config.prefix !== ''}
+        onStartPackage={handleStartPackage}
       />
     </div>
   );

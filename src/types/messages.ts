@@ -20,7 +20,9 @@ export type WebviewToExtensionMessage =
   | { command: 'checkDependencies'; requestId: string; data: { target: 'native' | 'windows' } }
   | { command: 'installDependencies'; requestId: string; data: { target: 'native' | 'windows' } }
   | { command: 'cancelInstallDependencies'; requestId: string }
-  | { command: 'getDependencyStatus'; requestId: string };
+  | { command: 'getDependencyStatus'; requestId: string }
+  | { command: 'startPackage'; requestId: string }
+  | { command: 'getPackageStatus'; requestId: string };
 
 export interface ScopeFormData {
   scopeName: string;
@@ -79,7 +81,10 @@ export type ExtensionToWebviewMessage =
   | { type: 'dependencyStatus'; requestId?: string; payload: DependencyStatusPayload }
   | { type: 'installDependenciesStarted'; requestId: string }
   | { type: 'installDependenciesCancelled'; requestId: string }
-  | { type: 'installDependenciesProgress'; payload: InstallProgressPayload };
+  | { type: 'installDependenciesProgress'; payload: InstallProgressPayload }
+  | { type: 'packageStatus'; payload: PackageStatusPayload }
+  | { type: 'packageStarted'; requestId: string }
+  | { type: 'packageStatusResponse'; requestId: string; payload: PackageStatusPayload };
 
 export interface TemplateCreatedPayload {
   projectPath: string;
@@ -193,6 +198,19 @@ export interface InstallProgressPayload {
   currentStep?: string;
   stepIndex?: number;
   totalSteps?: number;
+  errorMessage?: string;
+  timestamp: string;
+}
+
+// ── Package Types ───────────────────────────────────────────
+
+export type PackageState = 'idle' | 'running' | 'completed' | 'failed';
+
+export interface PackageStatusPayload {
+  state: PackageState;
+  currentFile?: string;
+  filesCopied?: number;
+  totalFiles?: number;
   errorMessage?: string;
   timestamp: string;
 }

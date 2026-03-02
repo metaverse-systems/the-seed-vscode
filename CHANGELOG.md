@@ -7,6 +7,8 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 ## [0.0.2] - 2026-02-15
 
 ### Added
+- **Package Projects** command — resolve project binaries and transitive shared-library dependencies, copy into a flat `dist/` directory (Command Palette + webview)
+- **Packaging sidebar section** — Package button with inline progress, success/failure indicators, and file count display
 - **Check Dependencies** command — verify libecs-cpp and libthe-seed installation status via `pkg-config` for native or Windows targets (Command Palette + webview)
 - **Install Dependencies** command — clone and build missing dependencies from source with real-time output streaming, progress notification, and cancellation support (Command Palette + webview)
 - **Dependencies sidebar section** — auto-checks on render, per-library status indicators (✓/⚠), target selector dropdown, Check and Install action buttons

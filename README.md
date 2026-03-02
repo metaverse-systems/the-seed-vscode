@@ -13,6 +13,8 @@ This **VSCode extension** provides tools for working with [@metaverse-systems/th
 - **Check Dependencies** — verify libecs-cpp and libthe-seed installation status (Command Palette + sidebar)
 - **Install Dependencies** — clone and build missing dependencies with streaming output, cancellation, and progress (Command Palette + sidebar)
 - **Dependencies Sidebar Section** — auto-checks on render, per-library status indicators, target selector, Check and Install actions
+- **Package Projects** — resolve project binaries and transitive shared-library dependencies into a flat `dist/` directory (Command Palette + sidebar)
+- **Packaging Sidebar Section** — Package button with inline progress, success indicator with file count, and failure indicator with error details
 - **Configure Project** — set or update the project prefix path
 - **Add Scope** — create a new scope with author metadata
 - **Edit Scope** — update author details on an existing scope
@@ -114,6 +116,7 @@ _Coming soon_
 | `The Seed: Show Config` | View full config (prefix + all scopes) |
 | `The Seed: Check Dependencies` | Check libecs-cpp and libthe-seed installation for a target |
 | `The Seed: Install Dependencies` | Clone and build missing dependencies for a target |
+| `The Seed: Package Projects` | Package project binaries and dependencies into `dist/` |
 
 ## 🛠️ Development & Debugging
 - Run `npm run compile` to bundle the extension.

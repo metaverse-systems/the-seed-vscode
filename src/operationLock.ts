@@ -3,7 +3,7 @@
  * Check operations are read-only and do NOT acquire the lock.
  */
 
-export type OperationType = 'build' | 'install';
+export type OperationType = 'build' | 'install' | 'package';
 
 interface OperationLockState {
   active: boolean;

@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { handleMessage } from './messageHandler';
-import type { ExtensionToWebviewMessage, BuildStatusPayload, DependencyStatusPayload, InstallProgressPayload } from '../types/messages';
+import type { ExtensionToWebviewMessage, BuildStatusPayload, DependencyStatusPayload, InstallProgressPayload, PackageStatusPayload } from '../types/messages';
 
 export class TheSeedViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'the-seed.mainView';
@@ -10,6 +10,7 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider {
   private _currentBuildStatus: BuildStatusPayload | null = null;
   private _currentDependencyStatus: DependencyStatusPayload | null = null;
   private _currentInstallProgress: InstallProgressPayload | null = null;
+  private _currentPackageStatus: PackageStatusPayload | null = null;
 
   constructor(private readonly _extensionUri: vscode.Uri) {}
 
@@ -76,6 +77,10 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider {
         if (this._currentInstallProgress) {
           this.postMessage({ type: 'installDependenciesProgress', payload: this._currentInstallProgress });
         }
+        // Push current package status so the webview catches up
+        if (this._currentPackageStatus) {
+          this.postMessage({ type: 'packageStatus', payload: this._currentPackageStatus });
+        }
       }
     });
   }
@@ -97,6 +102,13 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider {
       // Clear progress on terminal states
       if (message.payload.state === 'completed' || message.payload.state === 'failed' || message.payload.state === 'cancelled') {
         this._currentInstallProgress = null;
+      }
+    }
+    if (message.type === 'packageStatus') {
+      this._currentPackageStatus = message.payload;
+      // Clear on terminal states
+      if (message.payload.state === 'completed' || message.payload.state === 'failed') {
+        this._currentPackageStatus = null;
       }
     }
     if (this._view?.visible) {

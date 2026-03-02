@@ -22,6 +22,7 @@ import type {
   ResourcePakFormData,
   DependencyStatusPayload,
   InstallProgressPayload,
+  PackageStatusPayload,
 } from '../types/messages';
 import { getActiveBuild, cancelActiveBuild } from '../commands/buildNative';
 import { checkLibEcs, checkLibTheSeed, getInstallSteps } from '@metaverse-systems/the-seed/dist/Dependencies';
@@ -65,6 +66,17 @@ export function updateInstallProgress(progress: InstallProgressPayload | null): 
 
 export function getCurrentInstallProgress(): InstallProgressPayload | null {
   return currentInstallProgress;
+}
+
+// Package status tracking
+let currentPackageStatus: PackageStatusPayload | null = null;
+
+export function updatePackageStatus(status: PackageStatusPayload): void {
+  currentPackageStatus = status;
+}
+
+export function getCurrentPackageStatus(): PackageStatusPayload | null {
+  return currentPackageStatus;
 }
 
 function buildConfigPayload(config: Config, isDefault: boolean): ConfigPayload {
@@ -763,6 +775,29 @@ export async function handleMessage(
         return {
           type: 'installDependenciesCancelled',
           requestId: message.requestId,
+        };
+      }
+
+      // ── Package Handlers ────────────────────────────────────
+
+      case 'startPackage': {
+        // Fire the command — the command handler manages the full lifecycle
+        vscode.commands.executeCommand('the-seed.packageProject');
+        return {
+          type: 'packageStarted',
+          requestId: message.requestId,
+        };
+      }
+
+      case 'getPackageStatus': {
+        const status: PackageStatusPayload = currentPackageStatus ?? {
+          state: 'idle',
+          timestamp: new Date().toISOString(),
+        };
+        return {
+          type: 'packageStatusResponse',
+          requestId: message.requestId,
+          payload: status,
         };
       }
 
