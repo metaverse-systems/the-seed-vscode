@@ -3,6 +3,7 @@ import Config from '@metaverse-systems/the-seed/dist/Config';
 import Scopes from '@metaverse-systems/the-seed/dist/Scopes';
 import Template from '@metaverse-systems/the-seed/dist/Template';
 import ResourcePak from '@metaverse-systems/the-seed/dist/ResourcePak';
+import SigningModule from '@metaverse-systems/the-seed/dist/Signing';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -23,6 +24,7 @@ import type {
   DependencyStatusPayload,
   InstallProgressPayload,
   PackageStatusPayload,
+  SigningStatusPayload,
 } from '../types/messages';
 import { getActiveBuild, cancelActiveBuild } from '../commands/buildNative';
 import { checkLibEcs, checkLibTheSeed, getInstallSteps } from '@metaverse-systems/the-seed/dist/Dependencies';
@@ -798,6 +800,47 @@ export async function handleMessage(
           type: 'packageStatusResponse',
           requestId: message.requestId,
           payload: status,
+        };
+      }
+
+      case 'createSigningCert': {
+        await vscode.commands.executeCommand('the-seed.createSigningCert');
+        return null;
+      }
+
+      case 'importSigningCert': {
+        await vscode.commands.executeCommand('the-seed.importSigningCert');
+        return null;
+      }
+
+      case 'signingCertInfo': {
+        await vscode.commands.executeCommand('the-seed.signingCertInfo');
+        return null;
+      }
+
+      case 'exportSigningCert': {
+        await vscode.commands.executeCommand('the-seed.exportSigningCert');
+        return null;
+      }
+
+      case 'getSigningStatus': {
+        const signing = new SigningModule();
+        const certInfo = signing.getCertInfo();
+        const payload = certInfo ? {
+          hasCertificate: true,
+          subject: signing._formatSubject(certInfo.subject),
+          issuer: certInfo.issuer,
+          fingerprint: certInfo.fingerprint,
+          validFrom: certInfo.notBefore.toISOString(),
+          validTo: certInfo.notAfter.toISOString(),
+          isExpired: certInfo.isExpired,
+        } : {
+          hasCertificate: false,
+        };
+        return {
+          type: 'signingStatus',
+          requestId: message.requestId,
+          payload,
         };
       }
 

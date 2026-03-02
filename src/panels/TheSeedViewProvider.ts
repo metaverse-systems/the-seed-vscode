@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { handleMessage } from './messageHandler';
-import type { ExtensionToWebviewMessage, BuildStatusPayload, DependencyStatusPayload, InstallProgressPayload, PackageStatusPayload } from '../types/messages';
+import type { ExtensionToWebviewMessage, BuildStatusPayload, DependencyStatusPayload, InstallProgressPayload, PackageStatusPayload, SigningStatusPayload } from '../types/messages';
 
 export class TheSeedViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'the-seed.mainView';
@@ -11,6 +11,7 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider {
   private _currentDependencyStatus: DependencyStatusPayload | null = null;
   private _currentInstallProgress: InstallProgressPayload | null = null;
   private _currentPackageStatus: PackageStatusPayload | null = null;
+  private _currentSigningStatus: SigningStatusPayload | null = null;
 
   constructor(private readonly _extensionUri: vscode.Uri) {}
 
@@ -81,6 +82,10 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider {
         if (this._currentPackageStatus) {
           this.postMessage({ type: 'packageStatus', payload: this._currentPackageStatus });
         }
+        // Push current signing status so the webview catches up
+        if (this._currentSigningStatus) {
+          this.postMessage({ type: 'signingStatus', payload: this._currentSigningStatus });
+        }
       }
     });
   }
@@ -110,6 +115,9 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider {
       if (message.payload.state === 'completed' || message.payload.state === 'failed') {
         this._currentPackageStatus = null;
       }
+    }
+    if (message.type === 'signingStatus') {
+      this._currentSigningStatus = message.payload;
     }
     if (this._view?.visible) {
       this._view.webview.postMessage(message);

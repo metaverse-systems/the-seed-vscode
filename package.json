@@ -2,7 +2,7 @@
   "name": "the-seed-vscode",
   "displayName": "the-seed-vscode",
   "description": "",
-  "version": "0.0.2",
+  "version": "0.1.0",
   "engines": {
     "vscode": "^1.97.0"
   },
@@ -102,8 +102,46 @@
       {
         "command": "the-seed.packageProject",
         "title": "The Seed: Package Projects"
+      },
+      {
+        "command": "the-seed.createSigningCert",
+        "title": "The Seed: Create Signing Certificate"
+      },
+      {
+        "command": "the-seed.importSigningCert",
+        "title": "The Seed: Import Signing Certificate"
+      },
+      {
+        "command": "the-seed.signFile",
+        "title": "The Seed: Sign File"
+      },
+      {
+        "command": "the-seed.verifySignature",
+        "title": "The Seed: Verify Signature"
+      },
+      {
+        "command": "the-seed.signingCertInfo",
+        "title": "The Seed: Signing Certificate Info"
+      },
+      {
+        "command": "the-seed.exportSigningCert",
+        "title": "The Seed: Export Signing Certificate"
       }
-    ]
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "the-seed.signFile",
+          "group": "the-seed@1",
+          "when": "!explorerResourceIsFolder"
+        },
+        {
+          "command": "the-seed.verifySignature",
+          "group": "the-seed@2",
+          "when": "!explorerResourceIsFolder"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run build",

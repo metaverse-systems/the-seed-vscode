@@ -22,7 +22,12 @@ export type WebviewToExtensionMessage =
   | { command: 'cancelInstallDependencies'; requestId: string }
   | { command: 'getDependencyStatus'; requestId: string }
   | { command: 'startPackage'; requestId: string }
-  | { command: 'getPackageStatus'; requestId: string };
+  | { command: 'getPackageStatus'; requestId: string }
+  | { command: 'createSigningCert'; requestId: string }
+  | { command: 'importSigningCert'; requestId: string }
+  | { command: 'signingCertInfo'; requestId: string }
+  | { command: 'exportSigningCert'; requestId: string }
+  | { command: 'getSigningStatus'; requestId: string };
 
 export interface ScopeFormData {
   scopeName: string;
@@ -84,7 +89,8 @@ export type ExtensionToWebviewMessage =
   | { type: 'installDependenciesProgress'; payload: InstallProgressPayload }
   | { type: 'packageStatus'; payload: PackageStatusPayload }
   | { type: 'packageStarted'; requestId: string }
-  | { type: 'packageStatusResponse'; requestId: string; payload: PackageStatusPayload };
+  | { type: 'packageStatusResponse'; requestId: string; payload: PackageStatusPayload }
+  | { type: 'signingStatus'; requestId?: string; payload: SigningStatusPayload };
 
 export interface TemplateCreatedPayload {
   projectPath: string;
@@ -213,4 +219,16 @@ export interface PackageStatusPayload {
   totalFiles?: number;
   errorMessage?: string;
   timestamp: string;
+}
+
+// ── Signing Types ───────────────────────────────────────────
+
+export interface SigningStatusPayload {
+  hasCertificate: boolean;
+  subject?: string;
+  issuer?: string;
+  fingerprint?: string;
+  validFrom?: string;
+  validTo?: string;
+  isExpired?: boolean;
 }

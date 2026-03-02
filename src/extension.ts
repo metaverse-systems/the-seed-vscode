@@ -16,6 +16,10 @@ import { createProgramTemplate } from "./commands/createProgramTemplate";
 import { buildNativeCommand, buildWindowsCommand, buildIncrementalCommand } from "./commands/buildNative";
 import { checkDependenciesCommand, installDependenciesCommand } from "./commands/dependencyCommands";
 import { packageProjectCommand } from "./commands/packageProject";
+import { createSigningCert } from "./commands/createSigningCert";
+import { signFile } from "./commands/signFile";
+import { verifySignature } from "./commands/verifySignature";
+import Signing from "@metaverse-systems/the-seed/dist/Signing";
 import { TheSeedViewProvider } from "./panels/TheSeedViewProvider";
 import { detectResourcePak } from "./utils/detectResourcePak";
 import * as fs from "fs";
@@ -255,6 +259,119 @@ export function activate(context: vscode.ExtensionContext) {
     wrapCommand(packageProjectCommand(outputChannel, viewProvider), outputChannel)
   );
 
+  // Signing commands
+  const createSigningCertDisposable = vscode.commands.registerCommand(
+    "the-seed.createSigningCert",
+    wrapCommand(createSigningCert, outputChannel)
+  );
+
+  const importSigningCertDisposable = vscode.commands.registerCommand(
+    "the-seed.importSigningCert",
+    wrapCommand(async (oc) => {
+      const signing = new Signing();
+      const certResult = await vscode.window.showOpenDialog({
+        canSelectFiles: true,
+        canSelectMany: false,
+        openLabel: "Select Certificate File",
+        filters: { 'PEM Files': ['pem', 'crt'] },
+      });
+      if (!certResult || certResult.length === 0) return;
+
+      // Show file picker for private key
+      const keyResult = await vscode.window.showOpenDialog({
+        canSelectFiles: true,
+        canSelectMany: false,
+        openLabel: "Select Private Key File",
+        filters: { 'Key Files': ['pem', 'key'] },
+      });
+      if (!keyResult || keyResult.length === 0) return;
+
+      // Check for existing cert
+      if (signing.hasCert()) {
+        const overwrite = await vscode.window.showWarningMessage(
+          'A signing certificate already exists. Overwrite?',
+          'Overwrite',
+          'Cancel'
+        );
+        if (overwrite !== 'Overwrite') return;
+      }
+
+      try {
+        const certInfo = await signing.importCert(certResult[0].fsPath, keyResult[0].fsPath);
+        vscode.window.showInformationMessage(
+          `Certificate imported. Subject: ${signing._formatSubject(certInfo.subject)} | Fingerprint: ${certInfo.fingerprint}`
+        );
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        vscode.window.showErrorMessage(`Import failed: ${message}`);
+      }
+    }, outputChannel)
+  );
+
+  const signFileDisposable = vscode.commands.registerCommand(
+    "the-seed.signFile",
+    wrapCommand(async (oc) => {
+      // Get URI from context menu if available
+      await signFile(oc);
+    }, outputChannel)
+  );
+
+  const verifySignatureDisposable = vscode.commands.registerCommand(
+    "the-seed.verifySignature",
+    wrapCommand(async (oc) => {
+      await verifySignature(oc);
+    }, outputChannel)
+  );
+
+  const signingCertInfoDisposable = vscode.commands.registerCommand(
+    "the-seed.signingCertInfo",
+    wrapCommand(async (oc) => {
+      const signing = new Signing();
+      const certInfo = signing.getCertInfo();
+
+      if (!certInfo) {
+        const action = await vscode.window.showInformationMessage(
+          'No signing certificate found.',
+          'Create',
+          'Import'
+        );
+        if (action === 'Create') {
+          await vscode.commands.executeCommand('the-seed.createSigningCert');
+        } else if (action === 'Import') {
+          await vscode.commands.executeCommand('the-seed.importSigningCert');
+        }
+        return;
+      }
+
+      const subject = signing._formatSubject(certInfo.subject);
+      const status = certInfo.isExpired ? 'Expired' : 'Active';
+      vscode.window.showInformationMessage(
+        `Certificate: ${subject} | Issuer: ${certInfo.issuer} | Status: ${status} | Fingerprint: ${certInfo.fingerprint}`
+      );
+    }, outputChannel)
+  );
+
+  const exportSigningCertDisposable = vscode.commands.registerCommand(
+    "the-seed.exportSigningCert",
+    wrapCommand(async (oc) => {
+      const signing = new Signing();
+
+      if (!signing.hasCert()) {
+        vscode.window.showErrorMessage('No signing certificate found.');
+        return;
+      }
+
+      const saveUri = await vscode.window.showSaveDialog({
+        defaultUri: vscode.Uri.file('signing-cert.pem'),
+        filters: { 'PEM Files': ['pem'] },
+      });
+      if (!saveUri) return;
+
+      await signing.exportCert(saveUri.fsPath);
+      vscode.window.showInformationMessage(`Certificate exported to ${saveUri.fsPath}`);
+    }, outputChannel)
+  );
+
   context.subscriptions.push(
     createResourcePakDisposable,
     configureProjectDisposable,
@@ -273,7 +390,13 @@ export function activate(context: vscode.ExtensionContext) {
     buildResourcePakDisposable,
     checkDependenciesDisposable,
     installDependenciesDisposable,
-    packageProjectDisposable
+    packageProjectDisposable,
+    createSigningCertDisposable,
+    importSigningCertDisposable,
+    signFileDisposable,
+    verifySignatureDisposable,
+    signingCertInfoDisposable,
+    exportSigningCertDisposable
   );
 }
 
