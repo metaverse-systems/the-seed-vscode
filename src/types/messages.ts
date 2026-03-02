@@ -12,6 +12,8 @@ export type WebviewToExtensionMessage =
   | { command: 'startBuild'; requestId: string; data: { target: 'native' | 'windows' | 'incremental' } }
   | { command: 'cancelBuild'; requestId: string }
   | { command: 'getBuildStatus'; requestId: string }
+  | { command: 'startRecursiveBuild'; requestId: string; data: { target: 'native' | 'windows' } }
+  | { command: 'cancelRecursiveBuild'; requestId: string }
   | { command: 'getResourcePakStatus'; requestId: string }
   | { command: 'createResourcePak'; requestId: string; data: ResourcePakFormData }
   | { command: 'browseResourceFile'; requestId: string }
@@ -77,6 +79,8 @@ export type ExtensionToWebviewMessage =
   | { type: 'buildStarted'; requestId: string }
   | { type: 'buildCancelled'; requestId: string }
   | { type: 'buildStatusResponse'; requestId: string; payload: BuildStatusPayload }
+  | { type: 'recursiveBuildProgress'; payload: RecursiveBuildProgressPayload }
+  | { type: 'recursiveBuildComplete'; payload: RecursiveBuildCompletePayload }
   | { type: 'resourcePakStatus'; requestId: string; payload: ResourcePakStatusPayload }
   | { type: 'resourcePakCreated'; requestId: string; payload: ResourcePakCreatedPayload }
   | { type: 'resourceFileBrowsed'; requestId: string; payload: ResourceFileBrowsedPayload }
@@ -132,6 +136,29 @@ export interface BuildStatusPayload {
   errorMessage?: string;
   /** ISO 8601 timestamp of last state change */
   timestamp?: string;
+}
+
+// ── Recursive Build Types ───────────────────────────────────
+
+export interface RecursiveBuildProgressPayload {
+  /** Display name of the project being built */
+  currentProject: string;
+  /** 0-based index in build order */
+  projectIndex: number;
+  /** Total number of projects to build */
+  totalProjects: number;
+  /** Current build step label */
+  currentStep: string;
+}
+
+export interface RecursiveBuildCompletePayload {
+  success: boolean;
+  completedCount: number;
+  totalCount: number;
+  /** Name of failed project, if any */
+  failedProject?: string;
+  /** true if cancelled by user */
+  cancelled?: boolean;
 }
 
 // ── ResourcePak Types ───────────────────────────────────────

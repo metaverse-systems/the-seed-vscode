@@ -16,6 +16,8 @@ import type {
   DependencyStatusPayload,
   InstallProgressPayload,
   PackageStatusPayload,
+  RecursiveBuildProgressPayload,
+  RecursiveBuildCompletePayload,
 } from '../types/messages';
 import '@vscode-elements/elements';
 
@@ -35,6 +37,10 @@ export const App: React.FC = () => {
 
   // Build state
   const [buildStatus, setBuildStatus] = useState<BuildStatusPayload>({ state: 'idle', target: '' });
+
+  // Recursive Build state
+  const [recursiveBuildProgress, setRecursiveBuildProgress] = useState<RecursiveBuildProgressPayload | null>(null);
+  const [recursiveBuildComplete, setRecursiveBuildComplete] = useState<RecursiveBuildCompletePayload | null>(null);
 
   // ResourcePak state
   const [resourcePakStatus, setResourcePakStatus] = useState<ResourcePakStatusPayload | null>(null);
@@ -114,6 +120,13 @@ export const App: React.FC = () => {
           break;
         case 'buildStatusResponse':
           setBuildStatus(message.payload);
+          break;
+        case 'recursiveBuildProgress':
+          setRecursiveBuildProgress(message.payload);
+          break;
+        case 'recursiveBuildComplete':
+          setRecursiveBuildComplete(message.payload);
+          setRecursiveBuildProgress(null);
           break;
         case 'resourcePakStatus':
           setResourcePakStatus(message.payload);
@@ -301,6 +314,23 @@ export const App: React.FC = () => {
     });
   };
 
+  const handleStartRecursiveBuild = (target: 'native' | 'windows') => {
+    setRecursiveBuildComplete(null);
+    setRecursiveBuildProgress(null);
+    vscode.postMessage({
+      command: 'startRecursiveBuild',
+      requestId: crypto.randomUUID(),
+      data: { target },
+    });
+  };
+
+  const handleCancelRecursiveBuild = () => {
+    vscode.postMessage({
+      command: 'cancelRecursiveBuild',
+      requestId: crypto.randomUUID(),
+    });
+  };
+
   // ResourcePak handlers
   const handleCreateResourcePak = (scopeName: string, pakName: string) => {
     setResourcePakLoading(true);
@@ -461,6 +491,10 @@ export const App: React.FC = () => {
         hasProject={config !== null}
         onStartBuild={handleStartBuild}
         onCancelBuild={handleCancelBuild}
+        onStartRecursiveBuild={handleStartRecursiveBuild}
+        onCancelRecursiveBuild={handleCancelRecursiveBuild}
+        recursiveBuildProgress={recursiveBuildProgress}
+        recursiveBuildComplete={recursiveBuildComplete}
       />
       <div className="section-divider" />
       <ResourcePakSection

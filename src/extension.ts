@@ -14,6 +14,7 @@ import { createComponentTemplate } from "./commands/createComponentTemplate";
 import { createSystemTemplate } from "./commands/createSystemTemplate";
 import { createProgramTemplate } from "./commands/createProgramTemplate";
 import { buildNativeCommand, buildWindowsCommand, buildIncrementalCommand } from "./commands/buildNative";
+import { buildNativeRecursiveCommand, buildWindowsRecursiveCommand } from "./commands/buildNativeRecursive";
 import { checkDependenciesCommand, installDependenciesCommand } from "./commands/dependencyCommands";
 import { packageProjectCommand } from "./commands/packageProject";
 import { createSigningCert } from "./commands/createSigningCert";
@@ -116,6 +117,16 @@ export function activate(context: vscode.ExtensionContext) {
   const buildIncrementalDisposable = vscode.commands.registerCommand(
     "the-seed.buildIncremental",
     wrapCommand(buildIncrementalCommand(outputChannel, viewProvider), outputChannel)
+  );
+
+  const buildNativeRecursiveDisposable = vscode.commands.registerCommand(
+    "the-seed.buildNativeRecursive",
+    wrapCommand(buildNativeRecursiveCommand(outputChannel, viewProvider), outputChannel)
+  );
+
+  const buildWindowsRecursiveDisposable = vscode.commands.registerCommand(
+    "the-seed.buildWindowsRecursive",
+    wrapCommand(buildWindowsRecursiveCommand(outputChannel, viewProvider), outputChannel)
   );
 
   // Add Resource command (palette)
@@ -386,6 +397,8 @@ export function activate(context: vscode.ExtensionContext) {
     buildNativeDisposable,
     buildWindowsDisposable,
     buildIncrementalDisposable,
+    buildNativeRecursiveDisposable,
+    buildWindowsRecursiveDisposable,
     addResourceDisposable,
     buildResourcePakDisposable,
     checkDependenciesDisposable,

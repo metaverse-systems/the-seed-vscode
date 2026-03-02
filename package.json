@@ -84,6 +84,14 @@
         "title": "The Seed: Build (Incremental)"
       },
       {
+        "command": "the-seed.buildNativeRecursive",
+        "title": "The Seed: Build Native (Recursive)"
+      },
+      {
+        "command": "the-seed.buildWindowsRecursive",
+        "title": "The Seed: Build Windows (Recursive)"
+      },
+      {
         "command": "the-seed.addResource",
         "title": "The Seed: ResourcePak Add Resource"
       },

@@ -1,12 +1,16 @@
 import React from 'react';
 import { SectionLayout } from './SectionLayout';
-import type { BuildStatusPayload } from '../../types/messages';
+import type { BuildStatusPayload, RecursiveBuildProgressPayload, RecursiveBuildCompletePayload } from '../../types/messages';
 
 interface BuildSectionProps {
   buildStatus: BuildStatusPayload;
   hasProject: boolean;
   onStartBuild: (target: 'native' | 'windows' | 'incremental') => void;
   onCancelBuild: () => void;
+  onStartRecursiveBuild: (target: 'native' | 'windows') => void;
+  onCancelRecursiveBuild: () => void;
+  recursiveBuildProgress: RecursiveBuildProgressPayload | null;
+  recursiveBuildComplete: RecursiveBuildCompletePayload | null;
 }
 
 export const BuildSection: React.FC<BuildSectionProps> = ({
@@ -14,6 +18,10 @@ export const BuildSection: React.FC<BuildSectionProps> = ({
   hasProject,
   onStartBuild,
   onCancelBuild,
+  onStartRecursiveBuild,
+  onCancelRecursiveBuild,
+  recursiveBuildProgress,
+  recursiveBuildComplete,
 }) => {
   const isRunning = buildStatus.state === 'running';
   const isDisabled = !hasProject || isRunning;
@@ -109,6 +117,22 @@ export const BuildSection: React.FC<BuildSectionProps> = ({
         >
           {isRunning && buildStatus.target === 'incremental' ? 'Building...' : 'Build (Incremental)'}
         </vscode-button>
+
+        <vscode-button
+          className="build-button"
+          disabled={isDisabled || undefined}
+          onClick={() => onStartRecursiveBuild('native')}
+        >
+          {isRunning && buildStatus.target === 'native (recursive)' ? 'Building...' : 'Build Native Recursive'}
+        </vscode-button>
+
+        <vscode-button
+          className="build-button"
+          disabled={isDisabled || undefined}
+          onClick={() => onStartRecursiveBuild('windows')}
+        >
+          {isRunning && buildStatus.target === 'windows (recursive)' ? 'Building...' : 'Build Windows Recursive'}
+        </vscode-button>
       </div>
 
       {isRunning && (
@@ -116,10 +140,35 @@ export const BuildSection: React.FC<BuildSectionProps> = ({
           <vscode-button
             className="build-cancel-button"
             appearance="secondary"
-            onClick={onCancelBuild}
+            onClick={buildStatus.target?.includes('recursive') ? onCancelRecursiveBuild : onCancelBuild}
           >
             Cancel Build
           </vscode-button>
+        </div>
+      )}
+
+      {recursiveBuildProgress && isRunning && buildStatus.target?.includes('recursive') && (
+        <div className="build-status build-status--running">
+          <span className="build-status-icon">⏳</span>
+          <span>
+            Building {recursiveBuildProgress.currentProject}
+            {' '}({recursiveBuildProgress.projectIndex + 1}/{recursiveBuildProgress.totalProjects})
+            {recursiveBuildProgress.currentStep && <> — {recursiveBuildProgress.currentStep}</>}
+          </span>
+        </div>
+      )}
+
+      {recursiveBuildComplete && !isRunning && (
+        <div className={`build-status ${recursiveBuildComplete.success ? 'build-status--completed' : 'build-status--failed'}`}>
+          <span className="build-status-icon">{recursiveBuildComplete.success ? '✓' : '✗'}</span>
+          <span>
+            {recursiveBuildComplete.success
+              ? `Recursive build complete: ${recursiveBuildComplete.completedCount} projects built`
+              : recursiveBuildComplete.cancelled
+                ? `Recursive build cancelled. ${recursiveBuildComplete.completedCount}/${recursiveBuildComplete.totalCount} complete`
+                : `Recursive build failed on ${recursiveBuildComplete.failedProject}`
+            }
+          </span>
         </div>
       )}
 

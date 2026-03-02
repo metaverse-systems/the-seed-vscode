@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { handleMessage } from './messageHandler';
-import type { ExtensionToWebviewMessage, BuildStatusPayload, DependencyStatusPayload, InstallProgressPayload, PackageStatusPayload, SigningStatusPayload } from '../types/messages';
+import type { ExtensionToWebviewMessage, BuildStatusPayload, DependencyStatusPayload, InstallProgressPayload, PackageStatusPayload, SigningStatusPayload, RecursiveBuildProgressPayload, RecursiveBuildCompletePayload } from '../types/messages';
 
 export class TheSeedViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'the-seed.mainView';
@@ -12,6 +12,8 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider {
   private _currentInstallProgress: InstallProgressPayload | null = null;
   private _currentPackageStatus: PackageStatusPayload | null = null;
   private _currentSigningStatus: SigningStatusPayload | null = null;
+  private _currentRecursiveBuildProgress: RecursiveBuildProgressPayload | null = null;
+  private _currentRecursiveBuildComplete: RecursiveBuildCompletePayload | null = null;
 
   constructor(private readonly _extensionUri: vscode.Uri) {}
 
@@ -86,6 +88,13 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider {
         if (this._currentSigningStatus) {
           this.postMessage({ type: 'signingStatus', payload: this._currentSigningStatus });
         }
+        // Push current recursive build progress so the webview catches up
+        if (this._currentRecursiveBuildProgress) {
+          this.postMessage({ type: 'recursiveBuildProgress', payload: this._currentRecursiveBuildProgress });
+        }
+        if (this._currentRecursiveBuildComplete) {
+          this.postMessage({ type: 'recursiveBuildComplete', payload: this._currentRecursiveBuildComplete });
+        }
       }
     });
   }
@@ -118,6 +127,13 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider {
     }
     if (message.type === 'signingStatus') {
       this._currentSigningStatus = message.payload;
+    }
+    if (message.type === 'recursiveBuildProgress') {
+      this._currentRecursiveBuildProgress = message.payload;
+    }
+    if (message.type === 'recursiveBuildComplete') {
+      this._currentRecursiveBuildComplete = message.payload;
+      this._currentRecursiveBuildProgress = null; // Clear progress on completion
     }
     if (this._view?.visible) {
       this._view.webview.postMessage(message);

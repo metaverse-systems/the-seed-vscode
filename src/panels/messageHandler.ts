@@ -27,6 +27,7 @@ import type {
   SigningStatusPayload,
 } from '../types/messages';
 import { getActiveBuild, cancelActiveBuild } from '../commands/buildNative';
+import { cancelActiveRecursiveBuild } from '../commands/buildNativeRecursive';
 import { checkLibEcs, checkLibTheSeed, getInstallSteps } from '@metaverse-systems/the-seed/dist/Dependencies';
 import { runBuildSteps } from '../build/buildRunner';
 import { acquireOperationLock, releaseOperationLock, getOperationLock } from '../operationLock';
@@ -289,6 +290,40 @@ export async function handleMessage(
 
       case 'cancelBuild': {
         cancelActiveBuild();
+        return {
+          type: 'buildCancelled',
+          requestId: message.requestId,
+        };
+      }
+
+      case 'startRecursiveBuild': {
+        // Check if a build is already running
+        if (getActiveBuild()) {
+          return {
+            type: 'error',
+            requestId: message.requestId,
+            payload: { message: 'A build is already in progress.' },
+          };
+        }
+
+        const recursiveTarget = message.data.target;
+        const recursiveCommandMap: Record<string, string> = {
+          'native': 'the-seed.buildNativeRecursive',
+          'windows': 'the-seed.buildWindowsRecursive',
+        };
+        const recursiveCommandId = recursiveCommandMap[recursiveTarget];
+        if (recursiveCommandId) {
+          // Fire and forget — the command handler manages the full lifecycle
+          vscode.commands.executeCommand(recursiveCommandId);
+        }
+        return {
+          type: 'buildStarted',
+          requestId: message.requestId,
+        };
+      }
+
+      case 'cancelRecursiveBuild': {
+        cancelActiveRecursiveBuild();
         return {
           type: 'buildCancelled',
           requestId: message.requestId,
