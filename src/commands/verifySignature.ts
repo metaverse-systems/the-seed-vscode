@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import Signing from '@metaverse-systems/the-seed/dist/Signing';
-import * as fs from 'fs';
 
 export async function verifySignature(outputChannel: vscode.OutputChannel, uri?: vscode.Uri): Promise<void> {
   const signing = new Signing();
@@ -22,29 +21,32 @@ export async function verifySignature(outputChannel: vscode.OutputChannel, uri?:
     return;
   }
 
-  // Check if .sig file exists
-  const sigPath = targetPath + '.sig';
-  if (!fs.existsSync(sigPath)) {
-    vscode.window.showInformationMessage('No signature found for this file.');
-    return;
-  }
-
+  // Use verifyFile which auto-detects embedded vs detached signatures
   const result = await signing.verifyFile(targetPath);
 
   const timestamp = new Date().toISOString();
-  outputChannel.appendLine(`[${timestamp}] Verify ${targetPath}: ${result.status}`);
+  const sigTypeLabel = result.signatureType ? ` (${result.signatureType})` : '';
+  outputChannel.appendLine(`[${timestamp}] Verify ${targetPath}: ${result.status}${sigTypeLabel}`);
 
   if (result.status === 'VALID') {
     const subject = result.signer ? signing._formatSubject(result.signer.subject) : 'Unknown';
     const fingerprint = result.signer?.fingerprint || 'Unknown';
     vscode.window.showInformationMessage(
-      `Verification: VALID ✓ | Signer: ${subject} | Fingerprint: ${fingerprint}`
+      `Verification: VALID ✓${sigTypeLabel} | Signer: ${subject} | Fingerprint: ${fingerprint}`
     );
   } else if (result.status === 'INVALID') {
     vscode.window.showWarningMessage(
-      `Verification: INVALID ✗ | Reason: ${result.reason || 'Unknown'}`
+      `Verification: INVALID ✗${sigTypeLabel} | Reason: ${result.reason || 'Unknown'}`
     );
   } else {
     vscode.window.showInformationMessage('No signature found for this file.');
+  }
+
+  // Display any warnings
+  if (result.warnings) {
+    for (const warning of result.warnings) {
+      outputChannel.appendLine(`  Warning: ${warning}`);
+      vscode.window.showWarningMessage(warning);
+    }
   }
 }

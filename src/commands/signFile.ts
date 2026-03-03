@@ -42,9 +42,21 @@ export async function signFile(outputChannel: vscode.OutputChannel, uri?: vscode
 
   const result = await signing.signFile(targetPath);
   const fileName = targetPath.split('/').pop() || targetPath;
-  const sigName = result.signaturePath.split('/').pop() || result.signaturePath;
 
   const timestamp = new Date().toISOString();
-  outputChannel.appendLine(`[${timestamp}] Signed: ${result.filePath} → ${result.signaturePath}`);
-  vscode.window.showInformationMessage(`Signed: ${fileName}. Signature: ${sigName}`);
+
+  if (result.signatureType === 'embedded') {
+    outputChannel.appendLine(`[${timestamp}] Signed (embedded): ${result.filePath}`);
+    vscode.window.showInformationMessage(`Embedded signature applied to ${fileName}`);
+  } else {
+    const sigName = result.signaturePath?.split('/').pop() || result.signaturePath;
+    outputChannel.appendLine(`[${timestamp}] Signed (detached): ${result.filePath} → ${result.signaturePath}`);
+    vscode.window.showInformationMessage(`Detached signature saved to ${sigName}`);
+  }
+
+  // Display any warnings
+  for (const warning of result.warnings) {
+    outputChannel.appendLine(`  Warning: ${warning}`);
+    vscode.window.showWarningMessage(warning);
+  }
 }
