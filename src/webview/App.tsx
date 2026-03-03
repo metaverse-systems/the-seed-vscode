@@ -6,6 +6,7 @@ import { TemplatesSection } from './components/TemplatesSection';
 import { BuildSection } from './components/BuildSection';
 import { ResourcePakSection } from './components/ResourcePakSection';
 import { PackagingSection } from './components/PackagingSection';
+import { InstallerSection } from './components/InstallerSection';
 import type {
   ExtensionToWebviewMessage,
   ConfigPayload,
@@ -16,6 +17,7 @@ import type {
   DependencyStatusPayload,
   InstallProgressPayload,
   PackageStatusPayload,
+  InstallerStatusPayload,
   RecursiveBuildProgressPayload,
   RecursiveBuildCompletePayload,
 } from '../types/messages';
@@ -63,6 +65,9 @@ export const App: React.FC = () => {
 
   // Package state
   const [packageStatus, setPackageStatus] = useState<PackageStatusPayload>({ state: 'idle', timestamp: new Date().toISOString() });
+
+  // Installer state
+  const [installerStatus, setInstallerStatus] = useState<InstallerStatusPayload>({ state: 'idle', timestamp: new Date().toISOString() });
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent<ExtensionToWebviewMessage>) => {
@@ -213,6 +218,9 @@ export const App: React.FC = () => {
           break;
         case 'packageStatusResponse':
           setPackageStatus(message.payload);
+          break;
+        case 'installerStatus':
+          setInstallerStatus(message.payload);
           break;
       }
     };
@@ -425,6 +433,13 @@ export const App: React.FC = () => {
     });
   };
 
+  const handleStartInstaller = () => {
+    vscode.postMessage({
+      command: 'generateInstaller',
+      requestId: crypto.randomUUID(),
+    });
+  };
+
   return (
     <div className="app-container">
       {error && (
@@ -516,6 +531,12 @@ export const App: React.FC = () => {
         packageStatus={packageStatus}
         hasProject={config !== null && config.prefix !== ''}
         onStartPackage={handleStartPackage}
+      />
+      <div className="section-divider" />
+      <InstallerSection
+        installerStatus={installerStatus}
+        hasProject={config !== null && config.prefix !== ''}
+        onStartInstaller={handleStartInstaller}
       />
     </div>
   );

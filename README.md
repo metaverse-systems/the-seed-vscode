@@ -15,6 +15,8 @@ This **VSCode extension** provides tools for working with [@metaverse-systems/th
 - **Dependencies Sidebar Section** — auto-checks on render, per-library status indicators, target selector, Check and Install actions
 - **Package Projects** — resolve project binaries and transitive shared-library dependencies into a flat `dist/` directory (Command Palette + sidebar)
 - **Packaging Sidebar Section** — Package button with inline progress, success indicator with file count, and failure indicator with error details
+- **Generate Windows Installer** — generate `.msi` installer packages from cross-compiled Windows binaries (Command Palette + sidebar)
+- **Installer Sidebar Section** — Generate button with progress, success indicator with output filename, and failure indicator with error details
 - **Configure Project** — set or update the project prefix path
 - **Add Scope** — create a new scope with author metadata
 - **Edit Scope** — update author details on an existing scope
@@ -117,6 +119,9 @@ _Coming soon_
 | `The Seed: Check Dependencies` | Check libecs-cpp and libthe-seed installation for a target |
 | `The Seed: Install Dependencies` | Clone and build missing dependencies for a target |
 | `The Seed: Package Projects` | Package project binaries and dependencies into `dist/` |
+| `The Seed: Generate Windows Installer` | Generate a Windows `.msi` installer from `dist/` files |
+
+**Installer prerequisites**: `sudo apt install msitools` (provides `wixl`)
 
 ## 🛠️ Development & Debugging
 - Run `npm run compile` to bundle the extension.

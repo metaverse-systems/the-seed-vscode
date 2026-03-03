@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { handleMessage } from './messageHandler';
-import type { ExtensionToWebviewMessage, BuildStatusPayload, DependencyStatusPayload, InstallProgressPayload, PackageStatusPayload, SigningStatusPayload, RecursiveBuildProgressPayload, RecursiveBuildCompletePayload } from '../types/messages';
+import type { ExtensionToWebviewMessage, BuildStatusPayload, DependencyStatusPayload, InstallProgressPayload, PackageStatusPayload, InstallerStatusPayload, SigningStatusPayload, RecursiveBuildProgressPayload, RecursiveBuildCompletePayload } from '../types/messages';
 
 export class TheSeedViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'the-seed.mainView';
@@ -11,6 +11,7 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider {
   private _currentDependencyStatus: DependencyStatusPayload | null = null;
   private _currentInstallProgress: InstallProgressPayload | null = null;
   private _currentPackageStatus: PackageStatusPayload | null = null;
+  private _currentInstallerStatus: InstallerStatusPayload | null = null;
   private _currentSigningStatus: SigningStatusPayload | null = null;
   private _currentRecursiveBuildProgress: RecursiveBuildProgressPayload | null = null;
   private _currentRecursiveBuildComplete: RecursiveBuildCompletePayload | null = null;
@@ -84,6 +85,10 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider {
         if (this._currentPackageStatus) {
           this.postMessage({ type: 'packageStatus', payload: this._currentPackageStatus });
         }
+        // Push current installer status so the webview catches up
+        if (this._currentInstallerStatus) {
+          this.postMessage({ type: 'installerStatus', payload: this._currentInstallerStatus });
+        }
         // Push current signing status so the webview catches up
         if (this._currentSigningStatus) {
           this.postMessage({ type: 'signingStatus', payload: this._currentSigningStatus });
@@ -123,6 +128,13 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider {
       // Clear on terminal states
       if (message.payload.state === 'completed' || message.payload.state === 'failed') {
         this._currentPackageStatus = null;
+      }
+    }
+    if (message.type === 'installerStatus') {
+      this._currentInstallerStatus = message.payload;
+      // Clear on terminal states
+      if (message.payload.state === 'completed' || message.payload.state === 'failed') {
+        this._currentInstallerStatus = null;
       }
     }
     if (message.type === 'signingStatus') {

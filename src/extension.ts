@@ -17,6 +17,7 @@ import { buildNativeCommand, buildWindowsCommand, buildIncrementalCommand } from
 import { buildNativeRecursiveCommand, buildWindowsRecursiveCommand } from "./commands/buildNativeRecursive";
 import { checkDependenciesCommand, installDependenciesCommand } from "./commands/dependencyCommands";
 import { packageProjectCommand } from "./commands/packageProject";
+import { generateInstallerCommand } from "./commands/generateInstaller";
 import { createSigningCert } from "./commands/createSigningCert";
 import { signFile } from "./commands/signFile";
 import { verifySignature } from "./commands/verifySignature";
@@ -270,6 +271,12 @@ export function activate(context: vscode.ExtensionContext) {
     wrapCommand(packageProjectCommand(outputChannel, viewProvider), outputChannel)
   );
 
+  // Generate Windows Installer command
+  const generateInstallerDisposable = vscode.commands.registerCommand(
+    "the-seed.generateWindowsInstaller",
+    wrapCommand(generateInstallerCommand(outputChannel, viewProvider), outputChannel)
+  );
+
   // Signing commands
   const createSigningCertDisposable = vscode.commands.registerCommand(
     "the-seed.createSigningCert",
@@ -404,6 +411,7 @@ export function activate(context: vscode.ExtensionContext) {
     checkDependenciesDisposable,
     installDependenciesDisposable,
     packageProjectDisposable,
+    generateInstallerDisposable,
     createSigningCertDisposable,
     importSigningCertDisposable,
     signFileDisposable,

@@ -25,6 +25,7 @@ export type WebviewToExtensionMessage =
   | { command: 'getDependencyStatus'; requestId: string }
   | { command: 'startPackage'; requestId: string }
   | { command: 'getPackageStatus'; requestId: string }
+  | { command: 'generateInstaller'; requestId: string }
   | { command: 'createSigningCert'; requestId: string }
   | { command: 'importSigningCert'; requestId: string }
   | { command: 'signingCertInfo'; requestId: string }
@@ -94,6 +95,7 @@ export type ExtensionToWebviewMessage =
   | { type: 'packageStatus'; payload: PackageStatusPayload }
   | { type: 'packageStarted'; requestId: string }
   | { type: 'packageStatusResponse'; requestId: string; payload: PackageStatusPayload }
+  | { type: 'installerStatus'; payload: InstallerStatusPayload }
   | { type: 'signingStatus'; requestId?: string; payload: SigningStatusPayload };
 
 export interface TemplateCreatedPayload {
@@ -244,6 +246,18 @@ export interface PackageStatusPayload {
   currentFile?: string;
   filesCopied?: number;
   totalFiles?: number;
+  errorMessage?: string;
+  timestamp: string;
+}
+
+// ── Installer Types ─────────────────────────────────────────
+
+export type InstallerState = 'idle' | 'running' | 'completed' | 'failed';
+
+export interface InstallerStatusPayload {
+  state: InstallerState;
+  currentStep?: string;
+  outputFile?: string;
   errorMessage?: string;
   timestamp: string;
 }

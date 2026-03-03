@@ -838,6 +838,14 @@ export async function handleMessage(
         };
       }
 
+      // ── Installer Handlers ──────────────────────────────────
+
+      case 'generateInstaller': {
+        // Fire the command — the command handler manages the full lifecycle
+        vscode.commands.executeCommand('the-seed.generateWindowsInstaller');
+        return null;
+      }
+
       case 'createSigningCert': {
         await vscode.commands.executeCommand('the-seed.createSigningCert');
         return null;
