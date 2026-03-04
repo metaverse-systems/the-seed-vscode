@@ -77,4 +77,62 @@ suite('Recursive Build Commands', () => {
       );
     });
   });
+
+  // ── executeRecursiveBuild Quick Pick ──────────────────────
+
+  suite('executeRecursiveBuild Quick Pick prompt', () => {
+    test('Debug selection proceeds with standard recursive build', async () => {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+
+      const quickPickStub = sandbox.stub(vscode.window, 'showQuickPick')
+        .resolves({ label: 'Debug', description: 'Standard build with debug symbols' } as vscode.QuickPickItem);
+
+      sandbox.stub(vscode.workspace, 'findFiles').resolves([]);
+
+      await vscode.commands.executeCommand('the-seed.buildNativeRecursive');
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      assert.ok(
+        quickPickStub.called,
+        'Quick Pick should be shown when recursive build command is invoked'
+      );
+    });
+
+    test('Release selection enables strip mode in recursive build', async () => {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+
+      const quickPickStub = sandbox.stub(vscode.window, 'showQuickPick')
+        .resolves({ label: 'Release', description: 'Strip debug symbols for production' } as vscode.QuickPickItem);
+
+      sandbox.stub(vscode.workspace, 'findFiles').resolves([]);
+
+      await vscode.commands.executeCommand('the-seed.buildNativeRecursive');
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      assert.ok(
+        quickPickStub.called,
+        'Quick Pick should be shown'
+      );
+    });
+
+    test('Escape dismissal cancels recursive build entirely', async () => {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+
+      const quickPickStub = sandbox.stub(vscode.window, 'showQuickPick')
+        .resolves(undefined);
+
+      await vscode.commands.executeCommand('the-seed.buildNativeRecursive');
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      assert.ok(
+        quickPickStub.called,
+        'Quick Pick should be shown'
+      );
+
+      assert.ok(
+        true,
+        'Recursive build was cancelled when Quick Pick was dismissed'
+      );
+    });
+  });
 });

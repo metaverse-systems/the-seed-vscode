@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import Config from '@metaverse-systems/the-seed/dist/Config';
 import Build from '@metaverse-systems/the-seed/dist/Build';
+import { stripBinaries } from '@metaverse-systems/the-seed/dist/Build';
 import { runBuildSteps } from '../build/buildRunner';
 import { detectBuildableProject } from '../build/projectDetector';
 import type { TheSeedViewProvider } from '../panels/TheSeedViewProvider';
@@ -66,6 +67,19 @@ async function executeBuild(
   outputChannel: vscode.OutputChannel,
   viewProvider: TheSeedViewProvider
 ): Promise<void> {
+  // Prompt for build mode before acquiring lock
+  const buildModeItems: vscode.QuickPickItem[] = [
+    { label: 'Debug', description: 'Standard build with debug symbols' },
+    { label: 'Release', description: 'Strip debug symbols for production' },
+  ];
+  const selectedMode = await vscode.window.showQuickPick(buildModeItems, {
+    placeHolder: 'Select build mode',
+  });
+  if (!selectedMode) {
+    return; // User dismissed — cancel build
+  }
+  const release = selectedMode.label === 'Release';
+
   // Shared operation lock (mutual exclusion with install)
   const lockResult = acquireOperationLock('build');
   if (!lockResult.success) {
@@ -141,12 +155,13 @@ async function executeBuild(
   const steps = build.getSteps(target, fullReconfigure);
 
   const buildType = fullReconfigure ? target : 'incremental';
+  const buildLabel = release ? `${buildType} (release)` : buildType;
 
   // Show output channel
   outputChannel.show(true);
   const timestamp = new Date().toISOString();
   outputChannel.appendLine(`\n${'═'.repeat(60)}`);
-  outputChannel.appendLine(`Build ${buildType} started at ${timestamp}`);
+  outputChannel.appendLine(`Build ${buildLabel} started at ${timestamp}`);
   outputChannel.appendLine(`Project: ${projectPath}`);
   outputChannel.appendLine(`${'═'.repeat(60)}\n`);
 
@@ -199,6 +214,15 @@ async function executeBuild(
                 timestamp: new Date().toISOString(),
               });
             },
+            onStepComplete: release ? async (step) => {
+              if (step.label === 'compile') {
+                outputChannel.appendLine('\n── Stripping binaries ──');
+                const stripResult = await stripBinaries(projectPath!, target);
+                for (const f of stripResult.strippedFiles) {
+                  outputChannel.appendLine(`  Stripped: ${f}`);
+                }
+              }
+            } : undefined,
             signal: activeBuild.signal,
           });
 

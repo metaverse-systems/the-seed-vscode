@@ -52,6 +52,19 @@ async function executeRecursiveBuild(
   outputChannel: vscode.OutputChannel,
   viewProvider: TheSeedViewProvider
 ): Promise<void> {
+  // Prompt for build mode before acquiring lock
+  const buildModeItems: vscode.QuickPickItem[] = [
+    { label: 'Debug', description: 'Standard build with debug symbols' },
+    { label: 'Release', description: 'Strip debug symbols for production' },
+  ];
+  const selectedMode = await vscode.window.showQuickPick(buildModeItems, {
+    placeHolder: 'Select build mode',
+  });
+  if (!selectedMode) {
+    return; // User dismissed — cancel build
+  }
+  const release = selectedMode.label === 'Release';
+
   // Acquire operation lock (mutual exclusion with other builds and install)
   const lockResult = acquireOperationLock('build');
   if (!lockResult.success) {
@@ -122,10 +135,11 @@ async function executeRecursiveBuild(
   }
 
   // Show output channel
+  const buildLabel = release ? `${target} (release)` : target;
   outputChannel.show(true);
   const timestamp = new Date().toISOString();
   outputChannel.appendLine(`\n${'═'.repeat(60)}`);
-  outputChannel.appendLine(`Recursive build ${target} started at ${timestamp}`);
+  outputChannel.appendLine(`Recursive build ${buildLabel} started at ${timestamp}`);
   outputChannel.appendLine(`Project: ${projectPath}`);
   outputChannel.appendLine(`${'═'.repeat(60)}\n`);
 
@@ -170,6 +184,7 @@ async function executeRecursiveBuild(
             fullReconfigure: true,
             projectDir: projectPath!,
             signal: abortController.signal,
+            release,
             callbacks: {
               onProjectStart: (project: BuildableProject, index: number, total: number) => {
                 const msg = `Building ${project.name} (${index + 1}/${total})`;

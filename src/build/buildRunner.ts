@@ -7,6 +7,8 @@ export interface BuildRunnerOptions {
   onStdout: (data: string) => void;
   onStderr: (data: string) => void;
   onStepStart: (step: BuildStep, index: number, total: number) => void;
+  /** Async callback invoked after each successful step execution */
+  onStepComplete?: (step: BuildStep) => Promise<void>;
   /** AbortSignal wired to VS Code CancellationToken */
   signal?: AbortSignal;
 }
@@ -48,6 +50,10 @@ export async function runBuildSteps(
 
     if (exitCode !== 0 && !step.ignoreExitCode) {
       return { success: false };
+    }
+
+    if (options.onStepComplete) {
+      await options.onStepComplete(step);
     }
   }
 
