@@ -215,8 +215,9 @@ async function executeBuild(
           );
 
           if (result.status === 'cancelled') {
-            vscode.window.showWarningMessage('Build cancelled.');
-            outputChannel.appendLine('\n── Build cancelled ──');
+            const cancelledText = result.installed ? 'Build cancelled after installing.' : 'Build cancelled.';
+            vscode.window.showWarningMessage(cancelledText);
+            outputChannel.appendLine(`\n── ${cancelledText} ──`);
             broadcastStatus({
               state: 'cancelled',
               target: buildType,
