@@ -18,7 +18,7 @@ suite('buildRunner', () => {
 
   test('executes a single step and captures stdout', async () => {
     const steps: BuildStep[] = [
-      { label: 'echo', command: 'echo "hello world"' },
+      { label: 'echo', program: 'sh', args: ['-c', 'echo "hello world"'] },
     ];
 
     let stdout = '';
@@ -35,9 +35,9 @@ suite('buildRunner', () => {
 
   test('executes multiple steps in order', async () => {
     const steps: BuildStep[] = [
-      { label: 'step1', command: 'echo "first"' },
-      { label: 'step2', command: 'echo "second"' },
-      { label: 'step3', command: 'echo "third"' },
+      { label: 'step1', program: 'sh', args: ['-c', 'echo "first"'] },
+      { label: 'step2', program: 'sh', args: ['-c', 'echo "second"'] },
+      { label: 'step3', program: 'sh', args: ['-c', 'echo "third"'] },
     ];
 
     const order: string[] = [];
@@ -54,9 +54,9 @@ suite('buildRunner', () => {
 
   test('reports failure when a step exits with non-zero code', async () => {
     const steps: BuildStep[] = [
-      { label: 'succeed', command: 'echo "ok"' },
-      { label: 'fail', command: 'exit 1' },
-      { label: 'never', command: 'echo "unreachable"' },
+      { label: 'succeed', program: 'sh', args: ['-c', 'echo "ok"'] },
+      { label: 'fail', program: 'sh', args: ['-c', 'exit 1'] },
+      { label: 'never', program: 'sh', args: ['-c', 'echo "unreachable"'] },
     ];
 
     const startedSteps: string[] = [];
@@ -74,8 +74,8 @@ suite('buildRunner', () => {
 
   test('ignoreExitCode allows build to continue on non-zero exit', async () => {
     const steps: BuildStep[] = [
-      { label: 'distclean', command: 'exit 1', ignoreExitCode: true },
-      { label: 'next', command: 'echo "continued"' },
+      { label: 'distclean', program: 'sh', args: ['-c', 'exit 1'], ignoreExitCode: true },
+      { label: 'next', program: 'sh', args: ['-c', 'echo "continued"'] },
     ];
 
     let stdout = '';
@@ -92,7 +92,7 @@ suite('buildRunner', () => {
 
   test('captures stderr output', async () => {
     const steps: BuildStep[] = [
-      { label: 'stderr', command: 'echo "error output" >&2' },
+      { label: 'stderr', program: 'sh', args: ['-c', 'echo "error output" >&2'] },
     ];
 
     let stderr = '';
@@ -109,8 +109,8 @@ suite('buildRunner', () => {
 
   test('cancellation via AbortSignal stops execution', async () => {
     const steps: BuildStep[] = [
-      { label: 'long', command: 'sleep 30' },
-      { label: 'after', command: 'echo "unreachable"' },
+      { label: 'long', program: 'sleep', args: ['30'] },
+      { label: 'after', program: 'sh', args: ['-c', 'echo "unreachable"'] },
     ];
 
     const abortController = new AbortController();
@@ -134,7 +134,7 @@ suite('buildRunner', () => {
 
   test('already-aborted signal prevents execution', async () => {
     const steps: BuildStep[] = [
-      { label: 'step', command: 'echo "should not run"' },
+      { label: 'step', program: 'sh', args: ['-c', 'echo "should not run"'] },
     ];
 
     const abortController = new AbortController();
@@ -155,8 +155,8 @@ suite('buildRunner', () => {
 
   test('onStepStart receives correct index and total', async () => {
     const steps: BuildStep[] = [
-      { label: 'a', command: 'echo "a"' },
-      { label: 'b', command: 'echo "b"' },
+      { label: 'a', program: 'sh', args: ['-c', 'echo "a"'] },
+      { label: 'b', program: 'sh', args: ['-c', 'echo "b"'] },
     ];
 
     const calls: { index: number; total: number }[] = [];
@@ -177,7 +177,7 @@ suite('buildRunner', () => {
 
   test('uses correct working directory', async () => {
     const steps: BuildStep[] = [
-      { label: 'pwd', command: 'pwd' },
+      { label: 'pwd', program: 'pwd', args: [] },
     ];
 
     let stdout = '';
@@ -189,5 +189,84 @@ suite('buildRunner', () => {
     });
 
     assert.ok(stdout.trim().includes(tmpDir), 'Should run in specified cwd');
+  });
+
+  test('passes an argument with a space, quotes and $HOME literally', async () => {
+    const tricky = "a b 'q' \"d\" $HOME";
+    const steps: BuildStep[] = [
+      { label: 'printf', program: 'printf', args: ['%s', tricky] },
+    ];
+
+    let stdout = '';
+    const result = await runBuildSteps(steps, {
+      cwd: tmpDir,
+      onStdout: (data) => { stdout += data; },
+      onStderr: () => {},
+      onStepStart: () => {},
+    });
+
+    assert.strictEqual(result.success, true);
+    assert.strictEqual(stdout, tricky);
+  });
+
+  test('uses a step cwd relative to options.cwd', async () => {
+    fs.mkdirSync(path.join(tmpDir, 'sub'));
+    const steps: BuildStep[] = [
+      { label: 'pwd', program: 'pwd', args: [], cwd: 'sub' },
+    ];
+
+    let stdout = '';
+    const result = await runBuildSteps(steps, {
+      cwd: tmpDir,
+      onStdout: (data) => { stdout += data; },
+      onStderr: () => {},
+      onStepStart: () => {},
+    });
+
+    assert.strictEqual(result.success, true);
+    assert.strictEqual(fs.realpathSync(stdout.trim()), fs.realpathSync(path.join(tmpDir, 'sub')));
+  });
+
+  test('makes a step env value visible and lets it override options.env', async () => {
+    const steps: BuildStep[] = [
+      {
+        label: 'env',
+        program: 'sh',
+        args: ['-c', 'printf "%s|%s" "$BUILDRUNNER_A" "$BUILDRUNNER_B"'],
+        env: { BUILDRUNNER_B: 'from-step' },
+      },
+    ];
+
+    let stdout = '';
+    const result = await runBuildSteps(steps, {
+      cwd: tmpDir,
+      env: { BUILDRUNNER_A: 'from-options', BUILDRUNNER_B: 'from-options' },
+      onStdout: (data) => { stdout += data; },
+      onStderr: () => {},
+      onStepStart: () => {},
+    });
+
+    assert.strictEqual(result.success, true);
+    assert.strictEqual(stdout, 'from-options|from-step');
+  });
+
+  test('fails the step without rejecting when the program does not exist', async () => {
+    const steps: BuildStep[] = [
+      { label: 'missing', program: 'no-such-program-for-the-seed-test', args: [] },
+      { label: 'never', program: 'echo', args: ['unreachable'] },
+    ];
+
+    let stderr = '';
+    const startedSteps: string[] = [];
+    const result = await runBuildSteps(steps, {
+      cwd: tmpDir,
+      onStdout: () => {},
+      onStderr: (data) => { stderr += data; },
+      onStepStart: (step) => { startedSteps.push(step.label); },
+    });
+
+    assert.strictEqual(result.success, false);
+    assert.ok(stderr.includes('no-such-program-for-the-seed-test'), 'Should report the program through onStderr');
+    assert.deepStrictEqual(startedSteps, ['missing']);
   });
 });

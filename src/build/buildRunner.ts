@@ -1,3 +1,4 @@
+import path from 'path';
 import { spawn, ChildProcess } from 'child_process';
 import type { BuildStep } from '@metaverse-systems/the-seed/dist/types';
 
@@ -36,9 +37,9 @@ export async function runBuildSteps(
 
     options.onStepStart(step, i, steps.length);
 
-    const exitCode = await runSingleCommand(step.command, {
-      cwd: options.cwd,
-      env: options.env,
+    const exitCode = await runSingleCommand(step.program, step.args, {
+      cwd: path.resolve(options.cwd, step.cwd ?? '.'),
+      env: { ...process.env, ...options.env, ...step.env },
       onStdout: options.onStdout,
       onStderr: options.onStderr,
       signal: options.signal,
@@ -61,7 +62,8 @@ export async function runBuildSteps(
 }
 
 function runSingleCommand(
-  command: string,
+  program: string,
+  args: string[],
   opts: {
     cwd: string;
     env?: NodeJS.ProcessEnv;
@@ -70,11 +72,11 @@ function runSingleCommand(
     signal?: AbortSignal;
   }
 ): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const child: ChildProcess = spawn(command, [], {
+  return new Promise((resolve) => {
+    const child: ChildProcess = spawn(program, args, {
       cwd: opts.cwd,
-      env: opts.env ? { ...process.env, ...opts.env } : process.env,
-      shell: true,
+      env: opts.env,
+      shell: false,
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: true, // Create new process group for reliable kill
     });
@@ -125,7 +127,8 @@ function runSingleCommand(
 
     child.on('error', (err) => {
       opts.signal?.removeEventListener('abort', onAbort);
-      reject(err);
+      opts.onStderr(`${program}: ${err.message}\n`);
+      resolve(127);
     });
   });
 }
