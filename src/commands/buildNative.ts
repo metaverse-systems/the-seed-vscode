@@ -1,8 +1,7 @@
 import * as vscode from 'vscode';
 import Config from '@metaverse-systems/the-seed/dist/Config';
 import Build from '@metaverse-systems/the-seed/dist/Build';
-import { stripBinaries } from '@metaverse-systems/the-seed/dist/Build';
-import { runBuildSteps } from '../build/buildRunner';
+import { runProjectBuild } from '../build/projectBuild';
 import { detectBuildableProject } from '../build/projectDetector';
 import type { TheSeedViewProvider } from '../panels/TheSeedViewProvider';
 import type { BuildStatusPayload } from '../types/messages';
@@ -70,7 +69,7 @@ async function executeBuild(
   // Prompt for build mode before acquiring lock
   const buildModeItems: vscode.QuickPickItem[] = [
     { label: 'Debug', description: 'Standard build with debug symbols' },
-    { label: 'Release', description: 'Strip debug symbols for production' },
+    { label: 'Release', description: 'Strip and sign the installed programs and libraries' },
   ];
   const selectedMode = await vscode.window.showQuickPick(buildModeItems, {
     placeHolder: 'Select build mode',
@@ -152,7 +151,6 @@ async function executeBuild(
   const config = new Config();
   config.loadConfig();
   const build = new Build(config);
-  const steps = build.getSteps(target, fullReconfigure);
 
   const buildType = fullReconfigure ? target : 'incremental';
   const buildLabel = release ? `${buildType} (release)` : buildType;
@@ -184,68 +182,61 @@ async function executeBuild(
         });
 
         try {
-          broadcastStatus({
-            state: 'running',
-            target: buildType,
-            currentStep: steps[0]?.label,
-            stepIndex: 1,
-            totalSteps: steps.length,
-            timestamp: new Date().toISOString(),
-          });
-
-          const result = await runBuildSteps(steps, {
-            cwd: projectPath!,
-            onStdout: (data) => outputChannel.append(data),
-            onStderr: (data) => outputChannel.append(data),
-            onStepStart: (step, index, total) => {
-              const increment = index === 0 ? 0 : Math.round(100 / total);
-              progress.report({
-                message: `[${index + 1}/${total}] ${step.label}...`,
-                increment,
-              });
-              outputChannel.appendLine(`\n── Step ${index + 1}/${total}: ${step.label} ──`);
-
-              broadcastStatus({
-                state: 'running',
-                target: buildType,
-                currentStep: step.label,
-                stepIndex: index + 1,
-                totalSteps: total,
-                timestamp: new Date().toISOString(),
-              });
+          const result = await runProjectBuild(
+            build,
+            {
+              projectDir: projectPath!,
+              target: fullReconfigure ? (target as 'native' | 'windows') : undefined,
+              release,
+              configDir: config.configDir,
+              signal: activeBuild.signal,
             },
-            onStepComplete: release ? async (step) => {
-              if (step.label === 'compile') {
-                outputChannel.appendLine('\n── Stripping binaries ──');
-                const stripResult = await stripBinaries(projectPath!, target);
-                for (const f of stripResult.strippedFiles) {
-                  outputChannel.appendLine(`  Stripped: ${f}`);
-                }
-              }
-            } : undefined,
-            signal: activeBuild.signal,
-          });
+            {
+              append: (text) => outputChannel.append(text),
+              appendLine: (text) => outputChannel.appendLine(text),
+              stepStarted: (label, index, total) => {
+                const increment = index === 0 ? 0 : Math.round(100 / total);
+                progress.report({
+                  message: `[${index + 1}/${total}] ${label}...`,
+                  increment,
+                });
+                outputChannel.appendLine(`\n── Step ${index + 1}/${total}: ${label} ──`);
 
-          if (!result.success) {
-            if (result.cancelledAtStep !== undefined) {
-              vscode.window.showWarningMessage('Build cancelled.');
-              outputChannel.appendLine('\n── Build cancelled ──');
-              broadcastStatus({
-                state: 'cancelled',
-                target: buildType,
-                timestamp: new Date().toISOString(),
-              });
-            } else {
-              vscode.window.showErrorMessage('Build failed. Check output for details.');
-              outputChannel.appendLine('\n── Build failed ──');
-              outputChannel.show(true);
-              broadcastStatus({
-                state: 'failed',
-                target: buildType,
-                errorMessage: 'Build step failed with non-zero exit code',
-                timestamp: new Date().toISOString(),
-              });
+                broadcastStatus({
+                  state: 'running',
+                  target: buildType,
+                  currentStep: label,
+                  stepIndex: index + 1,
+                  totalSteps: total,
+                  timestamp: new Date().toISOString(),
+                });
+              },
             }
+          );
+
+          if (result.status === 'cancelled') {
+            const cancelledText = result.installed ? 'Build cancelled after installing.' : 'Build cancelled.';
+            vscode.window.showWarningMessage(cancelledText);
+            outputChannel.appendLine(`\n── ${cancelledText} ──`);
+            broadcastStatus({
+              state: 'cancelled',
+              target: buildType,
+              timestamp: new Date().toISOString(),
+            });
+            return;
+          }
+
+          if (result.status === 'failed') {
+            const message = `Build failed at ${result.step}: ${result.message}`;
+            vscode.window.showErrorMessage(`${message}.`);
+            outputChannel.appendLine(`\n── ${message}. ──`);
+            outputChannel.show(true);
+            broadcastStatus({
+              state: 'failed',
+              target: buildType,
+              errorMessage: message,
+              timestamp: new Date().toISOString(),
+            });
             return;
           }
 

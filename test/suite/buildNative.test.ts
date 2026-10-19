@@ -40,7 +40,7 @@ suite('Build Commands — Release Mode Quick Pick', () => {
 
       // Stub Quick Pick to select "Release"
       const quickPickStub = sandbox.stub(vscode.window, 'showQuickPick')
-        .resolves({ label: 'Release', description: 'Strip debug symbols for production' } as vscode.QuickPickItem);
+        .resolves({ label: 'Release', description: 'Strip and sign the installed programs and libraries' } as vscode.QuickPickItem);
 
       sandbox.stub(vscode.workspace, 'findFiles').resolves([]);
 
