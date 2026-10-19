@@ -102,7 +102,7 @@ export function packageProjectCommand(
         },
         async () => {
           const pkg = new Package(config);
-          pkg.run(outputDir, [projectDir]);
+          await pkg.run(outputDir, [projectDir]);
         }
       );
 
