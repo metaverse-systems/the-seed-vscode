@@ -33,7 +33,8 @@ function formDetail(result: VerifyResult): string {
     return count > 1 ? `Mac program (embedded, ${count} slices)` : 'Mac program (embedded)';
   }
   if (result.form === 'detached') {
-    return 'detached';
+    const name = result.filePath.split(/[\\/]/).pop() ?? result.filePath;
+    return `detached (${name}.sig)`;
   }
   return result.form ? `${FORM_NAMES[result.form]} (${kind})` : 'none';
 }

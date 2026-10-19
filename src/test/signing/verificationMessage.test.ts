@@ -5,7 +5,7 @@ import { describeVerification } from '../../signing/verificationMessage';
 // Hand-made results only: no signing, no files and nothing from the VS Code API, so these cases run
 // under plain Mocha as well as in the extension host.
 //
-// Wording chosen where the contract leaves it open (the implementation matches it):
+// Wording these tests fix:
 //   - <form> in a summary is the short form name: "detached", "Windows program", "installer" or "Mac program"
 //   - the VALID summary ends with "Trusted by: scope <scope>" or "Trusted by: certificate <path>"
 //   - details lines for a signer are "Signer: <subject>", "Fingerprint: <fp>" and "Valid: <date> to <date>" (UTC, YYYY-MM-DD)
@@ -147,6 +147,11 @@ suite('describeVerification', () => {
     }
     assert.deepStrictEqual([...indexes].sort((a, b) => a - b), indexes, 'lines are out of order: ' + details.join(' / '));
     assert.strictEqual(details[details.length - 1], NOT_CHECKED_LINE);
+  });
+
+  test('the form of a detached signature names its signature file, as the command line does', () => {
+    const message = describeVerification(result('VALID', { form: 'detached', signatureType: 'detached', signer, filePath: '/work/config.json' }), formatSubject);
+    assert.ok(message.details.includes('Form: detached (config.json.sig)'), message.details.join('\n'));
   });
 
   test('a result with both kinds of signature lists both, the embedded one first', () => {
