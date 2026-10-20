@@ -5,6 +5,7 @@ import { detectBuildableProject } from '../build/projectDetector';
 import type { TheSeedViewProvider } from '../panels/TheSeedViewProvider';
 import type { BuildStatusPayload, RecursiveBuildProgressPayload, RecursiveBuildCompletePayload } from '../types/messages';
 import { discoveryFailure } from '../build/recursiveOutcome';
+import { describeBuildRejection } from '../build/buildFailure';
 import { acquireOperationLock, releaseOperationLock, getOperationLock } from '../operationLock';
 
 export function getActiveRecursiveBuild(): AbortController | null {
@@ -224,7 +225,13 @@ async function executeRecursiveBuild(
           } catch (err: unknown) {
             const failure = discoveryFailure(err, target, new Date().toISOString());
             if (!failure) {
-              throw err;
+              const rejection = describeBuildRejection(err, `${target} (recursive)`, new Date().toISOString());
+              outputChannel.appendLine(rejection.outputLine);
+              outputChannel.show(true);
+              broadcastBuildStatus(rejection.status);
+              broadcastRecursiveComplete({ success: false, completedCount: 0, totalCount: 0 });
+              vscode.window.showErrorMessage(rejection.notification);
+              return;
             }
             outputChannel.appendLine('\n── Recursive build stopped before building ──');
             outputChannel.appendLine(failure.message);

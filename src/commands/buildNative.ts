@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import Config from '@metaverse-systems/the-seed/dist/Config';
 import Build from '@metaverse-systems/the-seed/dist/Build';
 import { runProjectBuild } from '../build/projectBuild';
+import { describeBuildRejection, describeFailedStep } from '../build/buildFailure';
 import { detectBuildableProject } from '../build/projectDetector';
 import type { TheSeedViewProvider } from '../panels/TheSeedViewProvider';
 import type { BuildStatusPayload } from '../types/messages';
@@ -182,37 +183,47 @@ async function executeBuild(
         });
 
         try {
-          const result = await runProjectBuild(
-            build,
-            {
-              projectDir: projectPath!,
-              target: fullReconfigure ? (target as 'native' | 'windows') : undefined,
-              release,
-              configDir: config.configDir,
-              signal: activeBuild.signal,
-            },
-            {
-              append: (text) => outputChannel.append(text),
-              appendLine: (text) => outputChannel.appendLine(text),
-              stepStarted: (label, index, total) => {
-                const increment = index === 0 ? 0 : Math.round(100 / total);
-                progress.report({
-                  message: `[${index + 1}/${total}] ${label}...`,
-                  increment,
-                });
-                outputChannel.appendLine(`\n── Step ${index + 1}/${total}: ${label} ──`);
-
-                broadcastStatus({
-                  state: 'running',
-                  target: buildType,
-                  currentStep: label,
-                  stepIndex: index + 1,
-                  totalSteps: total,
-                  timestamp: new Date().toISOString(),
-                });
+          let result;
+          try {
+            result = await runProjectBuild(
+              build,
+              {
+                projectDir: projectPath!,
+                target: fullReconfigure ? (target as 'native' | 'windows') : undefined,
+                release,
+                configDir: config.configDir,
+                signal: activeBuild.signal,
               },
-            }
-          );
+              {
+                append: (text) => outputChannel.append(text),
+                appendLine: (text) => outputChannel.appendLine(text),
+                stepStarted: (label, index, total) => {
+                  const increment = index === 0 ? 0 : Math.round(100 / total);
+                  progress.report({
+                    message: `[${index + 1}/${total}] ${label}...`,
+                    increment,
+                  });
+                  outputChannel.appendLine(`\n── Step ${index + 1}/${total}: ${label} ──`);
+
+                  broadcastStatus({
+                    state: 'running',
+                    target: buildType,
+                    currentStep: label,
+                    stepIndex: index + 1,
+                    totalSteps: total,
+                    timestamp: new Date().toISOString(),
+                  });
+                },
+              }
+            );
+          } catch (err: unknown) {
+            const failure = describeBuildRejection(err, buildType, new Date().toISOString());
+            vscode.window.showErrorMessage(failure.notification);
+            outputChannel.appendLine(failure.outputLine);
+            outputChannel.show(true);
+            broadcastStatus(failure.status);
+            return;
+          }
 
           if (result.status === 'cancelled') {
             const cancelledText = result.installed ? 'Build cancelled after installing.' : 'Build cancelled.';
@@ -227,7 +238,7 @@ async function executeBuild(
           }
 
           if (result.status === 'failed') {
-            const message = `Build failed at ${result.step}: ${result.message}`;
+            const message = describeFailedStep(result.step, result.message);
             vscode.window.showErrorMessage(`${message}.`);
             outputChannel.appendLine(`\n── ${message}. ──`);
             outputChannel.show(true);
