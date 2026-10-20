@@ -6,6 +6,8 @@ import * as path from 'path';
 import { acquireOperationLock, releaseOperationLock } from '../operationLock';
 import type { TheSeedViewProvider } from '../panels/TheSeedViewProvider';
 import type { PackageStatusPayload } from '../types/messages';
+import { packageStatusFrom, packageNotification } from '../build/packageOutcome';
+import type { PackageResult } from '@metaverse-systems/the-seed/dist/types';
 
 /**
  * Creates the packageProject command handler.
@@ -71,21 +73,20 @@ export function packageProjectCommand(
     // Monkey-patch console.log/console.error to capture per-file output
     const originalLog = console.log;
     const originalError = console.error;
-    let filesCopied = 0;
+    let result: PackageResult | undefined;
 
     try {
       console.log = (...args: unknown[]) => {
         const line = args.map(String).join(' ');
         outputChannel.appendLine(line);
-        filesCopied++;
-        // Update running status with current file info
-        const currentStatus: PackageStatusPayload = {
-          state: 'running',
-          currentFile: line,
-          filesCopied,
-          timestamp: new Date().toISOString(),
-        };
-        viewProvider.postMessage({ type: 'packageStatus', payload: currentStatus });
+        if (line.startsWith('Copying ')) {
+          const currentStatus: PackageStatusPayload = {
+            state: 'running',
+            currentFile: line,
+            timestamp: new Date().toISOString(),
+          };
+          viewProvider.postMessage({ type: 'packageStatus', payload: currentStatus });
+        }
       };
 
       console.error = (...args: unknown[]) => {
@@ -102,26 +103,32 @@ export function packageProjectCommand(
         },
         async () => {
           const pkg = new Package(config);
-          pkg.run(outputDir, [projectDir]);
+          result = await pkg.run(outputDir, [projectDir]);
         }
       );
 
-      // Add summary line
-      outputChannel.appendLine(`\n── Packaged ${filesCopied} files into dist/ ──`);
+      const packaged = result!;
+      if (packaged.success) {
+        outputChannel.appendLine(`\n── Packaged ${packaged.fileCount} files into dist/ ──`);
+      } else {
+        outputChannel.appendLine('\n── Packaging failed ──');
+        if (packaged.message) {
+          outputChannel.appendLine(packaged.message);
+        }
+        outputChannel.show(true);
+      }
 
-      // Broadcast completed status
-      const completedStatus: PackageStatusPayload = {
-        state: 'completed',
-        filesCopied,
-        totalFiles: filesCopied,
-        timestamp: new Date().toISOString(),
-      };
-      viewProvider.postMessage({ type: 'packageStatus', payload: completedStatus });
+      viewProvider.postMessage({
+        type: 'packageStatus',
+        payload: packageStatusFrom(packaged, new Date().toISOString()),
+      });
 
-      // Show success notification
-      vscode.window.showInformationMessage(
-        `Packaged ${filesCopied} files into dist/`
-      );
+      const notification = packageNotification(packaged);
+      if (notification.kind === 'info') {
+        vscode.window.showInformationMessage(notification.text);
+      } else {
+        vscode.window.showErrorMessage(notification.text);
+      }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
 
@@ -132,7 +139,7 @@ export function packageProjectCommand(
       const failedStatus: PackageStatusPayload = {
         state: 'failed',
         errorMessage,
-        filesCopied,
+        filesCopied: 0,
         timestamp: new Date().toISOString(),
       };
       viewProvider.postMessage({ type: 'packageStatus', payload: failedStatus });

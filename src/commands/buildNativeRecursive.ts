@@ -4,6 +4,7 @@ import type { BuildableProject, BuildStep } from '@metaverse-systems/the-seed/di
 import { detectBuildableProject } from '../build/projectDetector';
 import type { TheSeedViewProvider } from '../panels/TheSeedViewProvider';
 import type { BuildStatusPayload, RecursiveBuildProgressPayload, RecursiveBuildCompletePayload } from '../types/messages';
+import { discoveryFailure } from '../build/recursiveOutcome';
 import { acquireOperationLock, releaseOperationLock, getOperationLock } from '../operationLock';
 
 export function getActiveRecursiveBuild(): AbortController | null {
@@ -179,45 +180,60 @@ async function executeRecursiveBuild(
 
           progress.report({ message: 'Scanning dependencies...' });
 
-          const result = await buildRecursive({
-            target,
-            fullReconfigure: true,
-            projectDir: projectPath!,
-            signal: abortController.signal,
-            release,
-            callbacks: {
-              onProjectStart: (project: BuildableProject, index: number, total: number) => {
-                const msg = `Building ${project.name} (${index + 1}/${total})`;
-                progress.report({
-                  message: msg,
-                  increment: index === 0 ? 0 : Math.round(100 / total),
-                });
-                outputChannel.appendLine(`\n── [${index + 1}/${total}] ${project.name} ──`);
+          let result;
+          try {
+            result = await buildRecursive({
+              target,
+              fullReconfigure: true,
+              projectDir: projectPath!,
+              signal: abortController.signal,
+              release,
+              callbacks: {
+                onProjectStart: (project: BuildableProject, index: number, total: number) => {
+                  const msg = `Building ${project.name} (${index + 1}/${total})`;
+                  progress.report({
+                    message: msg,
+                    increment: index === 0 ? 0 : Math.round(100 / total),
+                  });
+                  outputChannel.appendLine(`\n── [${index + 1}/${total}] ${project.name} ──`);
 
-                broadcastBuildStatus({
-                  state: 'running',
-                  target: `${target} (recursive)`,
-                  currentStep: `${project.name} (${index + 1}/${total})`,
-                  stepIndex: index + 1,
-                  totalSteps: total,
-                  timestamp: new Date().toISOString(),
-                });
+                  broadcastBuildStatus({
+                    state: 'running',
+                    target: `${target} (recursive)`,
+                    currentStep: `${project.name} (${index + 1}/${total})`,
+                    stepIndex: index + 1,
+                    totalSteps: total,
+                    timestamp: new Date().toISOString(),
+                  });
 
-                broadcastRecursiveProgress({
-                  currentProject: project.name,
-                  projectIndex: index,
-                  totalProjects: total,
-                  currentStep: 'starting',
-                });
+                  broadcastRecursiveProgress({
+                    currentProject: project.name,
+                    projectIndex: index,
+                    totalProjects: total,
+                    currentStep: 'starting',
+                  });
+                },
+                onStepComplete: (project: BuildableProject, step: BuildStep) => {
+                  outputChannel.appendLine(`  ${step.label}: done`);
+                },
+                onProjectComplete: (project: BuildableProject, index: number, total: number) => {
+                  outputChannel.appendLine(`  ✓ ${project.name} built successfully`);
+                },
               },
-              onStepComplete: (project: BuildableProject, step: BuildStep) => {
-                outputChannel.appendLine(`  ${step.label}: done`);
-              },
-              onProjectComplete: (project: BuildableProject, index: number, total: number) => {
-                outputChannel.appendLine(`  ✓ ${project.name} built successfully`);
-              },
-            },
-          });
+            });
+          } catch (err: unknown) {
+            const failure = discoveryFailure(err, target, new Date().toISOString());
+            if (!failure) {
+              throw err;
+            }
+            outputChannel.appendLine('\n── Recursive build stopped before building ──');
+            outputChannel.appendLine(failure.message);
+            outputChannel.show(true);
+            broadcastBuildStatus(failure.status);
+            broadcastRecursiveComplete(failure.complete);
+            vscode.window.showErrorMessage(`Recursive build failed: ${failure.message.split('\n')[0]}`);
+            return;
+          }
 
           if (result.cancelled) {
             vscode.window.showWarningMessage(
