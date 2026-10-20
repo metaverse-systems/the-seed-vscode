@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import Signing from '@metaverse-systems/the-seed/dist/Signing';
+import { describeSignFailure } from '../signing/signFailure';
 
 export async function signFile(outputChannel: vscode.OutputChannel, uri?: vscode.Uri): Promise<void> {
   const signing = new Signing();
@@ -40,23 +41,29 @@ export async function signFile(outputChannel: vscode.OutputChannel, uri?: vscode
     return;
   }
 
-  const result = await signing.signFile(targetPath);
-  const fileName = targetPath.split('/').pop() || targetPath;
+  try {
+    const result = await signing.signFile(targetPath);
+    const fileName = targetPath.split('/').pop() || targetPath;
 
-  const timestamp = new Date().toISOString();
+    const timestamp = new Date().toISOString();
 
-  if (result.signatureType === 'embedded') {
-    outputChannel.appendLine(`[${timestamp}] Signed (embedded): ${result.filePath}`);
-    vscode.window.showInformationMessage(`Embedded signature applied to ${fileName}`);
-  } else {
-    const sigName = result.signaturePath?.split('/').pop() || result.signaturePath;
-    outputChannel.appendLine(`[${timestamp}] Signed (detached): ${result.filePath} → ${result.signaturePath}`);
-    vscode.window.showInformationMessage(`Detached signature saved to ${sigName}`);
-  }
+    if (result.signatureType === 'embedded') {
+      outputChannel.appendLine(`[${timestamp}] Signed (embedded): ${result.filePath}`);
+      vscode.window.showInformationMessage(`Embedded signature applied to ${fileName}`);
+    } else {
+      const sigName = result.signaturePath?.split('/').pop() || result.signaturePath;
+      outputChannel.appendLine(`[${timestamp}] Signed (detached): ${result.filePath} → ${result.signaturePath}`);
+      vscode.window.showInformationMessage(`Detached signature saved to ${sigName}`);
+    }
 
-  // Display any warnings
-  for (const warning of result.warnings) {
-    outputChannel.appendLine(`  Warning: ${warning}`);
-    vscode.window.showWarningMessage(warning);
+    // Display any warnings
+    for (const warning of result.warnings) {
+      outputChannel.appendLine(`  Warning: ${warning}`);
+      vscode.window.showWarningMessage(warning);
+    }
+  } catch (err: unknown) {
+    const failure = describeSignFailure(err, new Date().toISOString());
+    outputChannel.appendLine(failure.logLine);
+    vscode.window.showErrorMessage(failure.notification);
   }
 }
