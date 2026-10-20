@@ -1,25 +1,36 @@
 import * as vscode from 'vscode';
-import Signing from '@metaverse-systems/the-seed/dist/Signing';
+import Signing, { DEFAULT_VALIDITY_DAYS, MAX_VALIDITY_DAYS } from '@metaverse-systems/the-seed/dist/Signing';
+import { chooseScope } from '../signing/chooseScope';
 import Config from '@metaverse-systems/the-seed/dist/Config';
 
 export async function createSigningCert(outputChannel: vscode.OutputChannel): Promise<void> {
   const config = new Config();
+  config.loadConfig();
   const signing = new Signing();
 
-  // Check if name is configured
-  if (!config.config.name) {
-    vscode.window.showErrorMessage("Set your name in config.json first. Run 'The Seed: Configure Project' to set name, email, and org.");
+  const scope = await chooseScope(signing, 'create the certificate');
+  if (!scope) {
     return;
   }
 
-  // Show validity days input
+  const authorName = config.config.scopes[scope]?.author?.name;
+  if (!authorName) {
+    const action = await vscode.window.showErrorMessage(
+      `Scope ${scope} has no author name.`,
+      'Edit Scope'
+    );
+    if (action === 'Edit Scope') {
+      await vscode.commands.executeCommand('the-seed.editScope');
+    }
+    return;
+  }
+
   const validityStr = await vscode.window.showInputBox({
     prompt: 'Certificate validity (days)',
-    value: '365',
+    value: String(DEFAULT_VALIDITY_DAYS),
     validateInput: (value) => {
-      const num = parseInt(value, 10);
-      if (isNaN(num) || num <= 0) {
-        return 'Must be a positive integer';
+      if (!/^[1-9][0-9]*$/.test(value) || parseInt(value, 10) > MAX_VALIDITY_DAYS) {
+        return `A whole number of days from 1 to ${MAX_VALIDITY_DAYS}`;
       }
       return null;
     },
@@ -31,7 +42,7 @@ export async function createSigningCert(outputChannel: vscode.OutputChannel): Pr
   const validityDays = parseInt(validityStr, 10);
 
   // Check for existing certificate
-  if (signing.hasCert()) {
+  if (signing.hasCert(scope)) {
     const overwrite = await vscode.window.showWarningMessage(
       'A signing certificate already exists. Overwrite?',
       'Overwrite',
@@ -42,7 +53,7 @@ export async function createSigningCert(outputChannel: vscode.OutputChannel): Pr
     }
   }
 
-  const certInfo = await signing.createCert({ validityDays });
+  const certInfo = await signing.createCert({ scope, validityDays });
   const timestamp = new Date().toISOString();
   outputChannel.appendLine(`[${timestamp}] Signing certificate created: ${certInfo.fingerprint}`);
   vscode.window.showInformationMessage(`Signing certificate created. Fingerprint: ${certInfo.fingerprint}`);

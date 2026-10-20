@@ -15,6 +15,12 @@ export async function askQuestions(questions: any[]): Promise<{ [key: string]: a
         prompt: question.message,
         value: question.default || '',
         placeHolder: question.message,
+        validateInput: typeof question.validate === 'function'
+          ? (value: string) => {
+              const result = question.validate(value);
+              return typeof result === 'string' ? result : undefined;
+            }
+          : undefined,
       });
     }
 

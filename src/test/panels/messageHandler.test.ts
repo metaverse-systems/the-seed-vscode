@@ -3,6 +3,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { handleMessage } from '../../panels/messageHandler';
 import Config from '@metaverse-systems/the-seed/dist/Config';
+import { validateScopeName } from '@metaverse-systems/the-seed/dist/Scopes';
+import { ScratchHome, createCertFor, useScratchHome, writeScopes } from '../helpers/scratchHome';
 
 suite('messageHandler', () => {
   test('unknown command responds with error', async () => {
@@ -588,5 +590,63 @@ suite('messageHandler', () => {
       );
       assert.ok(failMsg, 'Should have sent a failed progress message');
     });
+  });
+});
+
+// The cases below run against a scratch home directory, so the real
+// configuration is not read or written. A signing status payload is read as
+// { scopes: [{ scope, fingerprint?, ... }] }; an entry without a certificate
+// has no fingerprint and carries the text "no certificate" in one of its fields.
+suite('messageHandler scope validation and signing status', () => {
+  let home: ScratchHome;
+
+  setup(() => {
+    home = useScratchHome();
+  });
+
+  teardown(() => {
+    home.restore();
+  });
+
+  for (const name of ['', 'a b', 'a/b']) {
+    test(`addScope with ${JSON.stringify(name)} responds with the validation reason and changes nothing`, async () => {
+      writeScopes({ '@kept': 'Kept' });
+      const configPath = new Config().configPath;
+      const before = fs.readFileSync(configPath, 'utf8');
+      const reason = validateScopeName(name.startsWith('@') ? name : `@${name}`);
+      assert.ok(reason, 'the name is invalid');
+
+      const response = await handleMessage({
+        command: 'addScope',
+        requestId: 'invalid-name',
+        data: { scopeName: name, authorName: 'X', authorEmail: '', authorUrl: '' },
+      });
+
+      assert.ok(response, 'Should return a response');
+      assert.strictEqual(response!.type, 'error');
+      if (response!.type === 'error') {
+        assert.ok(response!.payload.message.includes(reason!), `"${response!.payload.message}" should carry "${reason}"`);
+      }
+      assert.strictEqual(fs.readFileSync(configPath, 'utf8'), before);
+    });
+  }
+
+  test('getSigningStatus with two scopes, one with a certificate, reports two entries', async () => {
+    writeScopes({ '@with': 'With Cert', '@without': 'No Cert' });
+    const fingerprint = await createCertFor('@with');
+
+    const response = await handleMessage({ command: 'getSigningStatus', requestId: 'status' });
+
+    assert.ok(response, 'Should return a response');
+    assert.strictEqual(response!.type, 'signingStatus');
+    const payload = response!.payload as unknown as { scopes: Array<Record<string, unknown>> };
+    assert.ok(Array.isArray(payload.scopes));
+    assert.strictEqual(payload.scopes.length, 2);
+    const withCert = payload.scopes.find((e) => e.scope === '@with');
+    const without = payload.scopes.find((e) => e.scope === '@without');
+    assert.ok(withCert && without);
+    assert.strictEqual(withCert!.fingerprint, fingerprint);
+    assert.ok(!without!.fingerprint);
+    assert.ok(Object.values(without!).includes('no certificate'));
   });
 });

@@ -264,12 +264,18 @@ export interface InstallerStatusPayload {
 
 // ── Signing Types ───────────────────────────────────────────
 
-export interface SigningStatusPayload {
-  hasCertificate: boolean;
+export interface SigningScopeStatus {
+  scope: string;
+  /** "active", "expired" or "no certificate" */
+  status: string;
   subject?: string;
   issuer?: string;
   fingerprint?: string;
   validFrom?: string;
   validTo?: string;
   isExpired?: boolean;
+}
+
+export interface SigningStatusPayload {
+  scopes: SigningScopeStatus[];
 }

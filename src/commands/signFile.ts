@@ -1,14 +1,19 @@
 import * as vscode from 'vscode';
 import Signing from '@metaverse-systems/the-seed/dist/Signing';
+import { chooseScope } from '../signing/chooseScope';
 import { describeSignFailure } from '../signing/signFailure';
 
 export async function signFile(outputChannel: vscode.OutputChannel, uri?: vscode.Uri): Promise<void> {
   const signing = new Signing();
 
-  // Check if cert exists
-  if (!signing.hasCert()) {
+  const scope = await chooseScope(signing, 'sign files');
+  if (!scope) {
+    return;
+  }
+
+  if (!signing.hasCert(scope)) {
     const action = await vscode.window.showErrorMessage(
-      'No signing certificate found.',
+      `No signing certificate for scope ${scope}.`,
       'Create Certificate'
     );
     if (action === 'Create Certificate') {
@@ -42,7 +47,7 @@ export async function signFile(outputChannel: vscode.OutputChannel, uri?: vscode
   }
 
   try {
-    const result = await signing.signFile(targetPath);
+    const result = await signing.signFile(targetPath, { scope });
     const fileName = targetPath.split('/').pop() || targetPath;
 
     const timestamp = new Date().toISOString();

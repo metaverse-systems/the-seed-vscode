@@ -18,6 +18,7 @@ import { buildNativeRecursiveCommand, buildWindowsRecursiveCommand } from "./com
 import { checkDependenciesCommand, installDependenciesCommand } from "./commands/dependencyCommands";
 import { packageProjectCommand } from "./commands/packageProject";
 import { generateInstallerCommand } from "./commands/generateInstaller";
+import { chooseScope } from "./signing/chooseScope";
 import { createSigningCert } from "./commands/createSigningCert";
 import { signFile } from "./commands/signFile";
 import { verifySignature } from "./commands/verifySignature";
@@ -287,6 +288,10 @@ export function activate(context: vscode.ExtensionContext) {
     "the-seed.importSigningCert",
     wrapCommand(async (oc) => {
       const signing = new Signing();
+      const scope = await chooseScope(signing, 'import the certificate');
+      if (!scope) {
+        return;
+      }
       const certResult = await vscode.window.showOpenDialog({
         canSelectFiles: true,
         canSelectMany: false,
@@ -305,7 +310,7 @@ export function activate(context: vscode.ExtensionContext) {
       if (!keyResult || keyResult.length === 0) return;
 
       // Check for existing cert
-      if (signing.hasCert()) {
+      if (signing.hasCert(scope)) {
         const overwrite = await vscode.window.showWarningMessage(
           'A signing certificate already exists. Overwrite?',
           'Overwrite',
@@ -315,7 +320,7 @@ export function activate(context: vscode.ExtensionContext) {
       }
 
       try {
-        const certInfo = await signing.importCert(certResult[0].fsPath, keyResult[0].fsPath);
+        const certInfo = await signing.importCert(certResult[0].fsPath, keyResult[0].fsPath, scope);
         vscode.window.showInformationMessage(
           `Certificate imported. Subject: ${signing._formatSubject(certInfo.subject)} | Fingerprint: ${certInfo.fingerprint}`
         );
@@ -345,7 +350,11 @@ export function activate(context: vscode.ExtensionContext) {
     "the-seed.signingCertInfo",
     wrapCommand(async (oc) => {
       const signing = new Signing();
-      const certInfo = signing.getCertInfo();
+      const scope = await chooseScope(signing, 'show the certificate');
+      if (!scope) {
+        return;
+      }
+      const certInfo = signing.getCertInfo(scope);
 
       if (!certInfo) {
         const action = await vscode.window.showInformationMessage(
@@ -373,9 +382,13 @@ export function activate(context: vscode.ExtensionContext) {
     "the-seed.exportSigningCert",
     wrapCommand(async (oc) => {
       const signing = new Signing();
+      const scope = await chooseScope(signing, 'export the certificate');
+      if (!scope) {
+        return;
+      }
 
-      if (!signing.hasCert()) {
-        vscode.window.showErrorMessage('No signing certificate found.');
+      if (!signing.hasCert(scope)) {
+        vscode.window.showErrorMessage(`No signing certificate for scope ${scope}.`);
         return;
       }
 
@@ -385,7 +398,7 @@ export function activate(context: vscode.ExtensionContext) {
       });
       if (!saveUri) return;
 
-      await signing.exportCert(saveUri.fsPath);
+      await signing.exportCert(saveUri.fsPath, scope);
       vscode.window.showInformationMessage(`Certificate exported to ${saveUri.fsPath}`);
     }, outputChannel)
   );

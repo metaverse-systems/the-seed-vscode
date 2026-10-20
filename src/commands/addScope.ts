@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { askQuestions } from '../askQuestions';
 import Config from '@metaverse-systems/the-seed/dist/Config';
-import Scopes from '@metaverse-systems/the-seed/dist/Scopes';
+import Scopes, { validateScopeName } from '@metaverse-systems/the-seed/dist/Scopes';
 import type { ScopeAnswersType } from '@metaverse-systems/the-seed/dist/types';
 
 export async function addScope(outputChannel: vscode.OutputChannel): Promise<void> {
@@ -21,6 +21,12 @@ export async function addScope(outputChannel: vscode.OutputChannel): Promise<voi
   if (scopeName && !scopeName.startsWith('@')) {
     scopeName = `@${scopeName}`;
     answers.scopeName = scopeName;
+  }
+
+  const invalid = validateScopeName(scopeName);
+  if (invalid !== null) {
+    vscode.window.showErrorMessage(invalid);
+    return;
   }
 
   // Check for duplicate scope
