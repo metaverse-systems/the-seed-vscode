@@ -18,7 +18,7 @@ export type WebviewToExtensionMessage =
   | { command: 'createResourcePak'; requestId: string; data: ResourcePakFormData }
   | { command: 'browseResourceFile'; requestId: string }
   | { command: 'addResource'; requestId: string; data: AddResourceData }
-  | { command: 'buildResourcePak'; requestId: string; data: BuildResourcePakData }
+  | { command: 'buildResourcePak'; requestId: string }
   | { command: 'checkDependencies'; requestId: string; data: { target: 'native' | 'windows' } }
   | { command: 'installDependencies'; requestId: string; data: { target: 'native' | 'windows' } }
   | { command: 'cancelInstallDependencies'; requestId: string }
@@ -51,17 +51,8 @@ export interface ResourcePakFormData {
 }
 
 export interface AddResourceData {
-  scope: string;
-  pakName: string;
   resourceName: string;
   filePath: string;
-  useDetectedPak: boolean;
-}
-
-export interface BuildResourcePakData {
-  scope: string;
-  pakName: string;
-  useDetectedPak: boolean;
 }
 
 // ── Extension → Webview ─────────────────────────────────────
@@ -75,7 +66,7 @@ export type ExtensionToWebviewMessage =
   | { type: 'scopeDeleted'; requestId: string; payload: ConfigPayload }
   | { type: 'templateCreated'; requestId: string; payload: TemplateCreatedPayload }
   | { type: 'templateExists'; requestId: string; payload: { projectPath: string } }
-  | { type: 'error'; requestId?: string; payload: { message: string } }
+  | { type: 'error'; requestId?: string; payload: { message: string; hint?: string } }
   | { type: 'buildStatus'; payload: BuildStatusPayload }
   | { type: 'buildStarted'; requestId: string }
   | { type: 'buildCancelled'; requestId: string }

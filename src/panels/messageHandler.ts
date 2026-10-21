@@ -8,6 +8,9 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { detectResourcePak } from '../utils/detectResourcePak';
+import { chooseProjectFolder, describeError } from '../utils/projectFolder';
+import { addResourceFile } from '../utils/addResourceFile';
+import { ProjectError } from '@metaverse-systems/the-seed/dist/ProjectError';
 import type {
   WebviewToExtensionMessage,
   ExtensionToWebviewMessage,
@@ -18,7 +21,6 @@ import type {
   TemplateCreatedPayload,
   BuildStatusPayload,
   AddResourceData,
-  BuildResourcePakData,
   ResourcePakFormData,
   DependencyStatusPayload,
   InstallProgressPayload,
@@ -107,6 +109,31 @@ function toScopeAnswers(data: ScopeFormData) {
     authorName: data.authorName,
     authorEmail: data.authorEmail,
     authorURL: data.authorUrl,
+  };
+}
+
+/** The resource pak project in the first workspace folder, if there is one. */
+function detectedPakDir(): string | undefined {
+  const folders = vscode.workspace.workspaceFolders;
+  if (!folders || folders.length === 0) {
+    return undefined;
+  }
+  return detectResourcePak(folders[0].uri.fsPath)?.packageDir;
+}
+
+function noPakProject(requestId: string): ExtensionToWebviewMessage {
+  return {
+    type: 'error',
+    requestId,
+    payload: { message: 'No resource pak project in the open folder.' },
+  };
+}
+
+function noFolderChosen(requestId: string): ExtensionToWebviewMessage {
+  return {
+    type: 'error',
+    requestId,
+    payload: { message: 'No folder was chosen; nothing was created.' },
   };
 }
 
@@ -221,37 +248,27 @@ export async function handleMessage(
         config.loadConfig();
         const { templateType, scopeName, templateName } = message.data;
 
-        // Check if a workspace folder is open
-        const workspaceFolders = vscode.workspace.workspaceFolders;
-        const hasWorkspace = workspaceFolders && workspaceFolders.length > 0;
-
-        // Determine target path based on workspace state
-        let projectPath: string;
-        if (hasWorkspace) {
-          // Create in the first workspace folder
-          projectPath = path.join(workspaceFolders[0].uri.fsPath, templateName);
-        } else {
-          // Use default prefix-based path
-          projectPath = path.join(
-            config.config.prefix,
-            'projects',
-            scopeName,
-            templateName
-          );
-        }
-
-        if (fs.existsSync(projectPath)) {
-          return {
-            type: 'templateExists',
-            requestId: message.requestId,
-            payload: { projectPath },
-          };
+        const hasWorkspace = (vscode.workspace.workspaceFolders?.length ?? 0) > 0;
+        const folder = await chooseProjectFolder();
+        if (!folder) {
+          return noFolderChosen(message.requestId);
         }
 
         const template = new Template(config);
         template.type = templateType;
-        fs.mkdirSync(path.dirname(projectPath), { recursive: true });
-        projectPath = template.createPackage(scopeName, templateName, path.dirname(projectPath));
+        let projectPath: string;
+        try {
+          projectPath = template.createPackage(scopeName, templateName, folder);
+        } catch (error) {
+          if (error instanceof ProjectError && error.code === 'target-exists') {
+            return {
+              type: 'templateExists',
+              requestId: message.requestId,
+              payload: { projectPath: path.join(folder, templateName) },
+            };
+          }
+          throw error;
+        }
 
         return {
           type: 'templateCreated',
@@ -368,11 +385,12 @@ export async function handleMessage(
         const rp = new ResourcePak(config);
         const { scopeName, pakName } = message.data;
         const scope = scopeName.startsWith('@') ? scopeName : `@${scopeName}`;
-        const scopeDir = path.join(config.config.prefix, 'projects', scope);
-        fs.mkdirSync(scopeDir, { recursive: true });
-        const packageDir = rp.createPackage(scope, pakName, scopeDir);
-        const workspaceFolders = vscode.workspace.workspaceFolders;
-        const hasWorkspace = workspaceFolders && workspaceFolders.length > 0;
+        const hasWorkspace = (vscode.workspace.workspaceFolders?.length ?? 0) > 0;
+        const folder = await chooseProjectFolder();
+        if (!folder) {
+          return noFolderChosen(message.requestId);
+        }
+        const packageDir = rp.createPackage(scope, pakName, folder);
         return {
           type: 'resourcePakCreated',
           requestId: message.requestId,
@@ -412,73 +430,22 @@ export async function handleMessage(
       case 'addResource': {
         const config = new Config();
         config.loadConfig();
-        const { scope, pakName, resourceName, filePath: srcFilePath, useDetectedPak } = message.data;
+        const { resourceName, filePath: srcFilePath } = message.data;
 
-        // Resolve package directory
-        let packageDir: string;
-        if (useDetectedPak) {
-          const workspaceFolders = vscode.workspace.workspaceFolders;
-          if (!workspaceFolders || workspaceFolders.length === 0) {
-            return {
-              type: 'error',
-              requestId: message.requestId,
-              payload: { message: 'No workspace folder open' },
-            };
-          }
-          packageDir = workspaceFolders[0].uri.fsPath;
-        } else {
-          packageDir = config.config.prefix + '/projects/' + scope + '/' + pakName;
+        const packageDir = detectedPakDir();
+        if (!packageDir) {
+          return noPakProject(message.requestId);
         }
 
-        // Validate source file exists
-        if (!fs.existsSync(srcFilePath)) {
-          return {
-            type: 'error',
-            requestId: message.requestId,
-            payload: { message: `File not found: ${srcFilePath}` },
-          };
-        }
-
-        // Read and check for duplicate resource name
-        const pkgPath = path.join(packageDir, 'package.json');
-        if (!fs.existsSync(pkgPath)) {
-          return {
-            type: 'error',
-            requestId: message.requestId,
-            payload: { message: `ResourcePak not found at ${packageDir}` },
-          };
-        }
-        const pkgData = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
-        if (pkgData.resources && pkgData.resources.find((r: { name: string }) => r.name === resourceName)) {
-          return {
-            type: 'error',
-            requestId: message.requestId,
-            payload: { message: `Resource '${resourceName}' already exists in this ResourcePak` },
-          };
-        }
-
-        // Copy file to pak dir if not already there
-        const basename = path.basename(srcFilePath);
-        const destPath = path.join(packageDir, basename);
-        if (srcFilePath !== destPath) {
-          fs.copyFileSync(srcFilePath, destPath);
-        }
-
-        // Add resource via domain library
-        const rp = new ResourcePak(config);
-        rp.addResource(resourceName, basename, packageDir);
-
-        // Re-read to get updated resource count and size
-        const updatedPkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
-        const addedResource = updatedPkg.resources.find((r: { name: string }) => r.name === resourceName);
+        const added = addResourceFile(new ResourcePak(config), packageDir, resourceName, srcFilePath);
         return {
           type: 'resourceAdded',
           requestId: message.requestId,
           payload: {
             resourceName,
-            fileName: basename,
-            size: addedResource?.size ?? 0,
-            totalResources: updatedPkg.resources.length,
+            fileName: path.basename(added.filename),
+            size: added.size,
+            totalResources: added.totalResources,
           },
         };
       }
@@ -486,39 +453,12 @@ export async function handleMessage(
       case 'buildResourcePak': {
         const config = new Config();
         config.loadConfig();
-        const { scope, pakName, useDetectedPak } = message.data;
 
-        // Resolve package directory
-        let packageDir: string;
-        if (useDetectedPak) {
-          const workspaceFolders = vscode.workspace.workspaceFolders;
-          if (!workspaceFolders || workspaceFolders.length === 0) {
-            return {
-              type: 'error',
-              requestId: message.requestId,
-              payload: { message: 'No workspace folder open' },
-            };
-          }
-          packageDir = workspaceFolders[0].uri.fsPath;
-        } else {
-          packageDir = config.config.prefix + '/projects/' + scope + '/' + pakName;
+        const packageDir = detectedPakDir();
+        if (!packageDir) {
+          return noPakProject(message.requestId);
         }
-
-        // Validate ResourcePak exists
         const pkgPath = path.join(packageDir, 'package.json');
-        if (!fs.existsSync(pkgPath)) {
-          if (pushMessage) {
-            pushMessage({
-              type: 'resourcePakBuildProgress',
-              payload: {
-                state: 'failed',
-                errorMessage: `ResourcePak not found at ${packageDir}`,
-                timestamp: new Date().toISOString(),
-              },
-            });
-          }
-          return null;
-        }
 
         const pkgData = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
         if (!pkgData.resources || pkgData.resources.length === 0) {
@@ -533,24 +473,6 @@ export async function handleMessage(
             });
           }
           return null;
-        }
-
-        // Validate all resource files exist
-        for (const r of pkgData.resources) {
-          const resPath = path.join(packageDir, r.filename);
-          if (!fs.existsSync(resPath)) {
-            if (pushMessage) {
-              pushMessage({
-                type: 'resourcePakBuildProgress',
-                payload: {
-                  state: 'failed',
-                  errorMessage: `Resource file missing: ${r.filename}`,
-                  timestamp: new Date().toISOString(),
-                },
-              });
-            }
-            return null;
-          }
         }
 
         // Send progress: building
@@ -568,7 +490,24 @@ export async function handleMessage(
 
         // Perform build
         const rp = new ResourcePak(config);
-        rp.build(packageDir);
+        try {
+          rp.build(packageDir);
+        } catch (error) {
+          if (error instanceof ProjectError) {
+            if (pushMessage) {
+              pushMessage({
+                type: 'resourcePakBuildProgress',
+                payload: {
+                  state: 'failed',
+                  errorMessage: describeError(error),
+                  timestamp: new Date().toISOString(),
+                },
+              });
+            }
+            return null;
+          }
+          throw error;
+        }
 
         // Determine output file
         const [, name] = pkgData.name.split('/');
@@ -908,6 +847,13 @@ export async function handleMessage(
         };
     }
   } catch (err: unknown) {
+    if (err instanceof ProjectError) {
+      return {
+        type: 'error',
+        requestId: (message as { requestId?: string }).requestId,
+        payload: err.hint ? { message: err.message, hint: err.hint } : { message: err.message },
+      };
+    }
     const errorMessage =
       err instanceof Error ? err.message : 'An unexpected error occurred';
 

@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
-import * as fs from 'fs';
-import * as path from 'path';
 import { askQuestions } from '../askQuestions';
 import Config from '@metaverse-systems/the-seed/dist/Config';
 import Template from '@metaverse-systems/the-seed/dist/Template';
+import { ProjectError } from '@metaverse-systems/the-seed/dist/ProjectError';
+import { chooseProjectFolder, describeError } from '../utils/projectFolder';
 
 export async function scaffoldTemplate(
   templateType: 'component' | 'system' | 'program',
@@ -33,34 +33,23 @@ export async function scaffoldTemplate(
     return;
   }
 
-  // Check if a workspace folder is open
-  const workspaceFolders = vscode.workspace.workspaceFolders;
-  const hasWorkspace = workspaceFolders && workspaceFolders.length > 0;
-
-  // Determine target path based on workspace state
-  let projectPath: string;
-  if (hasWorkspace) {
-    // Create in the first workspace folder
-    projectPath = path.join(workspaceFolders[0].uri.fsPath, templateName);
-  } else {
-    // Use default prefix-based path
-    projectPath = path.join(
-      config.config.prefix,
-      'projects',
-      scopeName,
-      templateName
-    );
-  }
-
-  if (fs.existsSync(projectPath)) {
-    vscode.window.showWarningMessage(
-      `Directory already exists: ${projectPath}`
-    );
+  const hasWorkspace = (vscode.workspace.workspaceFolders?.length ?? 0) > 0;
+  const folder = await chooseProjectFolder();
+  if (!folder) {
     return;
   }
 
-  fs.mkdirSync(path.dirname(projectPath), { recursive: true });
-  projectPath = template.createPackage(scopeName, templateName, path.dirname(projectPath));
+  let projectPath: string;
+  try {
+    projectPath = template.createPackage(scopeName, templateName, folder);
+  } catch (error) {
+    if (error instanceof ProjectError) {
+      outputChannel.appendLine(`[ERROR] ${describeError(error)}`);
+      vscode.window.showErrorMessage(describeError(error));
+      return;
+    }
+    throw error;
+  }
 
   const label = templateType.charAt(0).toUpperCase() + templateType.slice(1);
   outputChannel.appendLine(

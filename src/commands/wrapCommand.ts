@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { describeError } from '../utils/projectFolder';
 
 export function wrapCommand(
   handler: (outputChannel: vscode.OutputChannel) => Promise<void>,
@@ -15,7 +16,7 @@ export function wrapCommand(
         outputChannel.appendLine(error.stack);
       }
       outputChannel.show(true);
-      vscode.window.showErrorMessage(`The Seed: ${message}`);
+      vscode.window.showErrorMessage(`The Seed: ${describeError(error)}`);
     }
   };
 }

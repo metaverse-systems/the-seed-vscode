@@ -12,14 +12,8 @@ interface ResourcePakSectionProps {
   success: string | null;
   buildProgress: ResourcePakBuildProgressPayload | null;
   onBrowseResourceFile: () => void;
-  onAddResource: (
-    scope: string,
-    pakName: string,
-    resourceName: string,
-    filePath: string,
-    useDetectedPak: boolean
-  ) => void;
-  onBuildResourcePak: (scope: string, pakName: string, useDetectedPak: boolean) => void;
+  onAddResource: (resourceName: string, filePath: string) => void;
+  onBuildResourcePak: () => void;
   onDismissError: () => void;
   onDismissSuccess: () => void;
   browsedFilePath: string | null;
@@ -45,8 +39,6 @@ export const ResourcePakSection: React.FC<ResourcePakSectionProps> = ({
   const [activeAction, setActiveAction] = useState<ActiveAction>(null);
   const [resourceName, setResourceName] = useState('');
   const [resourceNameError, setResourceNameError] = useState<string | null>(null);
-
-  const namePattern = /^[a-zA-Z0-9][a-zA-Z0-9-]*$/;
 
   // Reset to buttons view on success
   useEffect(() => {
@@ -76,15 +68,8 @@ export const ResourcePakSection: React.FC<ResourcePakSectionProps> = ({
       setResourceNameError('Resource name is required');
       return;
     }
-    if (!namePattern.test(resourceName)) {
-      setResourceNameError('Name must start with a letter or number and contain only letters, numbers, and hyphens');
-      return;
-    }
     setResourceNameError(null);
-
-    const scope = status!.scope ?? '';
-    const pakName = status!.displayName ?? '';
-    onAddResource(scope, pakName, resourceName, browsedFilePath!, true);
+    onAddResource(resourceName, browsedFilePath!);
   };
 
   const handleAddResourceCancel = () => {
@@ -97,9 +82,7 @@ export const ResourcePakSection: React.FC<ResourcePakSectionProps> = ({
   const handleBuild = () => {
     onDismissSuccess();
     onDismissError();
-    const scope = status!.scope ?? '';
-    const pakName = status!.displayName ?? '';
-    onBuildResourcePak(scope, pakName, true);
+    onBuildResourcePak();
   };
 
   const isBuildRunning = buildProgress?.state === 'building';
@@ -227,7 +210,7 @@ export const ResourcePakSection: React.FC<ResourcePakSectionProps> = ({
                   onInput={(e: Event) => {
                     const el = e.target as HTMLInputElement;
                     setResourceName(el.value);
-                    if (el.value && namePattern.test(el.value)) {
+                    if (el.value.trim()) {
                       setResourceNameError(null);
                     }
                   }}

@@ -1,10 +1,94 @@
+// Interface choices where the contract leaves them open:
+// - the folder-based cases post the messages without the fields the panel no
+//   longer sends (scope, pakName, useDetectedPak on addResource; any data on
+//   buildResourcePak), through post(), which casts them to the message type so
+//   this file compiles before the types change;
+// - an error response is read as { type: 'error', payload: { message, hint? } }
+//   and a refusal by the tool is compared with the ProjectError the library
+//   throws for the same call (message and hint equal);
+// - a cancelled folder chooser is checked only by "not created" and an
+//   untouched scratch folder and prefix, since the response is not fixed;
+// - the open folder, the folder chooser and the prefix are scratch: the
+//   workspace folders and showOpenDialog are stubbed and the home is a
+//   scratch directory.
 import * as assert from 'assert';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as vscode from 'vscode';
+import * as sinon from 'sinon';
 import { handleMessage } from '../../panels/messageHandler';
 import Config from '@metaverse-systems/the-seed/dist/Config';
+import Template from '@metaverse-systems/the-seed/dist/Template';
+import ResourcePak from '@metaverse-systems/the-seed/dist/ResourcePak';
 import { validateScopeName } from '@metaverse-systems/the-seed/dist/Scopes';
 import { ScratchHome, createCertFor, useScratchHome, writeScopes } from '../helpers/scratchHome';
+import { makeScratchDir, stubWorkspaceFolders, useScratchPrefix } from '../helpers/workspaceStub';
+
+type Message = Parameters<typeof handleMessage>[0];
+type Push = NonNullable<Parameters<typeof handleMessage>[1]>;
+interface LooseResponse {
+  type: string;
+  payload: { message: string; hint?: string; projectPath: string; templateType: string; openFolder: boolean; packageDir: string };
+}
+
+const SCOPE = '@acme';
+
+let fixtureHome: ScratchHome;
+let prefix: string;
+let fixtureDirs: string[];
+let restoreFolders: () => void;
+
+async function post(message: object, push?: Push): Promise<LooseResponse | null> {
+  const response = await handleMessage(message as unknown as Message, push);
+  return response as unknown as LooseResponse | null;
+}
+
+function scratch(label: string): string {
+  const dir = makeScratchDir(label);
+  fixtureDirs.push(dir);
+  return dir;
+}
+
+function stubChooser(folder: string): sinon.SinonStub {
+  return sinon.stub(vscode.window, 'showOpenDialog').resolves([vscode.Uri.file(folder)]);
+}
+
+function loadConfig(): Config {
+  const config = new Config();
+  config.loadConfig();
+  return config;
+}
+
+/** What the library throws for a refused call: the text the panel must pass on. */
+function refusal(call: () => unknown): { message: string; hint?: string } {
+  try {
+    call();
+  } catch (caught) {
+    const error = caught as Error & { hint?: string };
+    return { message: error.message, hint: error.hint };
+  }
+  assert.fail('the library was expected to refuse the call');
+}
+
+/** Registers a scratch home, prefix, open folders (none) and cleanup for the enclosing suite. */
+function useFixture(): void {
+  setup(() => {
+    fixtureHome = useScratchHome();
+    writeScopes({ [SCOPE]: 'Ada Lovelace' });
+    prefix = useScratchPrefix();
+    fixtureDirs = [prefix];
+    restoreFolders = stubWorkspaceFolders([]);
+  });
+
+  teardown(() => {
+    sinon.restore();
+    restoreFolders();
+    for (const dir of fixtureDirs) {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+    fixtureHome.restore();
+  });
+}
 
 suite('messageHandler', () => {
   test('unknown command responds with error', async () => {
@@ -243,205 +327,106 @@ suite('messageHandler', () => {
   });
 
   suite('createTemplate', () => {
-    // Helper: ensure a scope exists for template tests
-    async function ensureTestScope(scopeName: string) {
-      await handleMessage({
-        command: 'addScope',
-        requestId: 'template-setup',
-        data: {
-          scopeName,
-          authorName: 'Template Tester',
-          authorEmail: 'template@test.com',
-          authorUrl: 'https://template.test',
-        },
+    useFixture();
+
+    function create(templateType: 'component' | 'system' | 'program', templateName: string, scopeName = SCOPE) {
+      return post({
+        command: 'createTemplate',
+        requestId: `create-${templateType}`,
+        data: { templateType, scopeName, templateName },
       });
     }
 
-    // Helper: clean up created template directory
-    function cleanupTemplateDir(projectPath: string) {
-      if (fs.existsSync(projectPath)) {
-        fs.rmSync(projectPath, { recursive: true, force: true });
-      }
+    for (const kind of ['component', 'system', 'program'] as const) {
+      test(`${kind}: no open folder asks for a folder and creates the project there`, async () => {
+        const chosen = scratch('chosen');
+        const dialog = stubChooser(chosen);
+
+        const response = await create(kind, 'widget');
+
+        assert.strictEqual(response?.type, 'templateCreated');
+        assert.ok(dialog.calledOnce, 'the folder chooser must be asked');
+        const projectPath = path.join(chosen, 'widget');
+        assert.strictEqual(response!.payload.projectPath, projectPath);
+        assert.strictEqual(response!.payload.templateType, kind);
+        assert.strictEqual(response!.payload.openFolder, true);
+        assert.ok(fs.existsSync(projectPath), 'project directory should exist on disk');
+        assert.strictEqual(fs.existsSync(path.join(projectPath, 'widget.pc.in')), kind !== 'program');
+        assert.deepStrictEqual(fs.readdirSync(prefix), [], 'nothing may be written under the prefix');
+      });
     }
 
-    test('successful component creation returns templateCreated', async () => {
-      const uniqueScope = `@template-comp-${Date.now()}`;
-      const templateName = `test-comp-${Date.now()}`;
-      await ensureTestScope(uniqueScope);
+    test('an open folder is used without asking and is not reopened', async () => {
+      const workspace = scratch('workspace');
+      restoreFolders();
+      restoreFolders = stubWorkspaceFolders([workspace]);
+      const dialog = stubChooser(scratch('unused'));
 
-      const config = new Config();
-      config.loadConfig();
-      const projectPath = path.join(
-        config.config.prefix,
-        'projects',
-        uniqueScope,
-        templateName
-      );
+      const response = await create('component', 'widget');
 
-      try {
-        const response = await handleMessage({
-          command: 'createTemplate',
-          requestId: 'test-create-comp',
-          data: {
-            templateType: 'component',
-            scopeName: uniqueScope,
-            templateName,
-          },
-        });
-
-        assert.ok(response, 'Should return a response');
-        assert.strictEqual(response!.type, 'templateCreated');
-        if (response!.type === 'templateCreated') {
-          assert.strictEqual(response!.requestId, 'test-create-comp');
-          assert.strictEqual(response!.payload.projectPath, projectPath);
-          assert.strictEqual(response!.payload.templateType, 'component');
-          assert.ok(
-            fs.existsSync(projectPath),
-            'Project directory should exist on disk'
-          );
-        }
-      } finally {
-        cleanupTemplateDir(projectPath);
-        await handleMessage({
-          command: 'deleteScope',
-          requestId: 'cleanup',
-          data: { scopeName: uniqueScope },
-        });
-      }
+      assert.strictEqual(response?.type, 'templateCreated');
+      assert.ok(dialog.notCalled);
+      assert.strictEqual(response!.payload.projectPath, path.join(workspace, 'widget'));
+      assert.strictEqual(response!.payload.openFolder, false);
+      assert.deepStrictEqual(fs.readdirSync(prefix), []);
     });
 
-    test('existing directory returns templateExists', async () => {
-      const uniqueScope = `@template-exists-${Date.now()}`;
-      const templateName = `test-exists-${Date.now()}`;
-      await ensureTestScope(uniqueScope);
+    test('cancelling the folder chooser creates nothing', async () => {
+      const chosen = scratch('chosen');
+      sinon.stub(vscode.window, 'showOpenDialog').resolves(undefined);
 
-      const config = new Config();
-      config.loadConfig();
-      const projectPath = path.join(
-        config.config.prefix,
-        'projects',
-        uniqueScope,
-        templateName
-      );
+      const response = await create('system', 'widget');
 
-      try {
-        // Create the directory first
-        fs.mkdirSync(projectPath, { recursive: true });
-
-        const response = await handleMessage({
-          command: 'createTemplate',
-          requestId: 'test-exists',
-          data: {
-            templateType: 'component',
-            scopeName: uniqueScope,
-            templateName,
-          },
-        });
-
-        assert.ok(response, 'Should return a response');
-        assert.strictEqual(response!.type, 'templateExists');
-        if (response!.type === 'templateExists') {
-          assert.strictEqual(response!.requestId, 'test-exists');
-          assert.strictEqual(response!.payload.projectPath, projectPath);
-        }
-      } finally {
-        cleanupTemplateDir(projectPath);
-        await handleMessage({
-          command: 'deleteScope',
-          requestId: 'cleanup',
-          data: { scopeName: uniqueScope },
-        });
-      }
+      assert.notStrictEqual(response?.type, 'templateCreated');
+      assert.deepStrictEqual(fs.readdirSync(chosen), []);
+      assert.deepStrictEqual(fs.readdirSync(prefix), []);
     });
 
-    test('system type scaffolds correctly', async () => {
-      const uniqueScope = `@template-sys-${Date.now()}`;
-      const templateName = `test-sys-${Date.now()}`;
-      await ensureTestScope(uniqueScope);
+    test('existing directory returns templateExists and keeps its files', async () => {
+      const workspace = scratch('workspace');
+      fs.mkdirSync(path.join(workspace, 'widget'));
+      fs.writeFileSync(path.join(workspace, 'widget', 'mine.txt'), 'mine');
+      restoreFolders();
+      restoreFolders = stubWorkspaceFolders([workspace]);
 
-      const config = new Config();
-      config.loadConfig();
-      const projectPath = path.join(
-        config.config.prefix,
-        'projects',
-        uniqueScope,
-        templateName
-      );
+      const response = await create('component', 'widget');
 
-      try {
-        const response = await handleMessage({
-          command: 'createTemplate',
-          requestId: 'test-create-sys',
-          data: {
-            templateType: 'system',
-            scopeName: uniqueScope,
-            templateName,
-          },
-        });
-
-        assert.ok(response, 'Should return a response');
-        assert.strictEqual(response!.type, 'templateCreated');
-        if (response!.type === 'templateCreated') {
-          assert.strictEqual(response!.payload.templateType, 'system');
-          // System templates should include .pc.in
-          assert.ok(
-            fs.existsSync(path.join(projectPath, `${templateName}.pc.in`)),
-            'System template should have .pc.in file'
-          );
-        }
-      } finally {
-        cleanupTemplateDir(projectPath);
-        await handleMessage({
-          command: 'deleteScope',
-          requestId: 'cleanup',
-          data: { scopeName: uniqueScope },
-        });
-      }
+      assert.strictEqual(response?.type, 'templateExists');
+      assert.strictEqual(response!.payload.projectPath, path.join(workspace, 'widget'));
+      assert.deepStrictEqual(fs.readdirSync(path.join(workspace, 'widget')), ['mine.txt']);
+      assert.strictEqual(fs.readFileSync(path.join(workspace, 'widget', 'mine.txt'), 'utf-8'), 'mine');
     });
 
-    test('program type scaffolds without .pc.in', async () => {
-      const uniqueScope = `@template-prog-${Date.now()}`;
-      const templateName = `test-prog-${Date.now()}`;
-      await ensureTestScope(uniqueScope);
+    test('an invalid name gives an error with the tool\'s message and hint', async () => {
+      const chosen = scratch('chosen');
+      stubChooser(chosen);
 
-      const config = new Config();
-      config.loadConfig();
-      const projectPath = path.join(
-        config.config.prefix,
-        'projects',
-        uniqueScope,
-        templateName
-      );
+      const response = await create('component', '3d.thing');
 
-      try {
-        const response = await handleMessage({
-          command: 'createTemplate',
-          requestId: 'test-create-prog',
-          data: {
-            templateType: 'program',
-            scopeName: uniqueScope,
-            templateName,
-          },
-        });
+      assert.strictEqual(response?.type, 'error');
+      const template = new Template(loadConfig());
+      template.type = 'component';
+      const expected = refusal(() => template.createPackage(SCOPE, '3d.thing', chosen));
+      assert.strictEqual(response!.payload.message, expected.message);
+      assert.strictEqual(response!.payload.hint, expected.hint);
+      assert.deepStrictEqual(fs.readdirSync(chosen), []);
+    });
 
-        assert.ok(response, 'Should return a response');
-        assert.strictEqual(response!.type, 'templateCreated');
-        if (response!.type === 'templateCreated') {
-          assert.strictEqual(response!.payload.templateType, 'program');
-          // Program templates should NOT have .pc.in
-          assert.ok(
-            !fs.existsSync(path.join(projectPath, `${templateName}.pc.in`)),
-            'Program template should not have .pc.in file'
-          );
-        }
-      } finally {
-        cleanupTemplateDir(projectPath);
-        await handleMessage({
-          command: 'deleteScope',
-          requestId: 'cleanup',
-          data: { scopeName: uniqueScope },
-        });
-      }
+    test('an author without a name gives an error with the tool\'s message and hint', async () => {
+      writeScopes({ [SCOPE]: 'Ada Lovelace', '@anon': '' });
+      const chosen = scratch('chosen');
+      stubChooser(chosen);
+
+      const response = await create('program', 'widget', '@anon');
+
+      assert.strictEqual(response?.type, 'error');
+      const template = new Template(loadConfig());
+      template.type = 'program';
+      const expected = refusal(() => template.createPackage('@anon', 'widget', chosen));
+      assert.ok(expected.hint, 'the tool gives a hint for a missing author name');
+      assert.strictEqual(response!.payload.message, expected.message);
+      assert.strictEqual(response!.payload.hint, expected.hint);
+      assert.deepStrictEqual(fs.readdirSync(chosen), []);
     });
   });
 
@@ -491,6 +476,8 @@ suite('messageHandler', () => {
   });
 
   suite('ResourcePak Messages', () => {
+    useFixture();
+
     test('getResourcePakStatus responds with resourcePakStatus', async () => {
       const response = await handleMessage({
         command: 'getResourcePakStatus',
@@ -504,91 +491,207 @@ suite('messageHandler', () => {
       }
     });
 
-    test('createResourcePak responds with resourcePakCreated', async () => {
-      const uniqueScope = `@rpak-create-${Date.now()}`;
-      // First create the scope
-      await handleMessage({
-        command: 'addScope',
-        requestId: 'rpak-setup',
-        data: {
-          scopeName: uniqueScope,
-          authorName: 'RPak Tester',
-          authorEmail: 'rpak@test.com',
-          authorUrl: '',
-        },
-      });
+    test('createResourcePak with no open folder asks for a folder and creates the pak there', async () => {
+      const chosen = scratch('chosen');
+      const dialog = stubChooser(chosen);
 
-      const pakName = `test-pak-${Date.now()}`;
-      const response = await handleMessage({
+      const response = await post({
         command: 'createResourcePak',
-        requestId: 'test-rpak-create',
-        data: { scopeName: uniqueScope, pakName },
+        requestId: 'rpak-create',
+        data: { scopeName: SCOPE, pakName: 'assets' },
       });
 
-      assert.ok(response, 'Should return a response');
-      assert.strictEqual(response!.type, 'resourcePakCreated');
-      if (response!.type === 'resourcePakCreated') {
-        assert.strictEqual(response!.requestId, 'test-rpak-create');
-        assert.strictEqual(response!.payload.scope, uniqueScope);
-        assert.strictEqual(response!.payload.pakName, pakName);
-        assert.ok(response!.payload.packageDir, 'Should have packageDir');
-        assert.ok(
-          fs.existsSync(response!.payload.packageDir),
-          'Package directory should exist on disk'
-        );
-      }
-
-      // Cleanup
-      if (response!.type === 'resourcePakCreated') {
-        fs.rmSync(response!.payload.packageDir, { recursive: true, force: true });
-      }
-      await handleMessage({
-        command: 'deleteScope',
-        requestId: 'cleanup',
-        data: { scopeName: uniqueScope },
-      });
+      assert.ok(response && response.type === 'resourcePakCreated', 'expected resourcePakCreated');
+      assert.ok(dialog.calledOnce);
+      assert.strictEqual(response!.payload.packageDir, path.join(chosen, 'assets'));
+      assert.ok(fs.existsSync(path.join(chosen, 'assets', 'package.json')));
+      assert.deepStrictEqual(fs.readdirSync(prefix), []);
     });
 
-    test('addResource with missing file responds with error', async () => {
-      const response = await handleMessage({
-        command: 'addResource',
-        requestId: 'test-add-missing',
-        data: {
-          scope: '@nonexistent',
-          pakName: 'nopak',
-          resourceName: 'res1',
-          filePath: '/tmp/nonexistent-file-' + Date.now() + '.txt',
-          useDetectedPak: false,
-        },
+    test('createResourcePak with the chooser cancelled creates nothing', async () => {
+      const chosen = scratch('chosen');
+      sinon.stub(vscode.window, 'showOpenDialog').resolves(undefined);
+
+      const response = await post({
+        command: 'createResourcePak',
+        requestId: 'rpak-cancel',
+        data: { scopeName: SCOPE, pakName: 'assets' },
       });
-      assert.ok(response, 'Should return a response');
-      assert.strictEqual(response!.type, 'error');
-      if (response!.type === 'error') {
+
+      assert.notStrictEqual(response?.type, 'resourcePakCreated');
+      assert.deepStrictEqual(fs.readdirSync(chosen), []);
+      assert.deepStrictEqual(fs.readdirSync(prefix), []);
+    });
+
+    test('createResourcePak with an existing target gives the tool\'s message and hint', async () => {
+      const workspace = scratch('workspace');
+      fs.mkdirSync(path.join(workspace, 'assets'));
+      fs.writeFileSync(path.join(workspace, 'assets', 'mine.txt'), 'mine');
+      restoreFolders();
+      restoreFolders = stubWorkspaceFolders([workspace]);
+
+      const response = await post({
+        command: 'createResourcePak',
+        requestId: 'rpak-exists',
+        data: { scopeName: SCOPE, pakName: 'assets' },
+      });
+
+      assert.strictEqual(response?.type, 'error');
+      const expected = refusal(() => new ResourcePak(loadConfig()).createPackage(SCOPE, 'assets', workspace));
+      assert.strictEqual(response!.payload.message, expected.message);
+      assert.strictEqual(response!.payload.hint, expected.hint);
+      assert.strictEqual(fs.readFileSync(path.join(workspace, 'assets', 'mine.txt'), 'utf-8'), 'mine');
+    });
+
+    test('createResourcePak with an invalid name gives the tool\'s message and hint', async () => {
+      const chosen = scratch('chosen');
+      stubChooser(chosen);
+
+      const response = await post({
+        command: 'createResourcePak',
+        requestId: 'rpak-invalid',
+        data: { scopeName: SCOPE, pakName: '3d.thing' },
+      });
+
+      assert.strictEqual(response?.type, 'error');
+      const expected = refusal(() => new ResourcePak(loadConfig()).createPackage(SCOPE, '3d.thing', chosen));
+      assert.strictEqual(response!.payload.message, expected.message);
+      assert.strictEqual(response!.payload.hint, expected.hint);
+      assert.deepStrictEqual(fs.readdirSync(chosen), []);
+    });
+
+    suite('with a pak project in the open folder', () => {
+      let pak: string;
+      let sources: string;
+
+      setup(() => {
+        const workspace = scratch('workspace');
+        pak = new ResourcePak(loadConfig()).createPackage(SCOPE, 'assets', workspace);
+        sources = scratch('sources');
+        restoreFolders();
+        restoreFolders = stubWorkspaceFolders([pak]);
+      });
+
+      function source(name: string, text: string): string {
+        const file = path.join(sources, name);
+        fs.writeFileSync(file, text);
+        return file;
+      }
+
+      function resourceNames(): string[] {
+        const project = JSON.parse(fs.readFileSync(path.join(pak, 'package.json'), 'utf-8')) as { resources: Array<{ name: string }> };
+        return project.resources.map((r) => r.name);
+      }
+
+      test('addResource with { resourceName, filePath } copies the file in and records it', async () => {
+        const response = await post({
+          command: 'addResource',
+          requestId: 'add-ok',
+          data: { resourceName: 'any name at all', filePath: source('tex.png', 'texture') },
+        });
+
+        assert.strictEqual(response?.type, 'resourceAdded');
+        assert.deepStrictEqual(resourceNames(), ['any name at all']);
+        assert.strictEqual(fs.readFileSync(path.join(pak, 'tex.png'), 'utf-8'), 'texture');
+      });
+
+      test('addResource of a duplicate refuses before copying any file', async () => {
+        await post({
+          command: 'addResource',
+          requestId: 'add-first',
+          data: { resourceName: 'tex', filePath: source('tex.png', 'texture') },
+        });
+        const before = fs.readdirSync(pak).sort();
+
+        const response = await post({
+          command: 'addResource',
+          requestId: 'add-dup',
+          data: { resourceName: 'tex', filePath: source('other.png', 'other') },
+        });
+
+        const expected = refusal(() => new ResourcePak(loadConfig()).addResource('tex', 'tex.png', pak));
+        assert.strictEqual(response?.type, 'error');
+        assert.strictEqual(response!.payload.message, expected.message);
+        assert.strictEqual(response!.payload.hint, expected.hint);
+        assert.deepStrictEqual(fs.readdirSync(pak).sort(), before, 'no file may be copied in');
+        assert.deepStrictEqual(resourceNames(), ['tex']);
+      });
+
+      test('addResource never overwrites a different file of the same base name', async () => {
+        await post({
+          command: 'addResource',
+          requestId: 'add-first',
+          data: { resourceName: 'first', filePath: source('data.bin', 'original') },
+        });
+        const elsewhere = path.join(scratch('elsewhere'), 'data.bin');
+        fs.writeFileSync(elsewhere, 'different');
+
+        const response = await post({
+          command: 'addResource',
+          requestId: 'add-clash',
+          data: { resourceName: 'second', filePath: elsewhere },
+        });
+
+        assert.strictEqual(response?.type, 'error');
+        assert.strictEqual(fs.readFileSync(path.join(pak, 'data.bin'), 'utf-8'), 'original');
+        assert.deepStrictEqual(resourceNames(), ['first']);
+      });
+
+      test('addResource with a missing file responds with error', async () => {
+        const response = await post({
+          command: 'addResource',
+          requestId: 'add-missing',
+          data: { resourceName: 'res1', filePath: path.join(sources, 'nonexistent.txt') },
+        });
+        assert.strictEqual(response?.type, 'error');
         assert.ok(response!.payload.message.includes('not found'), 'Error should mention file not found');
-      }
+        assert.deepStrictEqual(resourceNames(), []);
+      });
+
+      test('buildResourcePak without data builds the detected pak', async () => {
+        await post({
+          command: 'addResource',
+          requestId: 'add-first',
+          data: { resourceName: 'tex', filePath: source('tex.png', 'texture') },
+        });
+        const pushed: Array<{ type: string; payload: { state?: string } }> = [];
+
+        const response = await post(
+          { command: 'buildResourcePak', requestId: 'build-ok' },
+          (msg) => pushed.push(msg as unknown as { type: string; payload: { state?: string } })
+        );
+
+        assert.strictEqual(response?.type, 'resourcePakBuilt');
+        assert.ok(fs.existsSync(path.join(pak, 'assets.pak')), 'the pak must be written');
+        assert.ok(pushed.some((m) => m.type === 'resourcePakBuildProgress' && m.payload.state === 'completed'));
+      });
     });
 
-    test('buildResourcePak with missing pak sends failed progress', async () => {
-      const pushMessages: any[] = [];
-      const response = await handleMessage(
-        {
-          command: 'buildResourcePak',
-          requestId: 'test-build-missing',
-          data: {
-            scope: '@nonexistent',
-            pakName: 'nopak',
-            useDetectedPak: false,
-          },
-        },
-        (msg) => pushMessages.push(msg)
-      );
-      // Should return null and send failed progress
-      assert.strictEqual(response, null);
-      assert.ok(pushMessages.length > 0, 'Should have sent push messages');
-      const failMsg = pushMessages.find(
-        (m) => m.type === 'resourcePakBuildProgress' && m.payload.state === 'failed'
-      );
-      assert.ok(failMsg, 'Should have sent a failed progress message');
+    test('addResource and buildResourcePak with no pak project in the open folder give an error', async () => {
+      const workspace = scratch('workspace');
+      restoreFolders();
+      restoreFolders = stubWorkspaceFolders([workspace]);
+      const file = path.join(scratch('sources'), 'a.txt');
+      fs.writeFileSync(file, 'a');
+
+      const added = await post({
+        command: 'addResource',
+        requestId: 'add-none',
+        data: { resourceName: 'a', filePath: file },
+      });
+      const built = await post({ command: 'buildResourcePak', requestId: 'build-none' });
+
+      for (const response of [added, built]) {
+        assert.strictEqual(response?.type, 'error');
+        assert.strictEqual(response!.payload.message, 'No resource pak project in the open folder.');
+      }
+      assert.deepStrictEqual(fs.readdirSync(workspace), []);
+    });
+
+    test('buildResourcePak with no open folder gives an error', async () => {
+      const response = await post({ command: 'buildResourcePak', requestId: 'build-no-folder' });
+      assert.strictEqual(response?.type, 'error');
+      assert.strictEqual(response!.payload.message, 'No resource pak project in the open folder.');
     });
   });
 });
