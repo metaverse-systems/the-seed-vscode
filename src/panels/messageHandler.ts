@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import Config from '@metaverse-systems/the-seed/dist/Config';
-import Scopes from '@metaverse-systems/the-seed/dist/Scopes';
+import Scopes, { validateScopeName } from '@metaverse-systems/the-seed/dist/Scopes';
 import Template from '@metaverse-systems/the-seed/dist/Template';
 import ResourcePak from '@metaverse-systems/the-seed/dist/ResourcePak';
 import SigningModule from '@metaverse-systems/the-seed/dist/Signing';
@@ -25,6 +25,7 @@ import type {
   InstallProgressPayload,
   PackageStatusPayload,
   SigningStatusPayload,
+  SigningScopeStatus,
 } from '../types/messages';
 import { getActiveBuild, cancelActiveBuild } from '../commands/buildNative';
 import { cancelActiveRecursiveBuild } from '../commands/buildNativeRecursive';
@@ -155,6 +156,10 @@ export async function handleMessage(
         const scopeName = message.data.scopeName.startsWith('@')
           ? message.data.scopeName
           : `@${message.data.scopeName}`;
+        const invalid = validateScopeName(scopeName);
+        if (invalid !== null) {
+          return { type: 'error', payload: { message: invalid } };
+        }
         const exists = config.config.scopes[scopeName] !== undefined;
         if (exists) {
           return {
@@ -868,18 +873,25 @@ export async function handleMessage(
 
       case 'getSigningStatus': {
         const signing = new SigningModule();
-        const certInfo = signing.getCertInfo();
-        const payload = certInfo ? {
-          hasCertificate: true,
-          subject: signing._formatSubject(certInfo.subject),
-          issuer: certInfo.issuer,
-          fingerprint: certInfo.fingerprint,
-          validFrom: certInfo.notBefore.toISOString(),
-          validTo: certInfo.notAfter.toISOString(),
-          isExpired: certInfo.isExpired,
-        } : {
-          hasCertificate: false,
-        };
+        const config = new Config();
+        config.loadConfig();
+        const scopes: SigningScopeStatus[] = Object.keys(config.config.scopes).map((scope) => {
+          const certInfo = signing.getCertInfo(scope);
+          if (!certInfo) {
+            return { scope, status: 'no certificate' };
+          }
+          return {
+            scope,
+            status: certInfo.isExpired ? 'expired' : 'active',
+            subject: signing._formatSubject(certInfo.subject),
+            issuer: certInfo.issuer,
+            fingerprint: certInfo.fingerprint,
+            validFrom: certInfo.notBefore.toISOString(),
+            validTo: certInfo.notAfter.toISOString(),
+            isExpired: certInfo.isExpired,
+          };
+        });
+        const payload: SigningStatusPayload = { scopes };
         return {
           type: 'signingStatus',
           requestId: message.requestId,

@@ -70,7 +70,7 @@ export function generateInstallerCommand(
           const config = new Config();
           config.loadConfig();
           const installer = new Installer(config);
-          success = (await installer.run(projectDir)) !== null;
+          success = (await installer.run(projectDir)).ok;
         }
       );
 
