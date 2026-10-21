@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
-import Config from '@metaverse-systems/the-seed/dist/Config';
-import { buildRecursive } from '@metaverse-systems/the-seed/dist/RecursiveBuild';
-import type { BuildableProject, BuildStep } from '@metaverse-systems/the-seed/dist/types';
+import Config from '@metaverse-systems/the-seed/Config';
+import { buildRecursive } from '@metaverse-systems/the-seed/RecursiveBuild';
+import type { BuildableProject, BuildStep } from '@metaverse-systems/the-seed/types';
 import { detectBuildableProject } from '../build/projectDetector';
 import type { TheSeedViewProvider } from '../panels/TheSeedViewProvider';
 import type { BuildStatusPayload, RecursiveBuildProgressPayload, RecursiveBuildCompletePayload } from '../types/messages';

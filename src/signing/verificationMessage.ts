@@ -1,4 +1,4 @@
-import type { CertSubject, SignatureForm, VerifyResult } from '@metaverse-systems/the-seed/dist/types';
+import type { CertSubject, SignatureForm, VerifyResult } from '@metaverse-systems/the-seed/types';
 
 /**
  * What the verify command shows for one verification: a severity and one-line summary for the notification,

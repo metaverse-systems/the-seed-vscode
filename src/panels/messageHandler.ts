@@ -1,16 +1,16 @@
 import * as vscode from 'vscode';
-import Config from '@metaverse-systems/the-seed/dist/Config';
-import Scopes, { validateScopeName } from '@metaverse-systems/the-seed/dist/Scopes';
-import Template from '@metaverse-systems/the-seed/dist/Template';
-import ResourcePak from '@metaverse-systems/the-seed/dist/ResourcePak';
-import SigningModule from '@metaverse-systems/the-seed/dist/Signing';
+import Config from '@metaverse-systems/the-seed/Config';
+import Scopes, { validateScopeName } from '@metaverse-systems/the-seed/Scopes';
+import Template from '@metaverse-systems/the-seed/Template';
+import ResourcePak from '@metaverse-systems/the-seed/ResourcePak';
+import SigningModule from '@metaverse-systems/the-seed/Signing';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { detectResourcePak } from '../utils/detectResourcePak';
 import { chooseProjectFolder, describeError } from '../utils/projectFolder';
 import { addResourceFile } from '../utils/addResourceFile';
-import { ProjectError } from '@metaverse-systems/the-seed/dist/ProjectError';
+import { ProjectError } from '@metaverse-systems/the-seed/ProjectError';
 import type {
   WebviewToExtensionMessage,
   ExtensionToWebviewMessage,
@@ -30,7 +30,7 @@ import type {
 } from '../types/messages';
 import { getActiveBuild, cancelActiveBuild } from '../commands/buildNative';
 import { cancelActiveRecursiveBuild } from '../commands/buildNativeRecursive';
-import { checkLibEcs, checkLibTheSeed, getInstallSteps } from '@metaverse-systems/the-seed/dist/Dependencies';
+import { checkLibEcs, checkLibTheSeed, getInstallSteps } from '@metaverse-systems/the-seed/Dependencies';
 import { runBuildSteps } from '../build/buildRunner';
 import { acquireOperationLock, releaseOperationLock, getOperationLock } from '../operationLock';
 

@@ -1,5 +1,5 @@
-import type Build from '@metaverse-systems/the-seed/dist/Build';
-import type { ProjectBuildResult } from '@metaverse-systems/the-seed/dist/types';
+import type Build from '@metaverse-systems/the-seed/Build';
+import type { ProjectBuildResult } from '@metaverse-systems/the-seed/types';
 
 /** Where a project build reports to; the editor's output channel and progress in the extension. */
 export interface ProjectBuildUi {

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
-import Signing, { DEFAULT_VALIDITY_DAYS, MAX_VALIDITY_DAYS } from '@metaverse-systems/the-seed/dist/Signing';
+import Signing, { DEFAULT_VALIDITY_DAYS, MAX_VALIDITY_DAYS } from '@metaverse-systems/the-seed/Signing';
 import { chooseScope } from '../signing/chooseScope';
-import Config from '@metaverse-systems/the-seed/dist/Config';
+import Config from '@metaverse-systems/the-seed/Config';
 
 export async function createSigningCert(outputChannel: vscode.OutputChannel): Promise<void> {
   const config = new Config();

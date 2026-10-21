@@ -1,6 +1,6 @@
 import * as assert from 'assert';
-import { NativeComponentMissingError, nativeComponentMessage } from '@metaverse-systems/the-seed/dist/NativeComponent';
-import type { IntegrityResult, PackageResult, VerifyResult } from '@metaverse-systems/the-seed/dist/types';
+import { NativeComponentMissingError, nativeComponentMessage } from '@metaverse-systems/the-seed/NativeComponent';
+import type { IntegrityResult, PackageResult, VerifyResult } from '@metaverse-systems/the-seed/types';
 import { describeVerification } from '../../signing/verificationMessage';
 import { packageNotification } from '../../build/packageOutcome';
 

@@ -1,4 +1,4 @@
-import type { PackageResult } from '@metaverse-systems/the-seed/dist/types';
+import type { PackageResult } from '@metaverse-systems/the-seed/types';
 import type { PackageStatusPayload } from '../types/messages';
 
 /**

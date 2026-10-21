@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import Config from '@metaverse-systems/the-seed/dist/Config';
-import { checkLibEcs, checkLibTheSeed, getInstallSteps } from '@metaverse-systems/the-seed/dist/Dependencies';
+import Config from '@metaverse-systems/the-seed/Config';
+import { checkLibEcs, checkLibTheSeed, getInstallSteps } from '@metaverse-systems/the-seed/Dependencies';
 import { runBuildSteps } from '../build/buildRunner';
 import { acquireOperationLock, releaseOperationLock, getOperationLock } from '../operationLock';
 import { execSync } from 'child_process';

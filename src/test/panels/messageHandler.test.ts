@@ -17,10 +17,10 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import { handleMessage } from '../../panels/messageHandler';
-import Config from '@metaverse-systems/the-seed/dist/Config';
-import Template from '@metaverse-systems/the-seed/dist/Template';
-import ResourcePak from '@metaverse-systems/the-seed/dist/ResourcePak';
-import { validateScopeName } from '@metaverse-systems/the-seed/dist/Scopes';
+import Config from '@metaverse-systems/the-seed/Config';
+import Template from '@metaverse-systems/the-seed/Template';
+import ResourcePak from '@metaverse-systems/the-seed/ResourcePak';
+import { validateScopeName } from '@metaverse-systems/the-seed/Scopes';
 import { ScratchHome, createCertFor, useScratchHome, writeScopes } from '../helpers/scratchHome';
 import { makeScratchDir, stubWorkspaceFolders, useScratchPrefix } from '../helpers/workspaceStub';
 

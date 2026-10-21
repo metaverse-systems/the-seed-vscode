@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import Config from '@metaverse-systems/the-seed/dist/Config';
-import Build from '@metaverse-systems/the-seed/dist/Build';
+import Config from '@metaverse-systems/the-seed/Config';
+import Build from '@metaverse-systems/the-seed/Build';
 import { runProjectBuild } from '../build/projectBuild';
 import { describeBuildRejection, describeFailedStep } from '../build/buildFailure';
 import { detectBuildableProject } from '../build/projectDetector';

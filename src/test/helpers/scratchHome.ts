@@ -1,8 +1,8 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import Config from '@metaverse-systems/the-seed/dist/Config';
-import Signing from '@metaverse-systems/the-seed/dist/Signing';
+import Config from '@metaverse-systems/the-seed/Config';
+import Signing from '@metaverse-systems/the-seed/Signing';
 
 export interface ScratchHome {
   dir: string;

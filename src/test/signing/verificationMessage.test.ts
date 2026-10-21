@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import type { CertInfo, CertSubject, IntegrityResult, TrustResult, VerifyResult, VerifyStatus } from '@metaverse-systems/the-seed/dist/types';
+import type { CertInfo, CertSubject, IntegrityResult, TrustResult, VerifyResult, VerifyStatus } from '@metaverse-systems/the-seed/types';
 import { describeVerification } from '../../signing/verificationMessage';
 
 // Hand-made results only: no signing, no files and nothing from the VS Code API, so these cases run

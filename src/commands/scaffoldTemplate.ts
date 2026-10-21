@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import { askQuestions } from '../askQuestions';
-import Config from '@metaverse-systems/the-seed/dist/Config';
-import Template from '@metaverse-systems/the-seed/dist/Template';
-import { ProjectError } from '@metaverse-systems/the-seed/dist/ProjectError';
+import Config from '@metaverse-systems/the-seed/Config';
+import Template from '@metaverse-systems/the-seed/Template';
+import { ProjectError } from '@metaverse-systems/the-seed/ProjectError';
 import { chooseProjectFolder, describeError } from '../utils/projectFolder';
 
 export async function scaffoldTemplate(

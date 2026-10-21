@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import { runProjectBuild, ProjectBuildUi } from '../../build/projectBuild';
-import type { BuildStep, ProjectBuildOptions, ProjectBuildResult } from '@metaverse-systems/the-seed/dist/types';
+import type { BuildStep, ProjectBuildOptions, ProjectBuildResult } from '@metaverse-systems/the-seed/types';
 
 // Choices made where the behaviour leaves a detail open (the implementation matches these):
 // - `runProjectBuild(build, options, ui)` returns exactly the object `build.buildProject` resolved to.
