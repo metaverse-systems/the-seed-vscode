@@ -7,7 +7,6 @@ import SigningModule from '@metaverse-systems/the-seed/dist/Signing';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { createTemplatePackage } from '../templateRuntime';
 import { detectResourcePak } from '../utils/detectResourcePak';
 import type {
   WebviewToExtensionMessage,
@@ -251,7 +250,8 @@ export async function handleMessage(
 
         const template = new Template(config);
         template.type = templateType;
-        createTemplatePackage(template, scopeName, templateName, projectPath);
+        fs.mkdirSync(path.dirname(projectPath), { recursive: true });
+        projectPath = template.createPackage(scopeName, templateName, path.dirname(projectPath));
 
         return {
           type: 'templateCreated',

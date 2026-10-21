@@ -4,7 +4,6 @@ import * as path from 'path';
 import { askQuestions } from '../askQuestions';
 import Config from '@metaverse-systems/the-seed/dist/Config';
 import Template from '@metaverse-systems/the-seed/dist/Template';
-import { createTemplatePackage } from '../templateRuntime';
 
 export async function scaffoldTemplate(
   templateType: 'component' | 'system' | 'program',
@@ -60,7 +59,8 @@ export async function scaffoldTemplate(
     return;
   }
 
-  createTemplatePackage(template, scopeName, templateName, projectPath);
+  fs.mkdirSync(path.dirname(projectPath), { recursive: true });
+  projectPath = template.createPackage(scopeName, templateName, path.dirname(projectPath));
 
   const label = templateType.charAt(0).toUpperCase() + templateType.slice(1);
   outputChannel.appendLine(
