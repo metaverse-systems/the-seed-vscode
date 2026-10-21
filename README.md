@@ -54,6 +54,7 @@ _Coming soon_
    The Seed: Create ResourcePak
    ```
 3. Select a **scope** → Enter a **ResourcePak name** → Confirm.
+4. The project is created as `<name>` in the open folder, or in a folder you choose when none is open; nothing is created under the installation prefix.
 
 ### **2️⃣ Configure The Seed**
 1. Open the **Command Palette**.
