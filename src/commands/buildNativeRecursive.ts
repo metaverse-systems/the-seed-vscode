@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import Config from '@metaverse-systems/the-seed/dist/Config';
 import { buildRecursive } from '@metaverse-systems/the-seed/dist/RecursiveBuild';
 import type { BuildableProject, BuildStep } from '@metaverse-systems/the-seed/dist/types';
 import { detectBuildableProject } from '../build/projectDetector';
@@ -183,7 +184,10 @@ async function executeRecursiveBuild(
 
           let result;
           try {
+            const config = new Config();
+            config.loadConfig();
             result = await buildRecursive({
+              config,
               target,
               fullReconfigure: true,
               projectDir: projectPath!,
