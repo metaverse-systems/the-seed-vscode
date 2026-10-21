@@ -368,7 +368,9 @@ export async function handleMessage(
         const rp = new ResourcePak(config);
         const { scopeName, pakName } = message.data;
         const scope = scopeName.startsWith('@') ? scopeName : `@${scopeName}`;
-        rp.createPackage(scope, pakName);
+        const scopeDir = path.join(config.config.prefix, 'projects', scope);
+        fs.mkdirSync(scopeDir, { recursive: true });
+        const packageDir = rp.createPackage(scope, pakName, scopeDir);
         const workspaceFolders = vscode.workspace.workspaceFolders;
         const hasWorkspace = workspaceFolders && workspaceFolders.length > 0;
         return {
@@ -377,7 +379,7 @@ export async function handleMessage(
           payload: {
             scope,
             pakName,
-            packageDir: rp.packageDir,
+            packageDir,
             openFolder: !hasWorkspace,
           },
         };

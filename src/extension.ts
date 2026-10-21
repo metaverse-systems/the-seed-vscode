@@ -55,7 +55,9 @@ export function activate(context: vscode.ExtensionContext) {
         return;
       }
 
-      rp.createPackage(answers.scopeName, answers.pakName);
+      const scopeDir = path.join(config.config.prefix, "projects", answers.scopeName);
+      fs.mkdirSync(scopeDir, { recursive: true });
+      rp.createPackage(answers.scopeName, answers.pakName, scopeDir);
       vscode.window.showInformationMessage(`ResourcePak '${answers.pakName}' created in scope '${answers.scopeName}'`);
     }, outputChannel)
   );
