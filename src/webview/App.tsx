@@ -108,11 +108,16 @@ export const App: React.FC = () => {
           setTemplateExistsWarning(message.payload.projectPath);
           break;
         case 'error':
-          setError(message.payload.message);
-          setTemplateCreating(false);
-          setTemplateError(message.payload.message);
-          setResourcePakLoading(false);
-          setResourcePakError(message.payload.message);
+          {
+            const text = message.payload.hint
+              ? `${message.payload.message} ${message.payload.hint}`
+              : message.payload.message;
+            setError(text);
+            setTemplateCreating(false);
+            setTemplateError(text);
+            setResourcePakLoading(false);
+            setResourcePakError(text);
+          }
           break;
         case 'buildStatus':
           setBuildStatus(message.payload);
@@ -361,27 +366,17 @@ export const App: React.FC = () => {
     });
   };
 
-  const handleAddResource = (
-    scope: string,
-    pakName: string,
-    resourceName: string,
-    filePath: string,
-    useDetectedPak: boolean
-  ) => {
+  const handleAddResource = (resourceName: string, filePath: string) => {
     setResourcePakLoading(true);
     setResourcePakError(null);
     vscode.postMessage({
       command: 'addResource',
       requestId: crypto.randomUUID(),
-      data: { scope, pakName, resourceName, filePath, useDetectedPak },
+      data: { resourceName, filePath },
     });
   };
 
-  const handleBuildResourcePak = (
-    scope: string,
-    pakName: string,
-    useDetectedPak: boolean
-  ) => {
+  const handleBuildResourcePak = () => {
     setResourcePakLoading(true);
     setResourcePakError(null);
     setResourcePakActionSuccess(null);
@@ -389,7 +384,6 @@ export const App: React.FC = () => {
     vscode.postMessage({
       command: 'buildResourcePak',
       requestId: crypto.randomUUID(),
-      data: { scope, pakName, useDetectedPak },
     });
   };
 

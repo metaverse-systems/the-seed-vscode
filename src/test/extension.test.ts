@@ -162,7 +162,7 @@ suite('Extension Test Suite', () => {
       // Stub askQuestions to provide scope + pakName
       const showQuickPickStub = sinon.stub(vscode.window, 'showQuickPick').resolves('test-scope' as any);
       const showInputBoxStub = sinon.stub(vscode.window, 'showInputBox').resolves('test-pak');
-      const showOpenDialogStub = sinon.stub(vscode.window, 'showOpenDialog').resolves(undefined);
+      sinon.stub(vscode.window, 'showOpenDialog').resolves(undefined);
       const showInfoStub = sinon.stub(vscode.window, 'showInformationMessage').resolves(undefined);
 
       await vscode.commands.executeCommand('the-seed.addResource');
@@ -176,7 +176,7 @@ suite('Extension Test Suite', () => {
       const showInputBoxStub = sinon.stub(vscode.window, 'showInputBox');
       showInputBoxStub.onFirstCall().resolves('test-pak');
       showInputBoxStub.onSecondCall().resolves(undefined); // Cancel name input
-      const showOpenDialogStub = sinon.stub(vscode.window, 'showOpenDialog').resolves([
+      sinon.stub(vscode.window, 'showOpenDialog').resolves([
         vscode.Uri.file('/tmp/test-file.txt'),
       ] as any);
       const showInfoStub = sinon.stub(vscode.window, 'showInformationMessage').resolves(undefined);
@@ -189,8 +189,8 @@ suite('Extension Test Suite', () => {
 
   // T028: Build ResourcePak command tests
   suite('Build ResourcePak', () => {
-    test('should exit cleanly when scope selection is cancelled', async () => {
-      const showQuickPickStub = sinon.stub(vscode.window, 'showQuickPick').resolves(undefined);
+    test('should exit cleanly when the folder choice is cancelled', async () => {
+      sinon.stub(vscode.window, 'showOpenDialog').resolves(undefined);
       const showInfoStub = sinon.stub(vscode.window, 'showInformationMessage').resolves(undefined);
 
       await vscode.commands.executeCommand('the-seed.buildResourcePak');

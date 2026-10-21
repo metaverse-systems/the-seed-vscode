@@ -24,8 +24,9 @@ import { signFile } from "./commands/signFile";
 import { verifySignature } from "./commands/verifySignature";
 import Signing from "@metaverse-systems/the-seed/dist/Signing";
 import { TheSeedViewProvider } from "./panels/TheSeedViewProvider";
-import { detectResourcePak } from "./utils/detectResourcePak";
-import * as fs from "fs";
+import { chooseProjectFolder, choosePakProject, describeError } from "./utils/projectFolder";
+import { addResourceFile } from "./utils/addResourceFile";
+import { ProjectError } from "@metaverse-systems/the-seed/dist/ProjectError";
 import * as path from "path";
 
 export function activate(context: vscode.ExtensionContext) {
@@ -55,8 +56,17 @@ export function activate(context: vscode.ExtensionContext) {
         return;
       }
 
-      rp.createPackage(answers.scopeName, answers.pakName);
-      vscode.window.showInformationMessage(`ResourcePak '${answers.pakName}' created in scope '${answers.scopeName}'`);
+      const hasWorkspace = (vscode.workspace.workspaceFolders?.length ?? 0) > 0;
+      const folder = await chooseProjectFolder();
+      if (!folder) {
+        return;
+      }
+      const packageDir = rp.createPackage(answers.scopeName, answers.pakName, folder);
+      oc.appendLine(`[INFO] ResourcePak '${answers.pakName}' created at ${packageDir}`);
+      vscode.window.showInformationMessage(`ResourcePak '${answers.pakName}' created at ${packageDir}`);
+      if (!hasWorkspace) {
+        vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(packageDir));
+      }
     }, outputChannel)
   );
 
@@ -138,33 +148,11 @@ export function activate(context: vscode.ExtensionContext) {
       const config = new Config();
       const rp = new ResourcePak(config);
 
-      // Try auto-detect
-      let packageDir: string | undefined;
-      const workspaceFolders = vscode.workspace.workspaceFolders;
-      if (workspaceFolders && workspaceFolders.length > 0) {
-        const detected = detectResourcePak(workspaceFolders[0].uri.fsPath);
-        if (detected) {
-          packageDir = detected.packageDir;
-          oc.appendLine(`[INFO] Auto-detected ResourcePak: ${detected.pakName}`);
-        }
-      }
-
-      // If not auto-detected, ask user for scope + pak name
+      const packageDir = await choosePakProject();
       if (!packageDir) {
-        const questions = rp.askName();
-        const answers = await askQuestions(questions);
-        if (!answers.scopeName || !answers.pakName) {
-          return;
-        }
-        packageDir = config.config.prefix + "/projects/" + answers.scopeName + "/" + answers.pakName;
-      }
-
-      // Validate ResourcePak exists
-      const pkgPath = path.join(packageDir, "package.json");
-      if (!fs.existsSync(pkgPath)) {
-        vscode.window.showErrorMessage(`ResourcePak not found at ${packageDir}`);
         return;
       }
+      oc.appendLine(`[INFO] ResourcePak: ${packageDir}`);
 
       // Open file picker
       const fileResult = await vscode.window.showOpenDialog({
@@ -181,26 +169,22 @@ export function activate(context: vscode.ExtensionContext) {
       const resourceName = await vscode.window.showInputBox({
         prompt: "Enter a name for this resource",
         placeHolder: "my-resource",
-        validateInput: (value) => {
-          if (!value.trim()) return "Name is required";
-          if (!/^[a-zA-Z0-9][a-zA-Z0-9-]*$/.test(value)) {
-            return "Name must start with a letter or number and contain only letters, numbers, and hyphens";
-          }
-          return null;
-        },
+        validateInput: (value) => (value === "" ? "Name is required" : null),
       });
       if (!resourceName) {
         return;
       }
 
-      // Copy file to pak dir if needed
-      const basename = path.basename(selectedFile);
-      const destPath = path.join(packageDir, basename);
-      if (selectedFile !== destPath) {
-        fs.copyFileSync(selectedFile, destPath);
+      try {
+        addResourceFile(rp, packageDir, resourceName, selectedFile);
+      } catch (error) {
+        if (error instanceof ProjectError) {
+          oc.appendLine(`[ERROR] ${describeError(error)}`);
+          vscode.window.showErrorMessage(describeError(error));
+          return;
+        }
+        throw error;
       }
-
-      rp.addResource(resourceName, basename, packageDir);
       vscode.window.showInformationMessage(
         `Resource '${resourceName}' added to ResourcePak`
       );
@@ -214,37 +198,24 @@ export function activate(context: vscode.ExtensionContext) {
       const config = new Config();
       const rp = new ResourcePak(config);
 
-      // Try auto-detect
-      let packageDir: string | undefined;
-      const workspaceFolders = vscode.workspace.workspaceFolders;
-      if (workspaceFolders && workspaceFolders.length > 0) {
-        const detected = detectResourcePak(workspaceFolders[0].uri.fsPath);
-        if (detected) {
-          packageDir = detected.packageDir;
-          oc.appendLine(`[INFO] Auto-detected ResourcePak: ${detected.pakName}`);
-        }
-      }
-
-      // If not auto-detected, ask user
+      const packageDir = await choosePakProject();
       if (!packageDir) {
-        const questions = rp.askName();
-        const answers = await askQuestions(questions);
-        if (!answers.scopeName || !answers.pakName) {
-          return;
-        }
-        packageDir = config.config.prefix + "/projects/" + answers.scopeName + "/" + answers.pakName;
-      }
-
-      // Validate
-      const pkgPath = path.join(packageDir, "package.json");
-      if (!fs.existsSync(pkgPath)) {
-        vscode.window.showErrorMessage(`ResourcePak not found at ${packageDir}`);
         return;
       }
+      oc.appendLine(`[INFO] ResourcePak: ${packageDir}`);
 
-      rp.build(packageDir);
+      try {
+        rp.build(packageDir);
+      } catch (error) {
+        if (error instanceof ProjectError) {
+          oc.appendLine(`[ERROR] ${describeError(error)}`);
+          vscode.window.showErrorMessage(describeError(error));
+          return;
+        }
+        throw error;
+      }
 
-      const pkgData = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+      const pkgData = rp.readProject(packageDir);
       const [, name] = pkgData.name.split("/");
       const pakFilePath = path.join(packageDir, name + ".pak");
 
