@@ -81,7 +81,7 @@ suite('recursiveOutcome', () => {
     function link(projectDir: string, name: string, target: string): void {
       const linkPath = path.join(projectDir, 'node_modules', name);
       fs.mkdirSync(path.dirname(linkPath), { recursive: true });
-      fs.symlinkSync(target, linkPath);
+      fs.symlinkSync(target, linkPath, 'junction');
     }
 
     test('a real two-project cycle becomes a failed build, within 200 file reads', async function () {

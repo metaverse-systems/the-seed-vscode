@@ -1,4 +1,6 @@
 import * as assert from 'assert';
+import * as os from 'os';
+import * as path from 'path';
 import {
   parseArguments,
   classifyResults,
@@ -667,36 +669,38 @@ suite('Harness: known gaps in results', () => {
 });
 
 suite('Harness: compareLeftovers', () => {
-  const root = '/tmp/the-seed-vscode-tests-abc123';
+  const root = path.join(os.tmpdir(), 'the-seed-vscode-tests-abc123');
+  const entry = (name: string): string => path.join(os.tmpdir(), name);
+  const homeConfig = path.join(root, 'home', 'the-seed');
 
   test('reports nothing when no entry is new', () => {
-    const before = ['/tmp/the-seed-ext-old-1'];
+    const before = [entry('the-seed-ext-old-1')];
     assert.deepStrictEqual(compareLeftovers(before, [...before], null), []);
   });
 
   test('reports each new entry by path', () => {
-    const before = ['/tmp/the-seed-ext-old-1'];
-    const after = [...before, '/tmp/the-seed-ext-a-2', '/tmp/the-seed-ext-b-3'];
+    const before = [entry('the-seed-ext-old-1')];
+    const after = [...before, entry('the-seed-ext-a-2'), entry('the-seed-ext-b-3')];
     assert.deepStrictEqual(compareLeftovers(before, after, null), [
-      'LEFTOVER: /tmp/the-seed-ext-a-2',
-      'LEFTOVER: /tmp/the-seed-ext-b-3',
+      `LEFTOVER: ${entry('the-seed-ext-a-2')}`,
+      `LEFTOVER: ${entry('the-seed-ext-b-3')}`,
     ]);
   });
 
   test('ignores entries that existed before the run, even when removed', () => {
-    assert.deepStrictEqual(compareLeftovers(['/tmp/the-seed-ext-old-1'], [], null), []);
+    assert.deepStrictEqual(compareLeftovers([entry('the-seed-ext-old-1')], [], null), []);
   });
 
   test('reports the scratch home configuration directory when it exists', () => {
-    assert.deepStrictEqual(compareLeftovers([], [], `${root}/home/the-seed`), [
-      `LEFTOVER: ${root}/home/the-seed`,
+    assert.deepStrictEqual(compareLeftovers([], [], homeConfig), [
+      `LEFTOVER: ${homeConfig}`,
     ]);
   });
 
   test('reports new entries before the scratch home directory', () => {
-    assert.deepStrictEqual(compareLeftovers([], ['/tmp/the-seed-ext-a-2'], `${root}/home/the-seed`), [
-      'LEFTOVER: /tmp/the-seed-ext-a-2',
-      `LEFTOVER: ${root}/home/the-seed`,
+    assert.deepStrictEqual(compareLeftovers([], [entry('the-seed-ext-a-2')], homeConfig), [
+      `LEFTOVER: ${entry('the-seed-ext-a-2')}`,
+      `LEFTOVER: ${homeConfig}`,
     ]);
   });
 });

@@ -2,10 +2,12 @@ import * as assert from 'assert';
 import * as path from 'path';
 import * as fs from 'fs';
 import { makeScratchDir } from '../helpers/workspaceStub';
+import { requires } from '../harness/platform';
 import { runBuildSteps } from '../../build/buildRunner';
 import type { BuildStep } from '@metaverse-systems/the-seed/types';
 
 suite('buildRunner', () => {
+  requires('posix-toolchain');
   let tmpDir: string;
 
   setup(() => {

@@ -5,6 +5,8 @@ import { makeScratchDir } from '../helpers/workspaceStub';
 import { packageStatusFrom, packageNotification } from '../../build/packageOutcome';
 import Config from '@metaverse-systems/the-seed/Config';
 import Package from '@metaverse-systems/the-seed/Package';
+import { nativeComponentMessage } from '@metaverse-systems/the-seed/NativeComponent';
+import { onPlatform } from '../harness/platform';
 import type { PackageResult } from '@metaverse-systems/the-seed/types';
 
 // Choices made where the contract leaves a detail open (the implementation matches these):
@@ -116,8 +118,16 @@ suite('packageOutcome', () => {
       const status = packageStatusFrom(packaged, timestamp);
       assert.strictEqual(status.state, 'failed');
       assert.strictEqual(status.filesCopied, 0);
-      assert.ok((status.errorMessage ?? '').includes('Two different files would be packaged as app:'), String(status.errorMessage));
-      assert.ok(packageNotification(packaged).text.startsWith('Packaging failed: Two different files'));
+      await onPlatform({
+        win32: () => {
+          assert.strictEqual(packaged.message, nativeComponentMessage());
+          assert.strictEqual(status.errorMessage, nativeComponentMessage());
+        },
+        other: () => {
+          assert.ok((status.errorMessage ?? '').includes('Two different files would be packaged as app:'), String(status.errorMessage));
+          assert.ok(packageNotification(packaged).text.startsWith('Packaging failed: Two different files'));
+        },
+      });
       assert.strictEqual(fs.existsSync(outputDir), false);
     });
   });

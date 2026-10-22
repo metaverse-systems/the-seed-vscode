@@ -17,12 +17,14 @@ import Signing from '@metaverse-systems/the-seed/Signing';
 import { signFile } from '../../commands/signFile';
 import { createCertFor, fixturePath, writeScopes } from '../helpers/scratchHome';
 import { useScratchState } from '../helpers/scratchState';
+import { requires } from '../harness/platform';
 
 function digest(file: string): string {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 }
 
 suite('signFile command', () => {
+  requires('native-component');
   const state = useScratchState({ prefix: false });
   let program: string;
   let original: string;

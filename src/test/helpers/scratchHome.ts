@@ -55,8 +55,10 @@ export async function createCertFor(scope: string, validityDays = 30): Promise<s
   return info.fingerprint;
 }
 
-/** Absolute path of a binary fixture shipped with the tool. */
+/**
+ * Absolute path of a binary fixture kept in this repository under src/test/fixtures.
+ * tiny.exe is a byte-for-byte copy of the-seed/test/fixtures/binaries/tiny.exe.
+ */
 export function fixturePath(name: string): string {
-  const root = path.dirname(require.resolve('@metaverse-systems/the-seed/package.json'));
-  return path.join(root, 'test', 'fixtures', 'binaries', name);
+  return path.resolve(__dirname, '..', '..', '..', 'src', 'test', 'fixtures', name);
 }
