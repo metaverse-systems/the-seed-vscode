@@ -25,7 +25,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-2025]
+        os: [ubuntu-24.04]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     defaults:
@@ -44,7 +44,6 @@ jobs:
           cache: npm
 
       - name: Install tools
-        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y xvfb build-essential autoconf automake libtool pkg-config
@@ -55,14 +54,13 @@ jobs:
 
       - name: Restore libraries
         id: deps
-        if: runner.os == 'Linux'
         uses: actions/cache@v4
         with:
           path: ~/deps
           key: deps-${{ env.LIBECS_CPP_REF }}-${{ env.LIBTHE_SEED_REF }}-${{ runner.os }}-${{ env.ImageVersion }}
 
       - name: Build libecs-cpp
-        if: runner.os == 'Linux' && steps.deps.outputs.cache-hit != 'true'
+        if: steps.deps.outputs.cache-hit != 'true'
         run: |
           mkdir -p "$RUNNER_TEMP/libecs-cpp"
           cd "$RUNNER_TEMP/libecs-cpp"
@@ -75,7 +73,7 @@ jobs:
           make install
 
       - name: Build libthe-seed
-        if: runner.os == 'Linux' && steps.deps.outputs.cache-hit != 'true'
+        if: steps.deps.outputs.cache-hit != 'true'
         run: |
           export PKG_CONFIG_PATH="$HOME/deps/lib/pkgconfig"
           mkdir -p "$RUNNER_TEMP/libthe-seed"
@@ -89,7 +87,6 @@ jobs:
           make install
 
       - name: Use libraries
-        if: runner.os == 'Linux'
         run: |
           echo "PKG_CONFIG_PATH=$HOME/deps/lib/pkgconfig" >> "$GITHUB_ENV"
           echo "LD_LIBRARY_PATH=$HOME/deps/lib" >> "$GITHUB_ENV"
@@ -119,33 +116,21 @@ jobs:
             fail(`package-lock.json records the tool as ${locked}, expected ${expected}`);
           }
           const component = path.join(root, 'native', 'build', 'Release', 'the_seed_native.node');
-          if (process.platform === 'win32') {
-            if (fs.existsSync(component)) {
-              fail('the native component is present on Windows, where it is expected to be absent');
+          const { REQUIRED_VERSIONS } = require(path.join(root, 'dist', 'RequiredVersions.js'));
+          for (const [name, minimum] of Object.entries(REQUIRED_VERSIONS)) {
+            const found = cp.spawnSync('pkg-config', ['--modversion', name], { encoding: 'utf8' });
+            const have = found.status === 0 ? found.stdout.trim() : 'none';
+            const ok = cp.spawnSync('pkg-config', [`--atleast-version=${minimum}`, name]).status === 0;
+            if (!ok) {
+              fail(`${name} >= ${minimum} is required, found ${have}`);
             }
-            const { nativeComponentMessage } = require(path.join(root, 'dist', 'NativeComponent.js'));
-            const text = nativeComponentMessage();
-            if (typeof text !== 'string' || text.length === 0) {
-              fail('nativeComponentMessage() returned no text');
-            }
-            console.log(`Native component absent as expected: ${text}`);
-          } else {
-            const { REQUIRED_VERSIONS } = require(path.join(root, 'dist', 'RequiredVersions.js'));
-            for (const [name, minimum] of Object.entries(REQUIRED_VERSIONS)) {
-              const found = cp.spawnSync('pkg-config', ['--modversion', name], { encoding: 'utf8' });
-              const have = found.status === 0 ? found.stdout.trim() : 'none';
-              const ok = cp.spawnSync('pkg-config', [`--atleast-version=${minimum}`, name]).status === 0;
-              if (!ok) {
-                fail(`${name} >= ${minimum} is required, found ${have}`);
-              }
-              console.log(`${name} ${have} satisfies >= ${minimum}`);
-            }
-            if (!fs.existsSync(component)) {
-              fail(`the native component was not built: ${component}`);
-            }
-            require(component);
-            console.log('Native component loads');
+            console.log(`${name} ${have} satisfies >= ${minimum}`);
           }
+          if (!fs.existsSync(component)) {
+            fail(`the native component was not built: ${component}`);
+          }
+          require(component);
+          console.log('Native component loads');
           console.log(`the-seed ${installed} checked`);
           NODE
 
@@ -243,6 +228,279 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: test-results-${{ matrix.os }}
+          path: |
+            test-results/
+            .vscode-test/user-data/logs/
+          if-no-files-found: ignore
+
+  # The extension is used on Windows with the extension host in WSL, so the
+  # Windows side is checked the same way: a hosted Windows runner with an
+  # Ubuntu distribution, and the same checks as above run inside it.
+  check-wsl:
+    name: check (windows-2025, WSL Ubuntu-24.04)
+    runs-on: windows-2025
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: wsl-bash -u runner {0}
+    env:
+      NODE_MAJOR: "22" # same as the Linux job
+    steps:
+      - name: Keep line endings as committed
+        shell: bash
+        run: git config --global core.autocrlf false
+
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up WSL
+        uses: Vampire/setup-wsl@v7.2.0
+        with:
+          distribution: Ubuntu-24.04
+
+      - name: Validate repeat
+        id: repeat
+        shell: bash
+        env:
+          REPEAT: ${{ inputs.repeat || '1' }}
+        run: |
+          case "$REPEAT" in
+            ''|*[!0-9]*|0|0[0-9]*)
+              echo "::error::repeat must be a positive integer, got '$REPEAT'"
+              exit 1
+              ;;
+          esac
+          echo "value=$REPEAT" >> "$GITHUB_OUTPUT"
+
+      - name: Check the editor version
+        shell: bash
+        run: |
+          if ! grep -q "version: '$VSCODE_VERSION'" .vscode-test.mjs; then
+            echo "::error::.vscode-test.mjs does not name editor version $VSCODE_VERSION"
+            exit 1
+          fi
+
+      - name: Install tools
+        shell: wsl-bash -u root {0}
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y sudo curl ca-certificates git xz-utils xvfb xauth build-essential autoconf automake libtool pkg-config \
+            libasound2t64 libatk-bridge2.0-0t64 libatk1.0-0t64 libcups2t64 libdrm2 libgbm1 libgtk-3-0t64 libnss3 libsecret-1-0 \
+            libx11-xcb1 libxcomposite1 libxdamage1 libxfixes3 libxkbcommon0 libxkbfile1 libxrandr2 libxss1
+          # A normal user runs everything else, as on the Linux runner; the
+          # editor will not start as root.
+          id runner >/dev/null 2>&1 || useradd --create-home --shell /bin/bash runner
+          echo 'runner ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/runner
+          chmod 0440 /etc/sudoers.d/runner
+          # Node, from the official release, owned by the user so that
+          # global installs need no privileges.
+          cd "$(mktemp -d)"
+          base="https://nodejs.org/dist/latest-v${{ env.NODE_MAJOR }}.x"
+          curl -fsSL "$base/SHASUMS256.txt" -o SHASUMS256.txt
+          archive="$(grep -oE "node-v[0-9.]+-linux-x64\.tar\.xz" SHASUMS256.txt | head -n 1)"
+          curl -fsSL "$base/$archive" -o "$archive"
+          grep " $archive\$" SHASUMS256.txt | sha256sum -c -
+          mkdir -p /opt/node
+          tar -xJf "$archive" -C /opt/node --strip-components=1
+          chown -R runner:runner /opt/node
+          for bin in node npm npx; do ln -sf "/opt/node/bin/$bin" "/usr/local/bin/$bin"; done
+          node --version
+          npm --version
+          xvfb-run --help > /dev/null
+          pkg-config --version
+
+      - name: Copy the checkout into WSL
+        run: |
+          src="$(wslpath -u "$(powershell.exe -NoProfile -Command '$env:GITHUB_WORKSPACE' | tr -d '\r')")"
+          mkdir -p "$HOME/work"
+          rm -rf "$HOME/work/the-seed-vscode"
+          cp -a "$src" "$HOME/work/the-seed-vscode"
+          rm -rf "$HOME/work/the-seed-vscode/.git"
+          cd "$HOME/work/the-seed-vscode"
+          ls
+
+      - name: Build libecs-cpp
+        run: |
+          mkdir -p "$HOME/build/libecs-cpp"
+          cd "$HOME/build/libecs-cpp"
+          git init
+          git fetch --depth 1 https://github.com/metaverse-systems/libecs-cpp.git "${{ env.LIBECS_CPP_REF }}"
+          git checkout FETCH_HEAD
+          ./autogen.sh
+          ./configure --prefix="$HOME/deps" --enable-tests=no
+          make -j4
+          make install
+
+      - name: Build libthe-seed
+        run: |
+          export PKG_CONFIG_PATH="$HOME/deps/lib/pkgconfig"
+          mkdir -p "$HOME/build/libthe-seed"
+          cd "$HOME/build/libthe-seed"
+          git init
+          git fetch --depth 1 https://github.com/metaverse-systems/libthe-seed.git "${{ env.LIBTHE_SEED_REF }}"
+          git checkout FETCH_HEAD
+          ./autogen.sh
+          ./configure --prefix="$HOME/deps" --enable-tests=no
+          make -j4
+          make install
+
+      - name: Use libraries
+        run: |
+          {
+            echo "export PKG_CONFIG_PATH=\"$HOME/deps/lib/pkgconfig\""
+            echo "export LD_LIBRARY_PATH=\"$HOME/deps/lib\""
+          } > "$HOME/ci-env.sh"
+
+      - name: Install the tool
+        run: |
+          . "$HOME/ci-env.sh"
+          npm install -g "@metaverse-systems/the-seed@${{ env.THE_SEED_VERSION }}" --foreground-scripts
+
+      - name: Check the tool
+        run: |
+          . "$HOME/ci-env.sh"
+          cd "$HOME/work/the-seed-vscode"
+          THE_SEED_VERSION="${{ env.THE_SEED_VERSION }}" node - "$(npm root -g)/@metaverse-systems/the-seed" <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const cp = require('child_process');
+          const root = process.argv[2];
+          const fail = (message) => {
+            console.log(`::error::${message}`);
+            process.exit(1);
+          };
+          const installed = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
+          const expected = process.env.THE_SEED_VERSION;
+          const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
+          const locked = lock.packages['../the-seed'] && lock.packages['../the-seed'].version;
+          if (installed !== expected) {
+            fail(`the tool is ${installed}, expected ${expected}`);
+          }
+          if (locked !== expected) {
+            fail(`package-lock.json records the tool as ${locked}, expected ${expected}`);
+          }
+          const component = path.join(root, 'native', 'build', 'Release', 'the_seed_native.node');
+          const { REQUIRED_VERSIONS } = require(path.join(root, 'dist', 'RequiredVersions.js'));
+          for (const [name, minimum] of Object.entries(REQUIRED_VERSIONS)) {
+            const found = cp.spawnSync('pkg-config', ['--modversion', name], { encoding: 'utf8' });
+            const have = found.status === 0 ? found.stdout.trim() : 'none';
+            const ok = cp.spawnSync('pkg-config', [`--atleast-version=${minimum}`, name]).status === 0;
+            if (!ok) {
+              fail(`${name} >= ${minimum} is required, found ${have}`);
+            }
+            console.log(`${name} ${have} satisfies >= ${minimum}`);
+          }
+          if (!fs.existsSync(component)) {
+            fail(`the native component was not built: ${component}`);
+          }
+          require(component);
+          console.log('Native component loads');
+          console.log(`the-seed ${installed} checked`);
+          NODE
+
+      - name: Install packages
+        id: prepare
+        run: |
+          . "$HOME/ci-env.sh"
+          cd "$HOME/work/the-seed-vscode"
+          npm ci
+          node -e "const fs=require('fs');const l='node_modules/@metaverse-systems/the-seed';fs.rmSync(l,{force:true,recursive:true});fs.symlinkSync(process.argv[1],l,'junction');console.log(require.resolve('@metaverse-systems/the-seed/Config'))" "$(npm root -g)/@metaverse-systems/the-seed"
+
+      - name: Compile
+        id: compile
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        run: |
+          cd "$HOME/work/the-seed-vscode"
+          npm run compile
+
+      - name: Type check sidebar
+        id: typecheck
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        run: |
+          cd "$HOME/work/the-seed-vscode"
+          npm run typecheck
+
+      - name: Style check
+        id: lint
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        run: |
+          cd "$HOME/work/the-seed-vscode"
+          npm run lint
+
+      - name: Bundle sidebar
+        id: bundle
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        run: |
+          cd "$HOME/work/the-seed-vscode"
+          npm run build:webview
+
+      - name: Host suite
+        id: host
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && steps.compile.outcome == 'success' }}
+        run: |
+          . "$HOME/ci-env.sh"
+          cd "$HOME/work/the-seed-vscode"
+          mkdir -p test-results
+          npm test -- host -- --repeat "${{ steps.repeat.outputs.value }}" 2>&1 | tee test-results/host.log
+
+      - name: Copy results back
+        if: always()
+        run: |
+          src="$(wslpath -u "$(powershell.exe -NoProfile -Command '$env:GITHUB_WORKSPACE' | tr -d '\r')")"
+          from="$HOME/work/the-seed-vscode"
+          if [ -d "$from/test-results" ]; then
+            mkdir -p "$src/test-results"
+            cp -a "$from/test-results/." "$src/test-results/"
+          fi
+          if [ -d "$from/.vscode-test/user-data/logs" ]; then
+            mkdir -p "$src/.vscode-test/user-data/logs"
+            cp -a "$from/.vscode-test/user-data/logs/." "$src/.vscode-test/user-data/logs/"
+          fi
+
+      - name: Summary
+        if: always()
+        shell: bash
+        env:
+          COMPILE_OUTCOME: ${{ steps.compile.outcome }}
+          TYPECHECK_OUTCOME: ${{ steps.typecheck.outcome }}
+          LINT_OUTCOME: ${{ steps.lint.outcome }}
+          BUNDLE_OUTCOME: ${{ steps.bundle.outcome }}
+          HOST_OUTCOME: ${{ steps.host.outcome }}
+        run: |
+          {
+            echo "## Check results (windows-2025, WSL Ubuntu-24.04)"
+            echo
+            echo "| Stage | Outcome |"
+            echo "|---|---|"
+            echo "| Compile | ${COMPILE_OUTCOME:-skipped} |"
+            echo "| Type check sidebar | ${TYPECHECK_OUTCOME:-skipped} |"
+            echo "| Style check | ${LINT_OUTCOME:-skipped} |"
+            echo "| Bundle sidebar | ${BUNDLE_OUTCOME:-skipped} |"
+            echo "| Host suite | ${HOST_OUTCOME:-skipped} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -f test-results/host.log ]; then
+            { grep -E '^(FAILED|SILENT SKIP|PLATFORM SKIP ON LINUX|LEFTOVER|REAL HOME CHANGED|RESULTS MISSING|MALFORMED KNOWN GAP|STALE KNOWN GAP):' test-results/host.log || true; } | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+            { grep -E '^(KNOWN GAP|PLATFORM SKIP):' test-results/host.log || true; } | while IFS= read -r line; do
+              echo "::notice::$line"
+            done
+            { grep -E '^Totals:' test-results/host.log || true; } | while IFS= read -r line; do
+              echo "$line" >> "$GITHUB_STEP_SUMMARY"
+              echo "::notice::$line"
+            done
+          else
+            echo "No host log; test summary skipped." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-windows-2025-wsl
           path: |
             test-results/
             .vscode-test/user-data/logs/
