@@ -139,6 +139,8 @@ npm run build            # compile, type-check and sidebar bundle
 
 Use `npm test` rather than `npx vscode-test`: the runner supplies a scratch home, checks the results file, validates the known-gap list and reports totals. Every suite runs in scratch state, and the real `~/the-seed` is checked unchanged afterwards (`REAL HOME CHANGED:` fails the run).
 
+The suite includes real builds: cases scaffold a project and run Build Native and Build Windows (plain and recursive) through the extension, so they need a C++ toolchain, autotools, the MinGW cross compiler (`g++-mingw-w64-x86-64`, with the POSIX threads flavour selected) and libecs-cpp and libthe-seed installed for Linux and for Windows. Set `THE_SEED_TEST_DEPS` to the directory they are installed under: the Linux libraries in `lib/pkgconfig` (or `x86_64-linux-gnu/lib/pkgconfig`) and the Windows ones in `x86_64-w64-mingw32/`, as `.github/workflows/ci.yaml` builds them into `$HOME/deps`. When the variable is unset, the first `PKG_CONFIG_PATH` entry holding `ecs-cpp.pc` names the directory. A missing tool or library fails these cases with a message saying what to install.
+
 Options for the host suite go after a second `--`:
 
 ```sh
