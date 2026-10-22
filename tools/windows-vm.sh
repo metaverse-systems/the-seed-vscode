@@ -135,10 +135,12 @@ start_tpm() {
 }
 
 stop_tpm() {
-  if [ -f "$TPM_DIR/swtpm.pid" ]; then
-    kill "$(cat "$TPM_DIR/swtpm.pid")" 2>/dev/null || true
-    rm -f "$TPM_DIR/swtpm.pid"
-  fi
+  # swtpm exits by itself when QEMU disconnects and removes its pid file as
+  # it goes, so a missing file here is normal.
+  local pid
+  pid="$(cat "$TPM_DIR/swtpm.pid" 2>/dev/null || true)"
+  [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+  rm -f "$TPM_DIR/swtpm.pid"
   rm -f "$TPM_SOCKET"
 }
 
