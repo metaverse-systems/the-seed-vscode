@@ -84,17 +84,14 @@ suite('Extension Test Suite', () => {
   // T020: Delete Scope tests
   suite('Delete Scope', () => {
     test('should show info when no scopes to delete', async () => {
-      // This test depends on state — if no scopes exist, it should show info
       const showInfoStub = sinon.stub(vscode.window, 'showInformationMessage').resolves(undefined);
-      sinon.stub(vscode.window, 'showQuickPick').resolves(undefined);
+      const showQuickPickStub = sinon.stub(vscode.window, 'showQuickPick').resolves(undefined);
 
       await vscode.commands.executeCommand('the-seed.deleteScope');
 
-      // Either shows "no scopes to delete" info message, or shows quick pick
-      assert.ok(
-        showInfoStub.called || true,
-        'Command should execute without error'
-      );
+      assert.strictEqual(showInfoStub.callCount, 1);
+      assert.strictEqual(showInfoStub.firstCall.args[0], 'No scopes to delete.');
+      assert.ok(showQuickPickStub.notCalled, 'no scope is offered');
     });
 
     test('should exit cleanly when user cancels scope selection', async () => {

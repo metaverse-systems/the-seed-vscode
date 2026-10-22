@@ -77,6 +77,33 @@ suite('Operation Lock', () => {
     assert.strictEqual(lock.type, 'install');
   });
 
+  test('a held build lock refuses package, and package is acquired after release', () => {
+    acquireOperationLock('build');
+    const refused = acquireOperationLock('package');
+    assert.strictEqual(refused.success, false);
+    assert.strictEqual(refused.heldBy, 'build');
+
+    releaseOperationLock();
+
+    const acquired = acquireOperationLock('package');
+    assert.strictEqual(acquired.success, true);
+    assert.strictEqual(getOperationLock().type, 'package');
+  });
+
+  test('a held package lock refuses build', () => {
+    acquireOperationLock('package');
+    const result = acquireOperationLock('build');
+    assert.strictEqual(result.success, false);
+    assert.strictEqual(result.heldBy, 'package');
+  });
+
+  test('a held package lock refuses install', () => {
+    acquireOperationLock('package');
+    const result = acquireOperationLock('install');
+    assert.strictEqual(result.success, false);
+    assert.strictEqual(result.heldBy, 'package');
+  });
+
   test('release is safe to call when not held', () => {
     // Should not throw
     releaseOperationLock();
