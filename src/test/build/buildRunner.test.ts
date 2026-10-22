@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as path from 'path';
-import * as os from 'os';
 import * as fs from 'fs';
+import { makeScratchDir } from '../helpers/workspaceStub';
 import { runBuildSteps } from '../../build/buildRunner';
 import type { BuildStep } from '@metaverse-systems/the-seed/types';
 
@@ -9,7 +9,7 @@ suite('buildRunner', () => {
   let tmpDir: string;
 
   setup(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'buildrunner-test-'));
+    tmpDir = makeScratchDir('buildrunner');
   });
 
   teardown(() => {

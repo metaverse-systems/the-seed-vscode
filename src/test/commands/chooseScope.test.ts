@@ -8,7 +8,8 @@ import * as assert from 'assert';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import Signing from '@metaverse-systems/the-seed/Signing';
-import { ScratchHome, useScratchHome, writeScopes } from '../helpers/scratchHome';
+import { writeScopes } from '../helpers/scratchHome';
+import { useScratchState } from '../helpers/scratchState';
 
 type ChooseScope = (signing: Signing, purpose: string) => Promise<string | undefined>;
 
@@ -18,16 +19,7 @@ function loadChooseScope(): ChooseScope {
 }
 
 suite('chooseScope', () => {
-  let home: ScratchHome;
-
-  setup(() => {
-    home = useScratchHome();
-  });
-
-  teardown(() => {
-    sinon.restore();
-    home.restore();
-  });
+  useScratchState({ prefix: false });
 
   test('no scopes: offers Add Scope, runs it on choosing, returns undefined', async () => {
     writeScopes({});

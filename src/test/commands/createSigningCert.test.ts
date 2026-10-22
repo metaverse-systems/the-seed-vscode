@@ -12,23 +12,18 @@ import * as sinon from 'sinon';
 import Config from '@metaverse-systems/the-seed/Config';
 import Signing from '@metaverse-systems/the-seed/Signing';
 import { createSigningCert } from '../../commands/createSigningCert';
-import { ScratchHome, createCertFor, useScratchHome, writeScopes } from '../helpers/scratchHome';
+import { createCertFor, writeScopes } from '../helpers/scratchHome';
+import { useScratchState } from '../helpers/scratchState';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 suite('createSigningCert command', () => {
-  let home: ScratchHome;
+  useScratchState({ prefix: false });
   const channel = { appendLine: (): void => undefined } as unknown as vscode.OutputChannel;
 
   setup(() => {
-    home = useScratchHome();
     sinon.stub(vscode.window, 'showInformationMessage').resolves(undefined);
     sinon.stub(vscode.window, 'showWarningMessage').resolves('Overwrite' as never);
-  });
-
-  teardown(() => {
-    sinon.restore();
-    home.restore();
   });
 
   test('creates the certificate for the picked scope with the entered validity', async () => {

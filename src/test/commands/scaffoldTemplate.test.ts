@@ -24,8 +24,8 @@ import Config from '@metaverse-systems/the-seed/Config';
 import Template from '@metaverse-systems/the-seed/Template';
 import ResourcePak from '@metaverse-systems/the-seed/ResourcePak';
 import { handleMessage } from '../../panels/messageHandler';
-import { ScratchHome, useScratchHome, writeScopes } from '../helpers/scratchHome';
-import { makeScratchDir, readTree, stubWorkspaceFolders, useScratchPrefix } from '../helpers/workspaceStub';
+import { useScratchState } from '../helpers/scratchState';
+import { readTree } from '../helpers/workspaceStub';
 
 type Scaffold = (kind: 'component' | 'system' | 'program', channel: vscode.OutputChannel) => Promise<void>;
 
@@ -39,17 +39,12 @@ const NAME = 'widget';
 const FIXED = new Date('2026-03-04T12:00:00Z');
 
 suite('scaffoldTemplate', () => {
-  let home: ScratchHome;
-  let prefix: string;
-  let dirs: string[];
-  let restoreFolders: () => void;
+  const state = useScratchState({ scopes: { [SCOPE]: 'Ada Lovelace' } });
   let clock: sinon.SinonFakeTimers;
   let opened: unknown[][];
 
   function scratch(label: string): string {
-    const dir = makeScratchDir(label);
-    dirs.push(dir);
-    return dir;
+    return state.dir(label);
   }
 
   function stubPrompts(scope: string, name: string): void {
@@ -74,11 +69,6 @@ suite('scaffoldTemplate', () => {
   }
 
   setup(() => {
-    home = useScratchHome();
-    writeScopes({ [SCOPE]: 'Ada Lovelace' });
-    prefix = useScratchPrefix();
-    dirs = [prefix];
-    restoreFolders = stubWorkspaceFolders([]);
     clock = sinon.useFakeTimers({ now: FIXED, toFake: ['Date'] });
     opened = [];
     const original = vscode.commands.executeCommand.bind(vscode.commands);
@@ -93,12 +83,6 @@ suite('scaffoldTemplate', () => {
 
   teardown(() => {
     clock.restore();
-    sinon.restore();
-    restoreFolders();
-    for (const dir of dirs) {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-    home.restore();
   });
 
   for (const kind of ['component', 'system', 'program'] as const) {
@@ -118,7 +102,7 @@ suite('scaffoldTemplate', () => {
 
       assert.ok(fs.existsSync(path.join(chosen, NAME)), 'project must be created in the chosen folder');
       assertSameTree(path.join(chosen, NAME), path.join(reference, NAME));
-      assert.deepStrictEqual(fs.readdirSync(prefix), [], 'nothing may be written under the prefix');
+      assert.deepStrictEqual(fs.readdirSync(state.prefix!), [], 'nothing may be written under the prefix');
       assert.strictEqual(opened.length, 1, 'the new folder is opened when no workspace was open');
     });
   }
@@ -126,8 +110,7 @@ suite('scaffoldTemplate', () => {
   test('an open folder is used as the parent and no dialog is shown', async () => {
     const workspace = scratch('workspace');
     const reference = scratch('reference');
-    restoreFolders();
-    restoreFolders = stubWorkspaceFolders([workspace]);
+    state.setWorkspaceFolders([workspace]);
     stubPrompts(SCOPE, NAME);
     const dialog = stubChooser(scratch('unused'));
 
@@ -141,7 +124,7 @@ suite('scaffoldTemplate', () => {
 
     assertSameTree(path.join(workspace, NAME), path.join(reference, NAME));
     assert.ok(dialog.notCalled);
-    assert.deepStrictEqual(fs.readdirSync(prefix), []);
+    assert.deepStrictEqual(fs.readdirSync(state.prefix!), []);
     assert.strictEqual(opened.length, 0);
   });
 
@@ -153,7 +136,7 @@ suite('scaffoldTemplate', () => {
     await loadScaffold()('system', vscode.window.createOutputChannel('scaffold-test'));
 
     assert.deepStrictEqual(fs.readdirSync(chosen), []);
-    assert.deepStrictEqual(fs.readdirSync(prefix), []);
+    assert.deepStrictEqual(fs.readdirSync(state.prefix!), []);
     assert.strictEqual(opened.length, 0);
   });
 
@@ -171,7 +154,7 @@ suite('scaffoldTemplate', () => {
 
     assert.ok(fs.existsSync(path.join(chosen, NAME)), 'pak project must be created in the chosen folder');
     assertSameTree(path.join(chosen, NAME), path.join(reference, NAME));
-    assert.deepStrictEqual(fs.readdirSync(prefix), [], 'nothing may be written under the prefix');
+    assert.deepStrictEqual(fs.readdirSync(state.prefix!), [], 'nothing may be written under the prefix');
   });
 
   test('resource pak through the panel equals the tool\'s', async () => {
@@ -194,7 +177,7 @@ suite('scaffoldTemplate', () => {
       assert.strictEqual(response.payload.packageDir, path.join(chosen, NAME));
     }
     assertSameTree(path.join(chosen, NAME), path.join(reference, NAME));
-    assert.deepStrictEqual(fs.readdirSync(prefix), []);
+    assert.deepStrictEqual(fs.readdirSync(state.prefix!), []);
   });
 
   test('the extension source has no "projects" path segment', () => {

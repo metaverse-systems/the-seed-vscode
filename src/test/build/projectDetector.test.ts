@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as path from 'path';
-import * as os from 'os';
 import * as fs from 'fs';
+import { makeScratchDir } from '../helpers/workspaceStub';
 import { detectBuildableProject } from '../../build/projectDetector';
 import type { BuildableProject } from '../../build/projectDetector';
 
@@ -9,7 +9,7 @@ suite('projectDetector', () => {
   let tmpDir: string;
 
   setup(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'projdetect-test-'));
+    tmpDir = makeScratchDir('projdetect');
   });
 
   teardown(() => {

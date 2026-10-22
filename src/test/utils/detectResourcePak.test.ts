@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import * as fs from 'fs';
-import * as os from 'os';
+import { makeScratchDir } from '../helpers/workspaceStub';
 import * as path from 'path';
 import { detectResourcePak } from '../../utils/detectResourcePak';
 
@@ -8,7 +8,7 @@ suite('detectResourcePak', () => {
   let tempDir: string;
 
   setup(() => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'detect-rpak-'));
+    tempDir = makeScratchDir('detect-rpak');
   });
 
   teardown(() => {
@@ -102,7 +102,7 @@ suite('detectResourcePak', () => {
   });
 
   test('returns null for non-existent directory', () => {
-    const result = detectResourcePak('/tmp/non-existent-dir-' + Date.now());
+    const result = detectResourcePak(path.join(tempDir, 'does-not-exist'));
     assert.strictEqual(result, null);
   });
 });

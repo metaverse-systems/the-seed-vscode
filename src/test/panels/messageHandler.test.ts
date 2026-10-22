@@ -21,8 +21,8 @@ import Config from '@metaverse-systems/the-seed/Config';
 import Template from '@metaverse-systems/the-seed/Template';
 import ResourcePak from '@metaverse-systems/the-seed/ResourcePak';
 import { validateScopeName } from '@metaverse-systems/the-seed/Scopes';
-import { ScratchHome, createCertFor, useScratchHome, writeScopes } from '../helpers/scratchHome';
-import { makeScratchDir, stubWorkspaceFolders, useScratchPrefix } from '../helpers/workspaceStub';
+import { createCertFor, writeScopes } from '../helpers/scratchHome';
+import { ScratchState, useScratchState } from '../helpers/scratchState';
 
 type Message = Parameters<typeof handleMessage>[0];
 type Push = NonNullable<Parameters<typeof handleMessage>[1]>;
@@ -33,10 +33,7 @@ interface LooseResponse {
 
 const SCOPE = '@acme';
 
-let fixtureHome: ScratchHome;
-let prefix: string;
-let fixtureDirs: string[];
-let restoreFolders: () => void;
+let state: ScratchState;
 
 async function post(message: object, push?: Push): Promise<LooseResponse | null> {
   const response = await handleMessage(message as unknown as Message, push);
@@ -44,9 +41,7 @@ async function post(message: object, push?: Push): Promise<LooseResponse | null>
 }
 
 function scratch(label: string): string {
-  const dir = makeScratchDir(label);
-  fixtureDirs.push(dir);
-  return dir;
+  return state.dir(label);
 }
 
 function stubChooser(folder: string): sinon.SinonStub {
@@ -70,27 +65,9 @@ function refusal(call: () => unknown): { message: string; hint?: string } {
   assert.fail('the library was expected to refuse the call');
 }
 
-/** Registers a scratch home, prefix, open folders (none) and cleanup for the enclosing suite. */
-function useFixture(): void {
-  setup(() => {
-    fixtureHome = useScratchHome();
-    writeScopes({ [SCOPE]: 'Ada Lovelace' });
-    prefix = useScratchPrefix();
-    fixtureDirs = [prefix];
-    restoreFolders = stubWorkspaceFolders([]);
-  });
-
-  teardown(() => {
-    sinon.restore();
-    restoreFolders();
-    for (const dir of fixtureDirs) {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-    fixtureHome.restore();
-  });
-}
-
 suite('messageHandler', () => {
+  state = useScratchState({ scopes: { [SCOPE]: 'Ada Lovelace' } });
+
   test('unknown command responds with error', async () => {
     const response = await handleMessage({
       command: 'unknownCommand' as 'ready',
@@ -138,16 +115,17 @@ suite('messageHandler', () => {
   });
 
   test('savePrefix command responds with prefixSaved', async () => {
+    const savedPrefix = state.dir('saved-prefix');
     const response = await handleMessage({
       command: 'savePrefix',
       requestId: 'test-save-prefix',
-      data: { prefix: '/tmp/test-seed' },
+      data: { prefix: savedPrefix },
     });
     assert.ok(response, 'Should return a response');
     assert.strictEqual(response!.type, 'prefixSaved');
     if (response!.type === 'prefixSaved') {
       assert.strictEqual(response!.requestId, 'test-save-prefix');
-      assert.strictEqual(response!.payload.prefix, '/tmp/test-seed');
+      assert.strictEqual(response!.payload.prefix, savedPrefix);
     }
   });
 
@@ -327,8 +305,6 @@ suite('messageHandler', () => {
   });
 
   suite('createTemplate', () => {
-    useFixture();
-
     function create(templateType: 'component' | 'system' | 'program', templateName: string, scopeName = SCOPE) {
       return post({
         command: 'createTemplate',
@@ -352,14 +328,13 @@ suite('messageHandler', () => {
         assert.strictEqual(response!.payload.openFolder, true);
         assert.ok(fs.existsSync(projectPath), 'project directory should exist on disk');
         assert.strictEqual(fs.existsSync(path.join(projectPath, 'widget.pc.in')), kind !== 'program');
-        assert.deepStrictEqual(fs.readdirSync(prefix), [], 'nothing may be written under the prefix');
+        assert.deepStrictEqual(fs.readdirSync(state.prefix!), [], 'nothing may be written under the prefix');
       });
     }
 
     test('an open folder is used without asking and is not reopened', async () => {
       const workspace = scratch('workspace');
-      restoreFolders();
-      restoreFolders = stubWorkspaceFolders([workspace]);
+      state.setWorkspaceFolders([workspace]);
       const dialog = stubChooser(scratch('unused'));
 
       const response = await create('component', 'widget');
@@ -368,7 +343,7 @@ suite('messageHandler', () => {
       assert.ok(dialog.notCalled);
       assert.strictEqual(response!.payload.projectPath, path.join(workspace, 'widget'));
       assert.strictEqual(response!.payload.openFolder, false);
-      assert.deepStrictEqual(fs.readdirSync(prefix), []);
+      assert.deepStrictEqual(fs.readdirSync(state.prefix!), []);
     });
 
     test('cancelling the folder chooser creates nothing', async () => {
@@ -379,15 +354,14 @@ suite('messageHandler', () => {
 
       assert.notStrictEqual(response?.type, 'templateCreated');
       assert.deepStrictEqual(fs.readdirSync(chosen), []);
-      assert.deepStrictEqual(fs.readdirSync(prefix), []);
+      assert.deepStrictEqual(fs.readdirSync(state.prefix!), []);
     });
 
     test('existing directory returns templateExists and keeps its files', async () => {
       const workspace = scratch('workspace');
       fs.mkdirSync(path.join(workspace, 'widget'));
       fs.writeFileSync(path.join(workspace, 'widget', 'mine.txt'), 'mine');
-      restoreFolders();
-      restoreFolders = stubWorkspaceFolders([workspace]);
+      state.setWorkspaceFolders([workspace]);
 
       const response = await create('component', 'widget');
 
@@ -431,18 +405,17 @@ suite('messageHandler', () => {
   });
 
   suite('Build Messages', () => {
-    test('startBuild responds with buildStarted when no build is running', async () => {
+    test('startBuild responds with buildStarted and runs the native build command when no build is running', async () => {
+      const execute = sinon.stub(vscode.commands, 'executeCommand').resolves(undefined);
       const response = await handleMessage({
         command: 'startBuild',
         requestId: 'test-build-1',
         data: { target: 'native' },
       });
       assert.ok(response, 'Should return a response');
-      // The handler should respond with buildStarted or error (no buildable project)
-      assert.ok(
-        response!.type === 'buildStarted' || response!.type === 'error',
-        `Expected buildStarted or error, got ${response!.type}`
-      );
+      assert.strictEqual(response!.type, 'buildStarted');
+      assert.strictEqual(response!.requestId, 'test-build-1');
+      assert.ok(execute.calledOnceWithExactly('the-seed.buildNative'), 'the native build command should be started once');
     });
 
     test('cancelBuild responds with buildCancelled', async () => {
@@ -476,8 +449,6 @@ suite('messageHandler', () => {
   });
 
   suite('ResourcePak Messages', () => {
-    useFixture();
-
     test('getResourcePakStatus responds with resourcePakStatus', async () => {
       const response = await handleMessage({
         command: 'getResourcePakStatus',
@@ -505,7 +476,7 @@ suite('messageHandler', () => {
       assert.ok(dialog.calledOnce);
       assert.strictEqual(response!.payload.packageDir, path.join(chosen, 'assets'));
       assert.ok(fs.existsSync(path.join(chosen, 'assets', 'package.json')));
-      assert.deepStrictEqual(fs.readdirSync(prefix), []);
+      assert.deepStrictEqual(fs.readdirSync(state.prefix!), []);
     });
 
     test('createResourcePak with the chooser cancelled creates nothing', async () => {
@@ -520,15 +491,14 @@ suite('messageHandler', () => {
 
       assert.notStrictEqual(response?.type, 'resourcePakCreated');
       assert.deepStrictEqual(fs.readdirSync(chosen), []);
-      assert.deepStrictEqual(fs.readdirSync(prefix), []);
+      assert.deepStrictEqual(fs.readdirSync(state.prefix!), []);
     });
 
     test('createResourcePak with an existing target gives the tool\'s message and hint', async () => {
       const workspace = scratch('workspace');
       fs.mkdirSync(path.join(workspace, 'assets'));
       fs.writeFileSync(path.join(workspace, 'assets', 'mine.txt'), 'mine');
-      restoreFolders();
-      restoreFolders = stubWorkspaceFolders([workspace]);
+      state.setWorkspaceFolders([workspace]);
 
       const response = await post({
         command: 'createResourcePak',
@@ -568,8 +538,7 @@ suite('messageHandler', () => {
         const workspace = scratch('workspace');
         pak = new ResourcePak(loadConfig()).createPackage(SCOPE, 'assets', workspace);
         sources = scratch('sources');
-        restoreFolders();
-        restoreFolders = stubWorkspaceFolders([pak]);
+        state.setWorkspaceFolders([pak]);
       });
 
       function source(name: string, text: string): string {
@@ -669,8 +638,7 @@ suite('messageHandler', () => {
 
     test('addResource and buildResourcePak with no pak project in the open folder give an error', async () => {
       const workspace = scratch('workspace');
-      restoreFolders();
-      restoreFolders = stubWorkspaceFolders([workspace]);
+      state.setWorkspaceFolders([workspace]);
       const file = path.join(scratch('sources'), 'a.txt');
       fs.writeFileSync(file, 'a');
 
@@ -701,15 +669,7 @@ suite('messageHandler', () => {
 // { scopes: [{ scope, fingerprint?, ... }] }; an entry without a certificate
 // has no fingerprint and carries the text "no certificate" in one of its fields.
 suite('messageHandler scope validation and signing status', () => {
-  let home: ScratchHome;
-
-  setup(() => {
-    home = useScratchHome();
-  });
-
-  teardown(() => {
-    home.restore();
-  });
+  useScratchState({ prefix: false });
 
   for (const name of ['', 'a b', 'a/b']) {
     test(`addScope with ${JSON.stringify(name)} responds with the validation reason and changes nothing`, async () => {

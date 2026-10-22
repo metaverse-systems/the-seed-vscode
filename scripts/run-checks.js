@@ -4,6 +4,7 @@
 // Single entry point for the extension's checks: compile, typecheck, lint and
 // the host suite. Plain CommonJS, Node built-ins only, no shell.
 
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -64,6 +65,29 @@ function validateKnownGaps(results, knownGaps) {
   return outcome.violations.length === 0;
 }
 
+// What the guard compares: the real configuration file's checksum and the
+// names and modification times directly inside the real configuration directory.
+function recordRealHome() {
+  const directory = path.join(os.homedir(), 'the-seed');
+  const configFile = path.join(directory, 'config.json');
+  const guard = { configHash: 'absent', entries: {} };
+  if (fs.existsSync(configFile)) {
+    guard.configHash = crypto.createHash('sha256').update(fs.readFileSync(configFile)).digest('hex');
+  }
+  if (fs.existsSync(directory)) {
+    for (const name of fs.readdirSync(directory)) {
+      guard.entries[name] = fs.lstatSync(path.join(directory, name)).mtimeMs;
+    }
+  }
+  return guard;
+}
+
+function listScratchEntries() {
+  return fs.readdirSync(os.tmpdir())
+    .filter((name) => name.startsWith('the-seed-ext-'))
+    .map((name) => path.join(os.tmpdir(), name));
+}
+
 function runHostOnce(hostOptions) {
   const results = loadResults();
 
@@ -71,7 +95,8 @@ function runHostOnce(hostOptions) {
   if (!validateKnownGaps(results, knownGaps)) {
     return false;
   }
-  // Hook: real-home guard and leftover scratch directories are recorded here.
+  const realHomeBefore = recordRealHome();
+  const leftoversBefore = listScratchEntries();
 
   const scratchRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'the-seed-vscode-tests-'));
   try {
@@ -118,8 +143,15 @@ function runHostOnce(hostOptions) {
     for (const line of outcome.failures) {
       console.log(line);
     }
-    // Hook: leftover scratch entries and real-home comparison add failures here.
-    ok = outcome.passed;
+    const scratchConfig = path.join(home, 'the-seed');
+    const extra = [
+      ...results.compareLeftovers(leftoversBefore, listScratchEntries(), fs.existsSync(scratchConfig) ? scratchConfig : null),
+      ...results.compareRealHome(realHomeBefore, recordRealHome()),
+    ];
+    for (const line of extra) {
+      console.log(line);
+    }
+    ok = outcome.passed && extra.length === 0;
     for (const line of outcome.notices) {
       console.log(line);
     }

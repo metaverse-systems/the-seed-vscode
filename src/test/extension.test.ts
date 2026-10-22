@@ -1,8 +1,12 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
+import * as path from 'path';
 import * as sinon from 'sinon';
+import { useScratchState } from './helpers/scratchState';
+import { writeScopes } from './helpers/scratchHome';
 
 suite('Extension Test Suite', () => {
+  const state = useScratchState();
 
   teardown(() => {
     sinon.restore();
@@ -59,21 +63,11 @@ suite('Extension Test Suite', () => {
     });
 
     test('should warn on duplicate scope and allow overwrite', async () => {
-      // First: add the scope
-      const showInputBoxStub1 = sinon.stub(vscode.window, 'showInputBox');
-      showInputBoxStub1.onFirstCall().resolves('duplicate-scope');
-      showInputBoxStub1.onSecondCall().resolves('Author');
-      showInputBoxStub1.onThirdCall().resolves('a@b.com');
-      showInputBoxStub1.onCall(3).resolves('https://a.com');
-      sinon.stub(vscode.window, 'showInformationMessage').resolves(undefined);
-
-      await vscode.commands.executeCommand('the-seed.addScope');
-
-      sinon.restore();
+      writeScopes({ '@duplicate-scope': 'Author' });
 
       // Second: add same scope, expect warning
       const showInputBoxStub2 = sinon.stub(vscode.window, 'showInputBox');
-      showInputBoxStub2.onFirstCall().resolves('duplicate-scope');
+      showInputBoxStub2.onFirstCall().resolves('@duplicate-scope');
       showInputBoxStub2.onSecondCall().resolves('Author 2');
       showInputBoxStub2.onThirdCall().resolves('b@b.com');
       showInputBoxStub2.onCall(3).resolves('https://b.com');
@@ -104,17 +98,7 @@ suite('Extension Test Suite', () => {
     });
 
     test('should exit cleanly when user cancels scope selection', async () => {
-      // First add a scope to ensure there's something to delete
-      const addInputStub = sinon.stub(vscode.window, 'showInputBox');
-      addInputStub.onFirstCall().resolves('del-test-scope');
-      addInputStub.onSecondCall().resolves('Author');
-      addInputStub.onThirdCall().resolves('a@b.com');
-      addInputStub.onCall(3).resolves('https://a.com');
-      sinon.stub(vscode.window, 'showInformationMessage').resolves(undefined);
-
-      await vscode.commands.executeCommand('the-seed.addScope');
-
-      sinon.restore();
+      writeScopes({ '@del-test-scope': 'Author' });
 
       // Now try to delete but cancel at QuickPick
       const showQuickPickStub = sinon.stub(vscode.window, 'showQuickPick').resolves(undefined);
@@ -147,7 +131,7 @@ suite('Extension Test Suite', () => {
       showInputBoxStub.onFirstCall().resolves('test-pak');
       showInputBoxStub.onSecondCall().resolves(undefined); // Cancel name input
       sinon.stub(vscode.window, 'showOpenDialog').resolves([
-        vscode.Uri.file('/tmp/test-file.txt'),
+        vscode.Uri.file(path.join(state.dir('resource'), 'test-file.txt')),
       ] as any);
       const showInfoStub = sinon.stub(vscode.window, 'showInformationMessage').resolves(undefined);
 

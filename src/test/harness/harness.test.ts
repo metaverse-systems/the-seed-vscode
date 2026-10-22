@@ -5,6 +5,9 @@ import {
   totalsLine,
   selectTestFiles,
   validateKnownGaps,
+  compareLeftovers,
+  compareRealHome,
+  RealHomeGuard,
   knownGapOutcome,
   HostResults,
   CaseResult,
@@ -660,5 +663,81 @@ suite('Harness: known gaps in results', () => {
       makeCase({ title: 'four', state: 'failed', error: 'x' }),
     ]);
     assert.strictEqual(totalsLine(results), 'Totals: 2 passed, 1 failed, 1 known gaps, 0 platform skips');
+  });
+});
+
+suite('Harness: compareLeftovers', () => {
+  const root = '/tmp/the-seed-vscode-tests-abc123';
+
+  test('reports nothing when no entry is new', () => {
+    const before = ['/tmp/the-seed-ext-old-1'];
+    assert.deepStrictEqual(compareLeftovers(before, [...before], null), []);
+  });
+
+  test('reports each new entry by path', () => {
+    const before = ['/tmp/the-seed-ext-old-1'];
+    const after = [...before, '/tmp/the-seed-ext-a-2', '/tmp/the-seed-ext-b-3'];
+    assert.deepStrictEqual(compareLeftovers(before, after, null), [
+      'LEFTOVER: /tmp/the-seed-ext-a-2',
+      'LEFTOVER: /tmp/the-seed-ext-b-3',
+    ]);
+  });
+
+  test('ignores entries that existed before the run, even when removed', () => {
+    assert.deepStrictEqual(compareLeftovers(['/tmp/the-seed-ext-old-1'], [], null), []);
+  });
+
+  test('reports the scratch home configuration directory when it exists', () => {
+    assert.deepStrictEqual(compareLeftovers([], [], `${root}/home/the-seed`), [
+      `LEFTOVER: ${root}/home/the-seed`,
+    ]);
+  });
+
+  test('reports new entries before the scratch home directory', () => {
+    assert.deepStrictEqual(compareLeftovers([], ['/tmp/the-seed-ext-a-2'], `${root}/home/the-seed`), [
+      'LEFTOVER: /tmp/the-seed-ext-a-2',
+      `LEFTOVER: ${root}/home/the-seed`,
+    ]);
+  });
+});
+
+suite('Harness: compareRealHome', () => {
+  const guard = (configHash: string, entries: Record<string, number>): RealHomeGuard => ({ configHash, entries });
+  const base = guard('a'.repeat(64), { 'config.json': 100, 'cache': 200 });
+
+  test('reports nothing when the guard is unchanged', () => {
+    assert.deepStrictEqual(compareRealHome(base, guard('a'.repeat(64), { 'config.json': 100, 'cache': 200 })), []);
+  });
+
+  test('reports a changed configuration checksum', () => {
+    const lines = compareRealHome(base, guard('b'.repeat(64), { 'config.json': 100, 'cache': 200 }));
+    assert.strictEqual(lines.length, 1);
+    assert.ok(lines[0].startsWith('REAL HOME CHANGED: '));
+    assert.ok(lines[0].includes('config.json'));
+  });
+
+  test('reports a configuration file that appeared', () => {
+    const lines = compareRealHome(guard('absent', {}), guard('c'.repeat(64), { 'config.json': 5 }));
+    assert.ok(lines.includes('REAL HOME CHANGED: config.json was absent and now exists'));
+  });
+
+  test('reports a configuration file that was removed', () => {
+    const lines = compareRealHome(base, guard('absent', { 'cache': 200 }));
+    assert.ok(lines.includes('REAL HOME CHANGED: config.json existed and is now absent'));
+  });
+
+  test('reports an added entry by name', () => {
+    const lines = compareRealHome(base, guard(base.configHash, { ...base.entries, 'new.txt': 300 }));
+    assert.deepStrictEqual(lines, ['REAL HOME CHANGED: new.txt was added']);
+  });
+
+  test('reports a removed entry by name', () => {
+    const lines = compareRealHome(base, guard(base.configHash, { 'config.json': 100 }));
+    assert.deepStrictEqual(lines, ['REAL HOME CHANGED: cache was removed']);
+  });
+
+  test('reports a changed modification time by name', () => {
+    const lines = compareRealHome(base, guard(base.configHash, { 'config.json': 100, 'cache': 250 }));
+    assert.deepStrictEqual(lines, ['REAL HOME CHANGED: cache modification time changed']);
   });
 });

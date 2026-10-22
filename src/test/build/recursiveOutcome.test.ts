@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as path from 'path';
-import * as os from 'os';
 import * as fs from 'fs';
+import { makeScratchDir } from '../helpers/workspaceStub';
 import { discoveryFailure } from '../../build/recursiveOutcome';
 import {
   ConflictingProjectError,
@@ -64,7 +64,7 @@ suite('recursiveOutcome', () => {
     const originalReadFile = fs.promises.readFile;
 
     setup(() => {
-      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'recursive-outcome-test-'));
+      tmpDir = makeScratchDir('recursive-outcome');
     });
 
     teardown(() => {

@@ -15,30 +15,25 @@ import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import Signing from '@metaverse-systems/the-seed/Signing';
 import { signFile } from '../../commands/signFile';
-import { ScratchHome, createCertFor, fixturePath, useScratchHome, writeScopes } from '../helpers/scratchHome';
+import { createCertFor, fixturePath, writeScopes } from '../helpers/scratchHome';
+import { useScratchState } from '../helpers/scratchState';
 
 function digest(file: string): string {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 }
 
 suite('signFile command', () => {
-  let home: ScratchHome;
+  const state = useScratchState({ prefix: false });
   let program: string;
   let original: string;
   const channel = { appendLine: (): void => undefined } as unknown as vscode.OutputChannel;
 
   setup(() => {
-    home = useScratchHome();
-    program = path.join(home.dir, 'tiny.exe');
+    program = path.join(state.home, 'tiny.exe');
     fs.copyFileSync(fixturePath('tiny.exe'), program);
     original = digest(program);
     sinon.stub(vscode.window, 'showInformationMessage').resolves(undefined);
     sinon.stub(vscode.window, 'showWarningMessage').resolves(undefined);
-  });
-
-  teardown(() => {
-    sinon.restore();
-    home.restore();
   });
 
   test('one scope with a certificate: signed with that scope', async () => {

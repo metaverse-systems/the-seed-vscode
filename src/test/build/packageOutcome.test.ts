@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as path from 'path';
-import * as os from 'os';
 import * as fs from 'fs';
+import { makeScratchDir } from '../helpers/workspaceStub';
 import { packageStatusFrom, packageNotification } from '../../build/packageOutcome';
 import Config from '@metaverse-systems/the-seed/Config';
 import Package from '@metaverse-systems/the-seed/Package';
@@ -78,7 +78,7 @@ suite('packageOutcome', () => {
     let tmpDir: string;
 
     setup(() => {
-      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'package-outcome-test-'));
+      tmpDir = makeScratchDir('package-outcome');
     });
 
     teardown(() => {

@@ -14,8 +14,8 @@ import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import Config from '@metaverse-systems/the-seed/Config';
 import ResourcePak from '@metaverse-systems/the-seed/ResourcePak';
-import { ScratchHome, useScratchHome, writeScopes } from '../helpers/scratchHome';
-import { makeScratchDir, stubWorkspaceFolders } from '../helpers/workspaceStub';
+import { writeScopes } from '../helpers/scratchHome';
+import { useScratchState } from '../helpers/scratchState';
 
 interface ProjectFolder {
   chooseProjectFolder(): Promise<string | undefined>;
@@ -34,14 +34,10 @@ const DIALOG_OPTIONS = {
 };
 
 suite('projectFolder', () => {
-  let home: ScratchHome;
-  let dirs: string[];
-  let restoreFolders: (() => void) | undefined;
+  const state = useScratchState({ prefix: false });
 
   function scratch(label: string): string {
-    const dir = makeScratchDir(label);
-    dirs.push(dir);
-    return dir;
+    return state.dir(label);
   }
 
   function makePak(parent: string, name: string): string {
@@ -51,28 +47,11 @@ suite('projectFolder', () => {
     return new ResourcePak(config).createPackage('@acme', name, parent);
   }
 
-  setup(() => {
-    home = useScratchHome();
-    dirs = [];
-    restoreFolders = undefined;
-  });
-
-  teardown(() => {
-    sinon.restore();
-    if (restoreFolders) {
-      restoreFolders();
-    }
-    for (const dir of dirs) {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-    home.restore();
-  });
-
   suite('chooseProjectFolder', () => {
     test('an open folder is returned without asking', async () => {
       const first = scratch('first');
       const second = scratch('second');
-      restoreFolders = stubWorkspaceFolders([first, second]);
+      state.setWorkspaceFolders([first, second]);
       const dialog = sinon.stub(vscode.window, 'showOpenDialog').resolves(undefined);
 
       assert.strictEqual(await load().chooseProjectFolder(), first);
@@ -81,7 +60,7 @@ suite('projectFolder', () => {
 
     test('no open folder: asks with the folder options and returns the chosen path', async () => {
       const chosen = scratch('chosen');
-      restoreFolders = stubWorkspaceFolders([]);
+      state.setWorkspaceFolders([]);
       const dialog = sinon.stub(vscode.window, 'showOpenDialog').resolves([vscode.Uri.file(chosen)]);
 
       assert.strictEqual(await load().chooseProjectFolder(), chosen);
@@ -90,13 +69,13 @@ suite('projectFolder', () => {
     });
 
     test('no open folder and the dialog cancelled: undefined', async () => {
-      restoreFolders = stubWorkspaceFolders([]);
+      state.setWorkspaceFolders([]);
       sinon.stub(vscode.window, 'showOpenDialog').resolves(undefined);
       assert.strictEqual(await load().chooseProjectFolder(), undefined);
     });
 
     test('no open folder and an empty selection: undefined', async () => {
-      restoreFolders = stubWorkspaceFolders([]);
+      state.setWorkspaceFolders([]);
       sinon.stub(vscode.window, 'showOpenDialog').resolves([]);
       assert.strictEqual(await load().chooseProjectFolder(), undefined);
     });
@@ -106,7 +85,7 @@ suite('projectFolder', () => {
     test('the pak project in the open folder is returned without asking', async () => {
       const workspace = scratch('workspace');
       const pak = makePak(workspace, 'assets');
-      restoreFolders = stubWorkspaceFolders([pak]);
+      state.setWorkspaceFolders([pak]);
       const dialog = sinon.stub(vscode.window, 'showOpenDialog').resolves(undefined);
 
       assert.strictEqual(await load().choosePakProject(), pak);
@@ -117,7 +96,7 @@ suite('projectFolder', () => {
       const workspace = scratch('workspace');
       const parent = scratch('parent');
       const pak = makePak(parent, 'assets');
-      restoreFolders = stubWorkspaceFolders([workspace]);
+      state.setWorkspaceFolders([workspace]);
       const dialog = sinon.stub(vscode.window, 'showOpenDialog').resolves([vscode.Uri.file(pak)]);
 
       assert.strictEqual(await load().choosePakProject(), pak);
@@ -131,7 +110,7 @@ suite('projectFolder', () => {
     test('no open folder: asks, and a chosen pak project is returned', async () => {
       const parent = scratch('parent');
       const pak = makePak(parent, 'assets');
-      restoreFolders = stubWorkspaceFolders([]);
+      state.setWorkspaceFolders([]);
       const dialog = sinon.stub(vscode.window, 'showOpenDialog').resolves([vscode.Uri.file(pak)]);
 
       assert.strictEqual(await load().choosePakProject(), pak);
@@ -139,7 +118,7 @@ suite('projectFolder', () => {
     });
 
     test('cancelled: undefined and nothing shown', async () => {
-      restoreFolders = stubWorkspaceFolders([]);
+      state.setWorkspaceFolders([]);
       sinon.stub(vscode.window, 'showOpenDialog').resolves(undefined);
       const error = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
 
@@ -149,7 +128,7 @@ suite('projectFolder', () => {
 
     test('a chosen folder that is not a pak project: the tool\'s error is shown and undefined returned', async () => {
       const notPak = scratch('not-pak');
-      restoreFolders = stubWorkspaceFolders([]);
+      state.setWorkspaceFolders([]);
       sinon.stub(vscode.window, 'showOpenDialog').resolves([vscode.Uri.file(notPak)]);
       const error = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
 

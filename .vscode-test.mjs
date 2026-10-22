@@ -27,7 +27,7 @@ function listTests(dir) {
 	return found;
 }
 
-const all = listTests(path.join(root, 'out', 'test'));
+const all = [...listTests(path.join(root, 'out', 'test')), path.join(root, 'out', 'test', 'harness', 'rootHooks.js')];
 
 export default defineConfig({
 	version: '1.143.0',

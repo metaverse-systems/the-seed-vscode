@@ -299,3 +299,56 @@ export function knownGapOutcome(entry: KnownGap, title: string, error: Error | n
     throw error;
   }
 }
+
+/**
+ * Lines for scratch directories left behind: each entry present after the run
+ * and not before it, then the scratch home's configuration directory when it
+ * exists (`scratchHomeTheSeedPath` is its path, or null when it does not).
+ */
+export function compareLeftovers(
+  before: readonly string[],
+  after: readonly string[],
+  scratchHomeTheSeedPath: string | null
+): string[] {
+  const known = new Set(before);
+  const lines = after.filter((entry) => !known.has(entry)).map((entry) => `LEFTOVER: ${entry}`);
+  if (scratchHomeTheSeedPath !== null) {
+    lines.push(`LEFTOVER: ${scratchHomeTheSeedPath}`);
+  }
+  return lines;
+}
+
+export interface RealHomeGuard {
+  /** SHA-256 hex of the configuration file, or 'absent'. */
+  configHash: string;
+  /** Modification time in milliseconds of each name directly inside the configuration directory. */
+  entries: Record<string, number>;
+}
+
+/** Lines for every difference between two recordings of the real home's configuration directory. */
+export function compareRealHome(before: RealHomeGuard, after: RealHomeGuard): string[] {
+  const prefix = 'REAL HOME CHANGED: ';
+  const lines: string[] = [];
+  if (before.configHash !== after.configHash) {
+    if (before.configHash === 'absent') {
+      lines.push(`${prefix}config.json was absent and now exists`);
+    } else if (after.configHash === 'absent') {
+      lines.push(`${prefix}config.json existed and is now absent`);
+    } else {
+      lines.push(`${prefix}config.json checksum changed (${before.configHash} to ${after.configHash})`);
+    }
+  }
+  for (const name of Object.keys(after.entries)) {
+    if (!(name in before.entries)) {
+      lines.push(`${prefix}${name} was added`);
+    } else if (before.entries[name] !== after.entries[name]) {
+      lines.push(`${prefix}${name} modification time changed`);
+    }
+  }
+  for (const name of Object.keys(before.entries)) {
+    if (!(name in after.entries)) {
+      lines.push(`${prefix}${name} was removed`);
+    }
+  }
+  return lines;
+}
