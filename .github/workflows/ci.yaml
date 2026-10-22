@@ -551,11 +551,11 @@ jobs:
           from="$HOME/work/the-seed-vscode"
           if [ -d "$from/test-results" ]; then
             mkdir -p "$src/test-results"
-            cp -a "$from/test-results/." "$src/test-results/"
+            cp -R "$from/test-results/." "$src/test-results/"
           fi
           if [ -d "$from/.vscode-test/user-data/logs" ]; then
             mkdir -p "$src/.vscode-test/user-data/logs"
-            cp -a "$from/.vscode-test/user-data/logs/." "$src/.vscode-test/user-data/logs/"
+            cp -R "$from/.vscode-test/user-data/logs/." "$src/.vscode-test/user-data/logs/"
           fi
 
       - name: Summary
