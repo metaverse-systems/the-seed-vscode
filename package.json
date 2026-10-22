@@ -157,13 +157,14 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run build",
-    "compile": "tsc -p ./",
+    "compile": "node scripts/run-checks.js compile",
+    "typecheck": "node scripts/run-checks.js typecheck",
     "build:webview": "vite build --config vite.config.webview.mts",
-    "build": "npm run compile && npm run build:webview",
+    "build": "node scripts/run-checks.js compile && npm run build:webview",
     "watch": "tsc -watch -p ./",
-    "pretest": "npm run compile && npm run lint",
-    "lint": "eslint src",
-    "test": "vscode-test"
+    "lint": "node scripts/run-checks.js lint",
+    "lint-fix": "node ./node_modules/eslint/bin/eslint.js src --fix",
+    "test": "node scripts/run-checks.js"
   },
   "devDependencies": {
     "@types/fs-extra": "^11.0.4",
