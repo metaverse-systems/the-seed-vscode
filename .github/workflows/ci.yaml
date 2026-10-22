@@ -62,7 +62,7 @@ jobs:
 
       - name: Restore libraries
         id: deps
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/deps
           key: deps-linux-windows-${{ env.LIBECS_CPP_REF }}-${{ env.LIBTHE_SEED_REF }}-${{ runner.os }}-${{ env.ImageVersion }}
@@ -192,7 +192,7 @@ jobs:
           node -e "const fs=require('fs');const l='node_modules/@metaverse-systems/the-seed';fs.rmSync(l,{force:true,recursive:true});fs.symlinkSync(process.argv[1],l,'junction');console.log(require.resolve('@metaverse-systems/the-seed/Config'))" "$(npm root -g)/@metaverse-systems/the-seed"
 
       - name: Restore editor
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .vscode-test/vscode-*
           key: vscode-${{ runner.os }}-${{ env.VSCODE_VERSION }}
