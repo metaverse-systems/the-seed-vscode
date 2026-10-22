@@ -269,7 +269,7 @@ export function activate(context: vscode.ExtensionContext) {
         openLabel: "Select Certificate File",
         filters: { 'PEM Files': ['pem', 'crt'] },
       });
-      if (!certResult || certResult.length === 0) return;
+      if (!certResult || certResult.length === 0) {return;}
 
       // Show file picker for private key
       const keyResult = await vscode.window.showOpenDialog({
@@ -278,7 +278,7 @@ export function activate(context: vscode.ExtensionContext) {
         openLabel: "Select Private Key File",
         filters: { 'Key Files': ['pem', 'key'] },
       });
-      if (!keyResult || keyResult.length === 0) return;
+      if (!keyResult || keyResult.length === 0) {return;}
 
       // Check for existing cert
       if (signing.hasCert(scope)) {
@@ -287,7 +287,7 @@ export function activate(context: vscode.ExtensionContext) {
           'Overwrite',
           'Cancel'
         );
-        if (overwrite !== 'Overwrite') return;
+        if (overwrite !== 'Overwrite') {return;}
       }
 
       try {
@@ -367,7 +367,7 @@ export function activate(context: vscode.ExtensionContext) {
         defaultUri: vscode.Uri.file('signing-cert.pem'),
         filters: { 'PEM Files': ['pem'] },
       });
-      if (!saveUri) return;
+      if (!saveUri) {return;}
 
       await signing.exportCert(saveUri.fsPath, scope);
       vscode.window.showInformationMessage(`Certificate exported to ${saveUri.fsPath}`);

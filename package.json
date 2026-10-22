@@ -161,7 +161,7 @@
     "compile": "node scripts/run-checks.js compile",
     "typecheck": "node scripts/run-checks.js typecheck",
     "build:webview": "vite build --config vite.config.webview.mts",
-    "build": "node scripts/run-checks.js compile && npm run build:webview",
+    "build": "node scripts/run-checks.js compile typecheck && npm run build:webview",
     "watch": "tsc -watch -p ./",
     "lint": "node scripts/run-checks.js lint",
     "lint-fix": "node ./node_modules/eslint/bin/eslint.js src --fix",

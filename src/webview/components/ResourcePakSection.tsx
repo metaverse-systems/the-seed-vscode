@@ -88,7 +88,7 @@ export const ResourcePakSection: React.FC<ResourcePakSectionProps> = ({
   const isBuildRunning = buildProgress?.state === 'building';
 
   const getBuildStatusIndicator = () => {
-    if (!buildProgress) return null;
+    if (!buildProgress) {return null;}
     switch (buildProgress.state) {
       case 'building':
         return (

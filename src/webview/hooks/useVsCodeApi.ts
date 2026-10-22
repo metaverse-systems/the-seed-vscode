@@ -13,7 +13,6 @@ let api: VsCodeApi | undefined;
 
 export function getVsCodeApi(): VsCodeApi {
   if (!api) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     api = (window as any).acquireVsCodeApi();
   }
   return api!;

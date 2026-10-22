@@ -28,7 +28,7 @@ export const TemplateForm: React.FC<TemplateFormProps> = ({
   // Attach change event listener to web component via ref
   useEffect(() => {
     const selectElement = selectRef.current;
-    if (!selectElement) return;
+    if (!selectElement) {return;}
 
     const handleChange = (e: Event) => {
       const el = e.target as HTMLElement & { value: string };

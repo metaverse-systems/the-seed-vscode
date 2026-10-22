@@ -2,8 +2,7 @@ import typescriptEslint from "@typescript-eslint/eslint-plugin";
 import tsParser from "@typescript-eslint/parser";
 
 export default [{
-    files: ["**/*.ts"],
-    ignores: ["src/webview/**"],
+    files: ["**/*.ts", "**/*.tsx"],
 }, {
     plugins: {
         "@typescript-eslint": typescriptEslint,

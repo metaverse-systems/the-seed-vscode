@@ -24,7 +24,7 @@ export const ResourcePakForm: React.FC<ResourcePakFormProps> = ({
 
   useEffect(() => {
     const selectElement = selectRef.current;
-    if (!selectElement) return;
+    if (!selectElement) {return;}
 
     const handleChange = (e: Event) => {
       const el = e.target as HTMLElement & { value: string };
