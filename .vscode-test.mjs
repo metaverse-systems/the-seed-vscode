@@ -29,8 +29,13 @@ function listTests(dir) {
 
 const all = [...listTests(path.join(root, 'out', 'test')), path.join(root, 'out', 'test', 'harness', 'rootHooks.js')];
 
+// Keep the editor off any real desktop on Linux: x11 only (it runs under xvfb),
+// so it cannot pick up a Wayland socket. THE_SEED_TEST_VISIBLE=1 opts out.
+const launchArgs = process.platform === 'linux' && process.env.THE_SEED_TEST_VISIBLE !== '1' ? ['--ozone-platform=x11'] : [];
+
 export default defineConfig({
 	version: '1.143.0',
+	launchArgs,
 	files: selectTestFiles(
 		all,
 		{ only: process.env.THE_SEED_TEST_ONLY || undefined, order: process.env.THE_SEED_TEST_ORDER || undefined },

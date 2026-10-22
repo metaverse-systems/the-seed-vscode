@@ -124,6 +124,38 @@ _Coming soon_
 
 **Installer prerequisites**: `sudo apt install msitools` (provides `wixl`)
 
+## Running the checks
+
+Prerequisites: run `npm ci`; the tool must be resolvable as `@metaverse-systems/the-seed` (the sibling `../the-seed` checkout, built with its native component, or a global install linked into `node_modules`); on Linux without a display, install `xvfb` (the runner starts the editor under `xvfb-run -a`).
+
+```sh
+npm test                 # compile, typecheck, lint, then the host suite
+npm run compile          # one stage
+npm run typecheck        # sidebar type-check
+npm run lint             # fails on any warning, .ts and .tsx
+npm test -- host         # host suite only (needs compile)
+npm run build            # compile, type-check and sidebar bundle
+```
+
+Use `npm test` rather than `npx vscode-test`: the runner supplies a scratch home, checks the results file, validates the known-gap list and reports totals. Every suite runs in scratch state, and the real `~/the-seed` is checked unchanged afterwards (`REAL HOME CHANGED:` fails the run).
+
+Options for the host suite go after a second `--`:
+
+```sh
+npm test -- host -- --reverse                                   # run files in reverse order
+npm test -- host -- --only out/test/commands/signingCommands.test.js
+npm test -- host -- --repeat 10                                 # run the suite repeatedly
+```
+
+Known gaps and platform skips are recorded, never silent:
+
+- A case that fails today because of a defect recorded in a review is marked with `knownGapTest` and listed in `src/test/harness/knownGaps.ts` (id, review finding, the roadmap task that fixes it, a failure-message signature). It is counted as a known gap while it fails with that signature. Once it passes, the run fails with `STALE KNOWN GAP:` until the marker and the entry are removed, so remove both in the change that fixes the defect.
+- A case that cannot run on a platform uses `requires(...)` (or `onPlatform`); the capabilities and their reasons are in `src/test/harness/platform.ts`. Each skip prints `PLATFORM SKIP:` with its reason. `this.skip()` anywhere else fails the run (`SILENT SKIP:`). Remove a `requires` call when the platform gains the capability.
+
+The editor version is pinned in `.vscode-test.mjs` and must equal `VSCODE_VERSION` in `.github/workflows/ci.yaml`; change both together. The workflow runs `npm test` on `ubuntu-24.04` and `windows-2025`; require the checks `check (ubuntu-24.04)` and `check (windows-2025)` on the main branch.
+
+No line-level ESLint disables are used.
+
 ## 🛠️ Development & Debugging
 - Run `npm run compile` to bundle the extension.
 - Use `vsce package` to package it for publishing.

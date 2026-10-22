@@ -122,16 +122,25 @@ function runHostOnce(hostOptions) {
     const entry = resolveEntry('@vscode/test-cli', 'out', 'bin.mjs');
     let command = process.execPath;
     let args = [entry];
-    if (process.platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
+    let childEnv = env;
+    if (process.platform === 'linux' && process.env.THE_SEED_TEST_VISIBLE !== '1') {
+      // Always use a virtual display, even when a desktop session exists:
+      // clients can reach a Wayland socket without WAYLAND_DISPLAY set.
       const probe = spawnSync('xvfb-run', ['--help'], { stdio: 'ignore' });
-      if (probe.error) {
+      if (!probe.error) {
+        args = ['-a', process.execPath, entry];
+        command = 'xvfb-run';
+        childEnv = { ...env, ELECTRON_OZONE_PLATFORM_HINT: 'x11' };
+        delete childEnv.WAYLAND_DISPLAY;
+        delete childEnv.DISPLAY;
+      } else if (!process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
         console.log('no display: install xvfb (xvfb-run) or set DISPLAY');
         return false;
+      } else {
+        console.log('NOTICE: xvfb-run is not installed; the editor will be visible on your display');
       }
-      args = ['-a', process.execPath, entry];
-      command = 'xvfb-run';
     }
-    spawnSync(command, args, { cwd: root, stdio: 'inherit', env });
+    spawnSync(command, args, { cwd: root, stdio: 'inherit', env: childEnv });
 
     let ok = true;
     if (!fs.existsSync(resultsFile)) {
