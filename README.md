@@ -126,7 +126,7 @@ _Coming soon_
 
 ## Running the checks
 
-Prerequisites: run `npm ci`; the tool must be resolvable as `@metaverse-systems/the-seed` (the sibling `../the-seed` checkout, built with its native component, or a global install linked into `node_modules`); on Linux without a display, install `xvfb` (the runner starts the editor under `xvfb-run -a`).
+Prerequisites: run `npm ci`; the tool must be resolvable as `@metaverse-systems/the-seed` (the sibling `../the-seed` checkout, built with its native component, or a global install linked into `node_modules`); on Linux, install `xvfb`: the runner always starts the editor under `xvfb-run -a` with X11 forced, even on a desktop session, so no window appears. Set `THE_SEED_TEST_VISIBLE=1` to use the real display instead.
 
 ```sh
 npm test                 # compile, typecheck, lint, then the host suite
