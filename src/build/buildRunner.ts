@@ -1,6 +1,6 @@
 import path from 'path';
 import { spawn, ChildProcess } from 'child_process';
-import type { BuildStep } from '@metaverse-systems/the-seed/dist/types';
+import type { BuildStep } from '@metaverse-systems/the-seed/types';
 
 export interface BuildRunnerOptions {
   cwd: string;

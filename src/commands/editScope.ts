@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import { askQuestions } from '../askQuestions';
-import Config from '@metaverse-systems/the-seed/dist/Config';
-import Scopes from '@metaverse-systems/the-seed/dist/Scopes';
-import type { ScopeAnswersType } from '@metaverse-systems/the-seed/dist/types';
+import Config from '@metaverse-systems/the-seed/Config';
+import Scopes from '@metaverse-systems/the-seed/Scopes';
+import type { ScopeAnswersType } from '@metaverse-systems/the-seed/types';
 
 export async function editScope(outputChannel: vscode.OutputChannel): Promise<void> {
   const config = new Config();

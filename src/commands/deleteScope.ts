@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import Config from '@metaverse-systems/the-seed/dist/Config';
-import Scopes from '@metaverse-systems/the-seed/dist/Scopes';
+import Config from '@metaverse-systems/the-seed/Config';
+import Scopes from '@metaverse-systems/the-seed/Scopes';
 
 export async function deleteScope(outputChannel: vscode.OutputChannel): Promise<void> {
   const config = new Config();

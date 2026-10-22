@@ -12,8 +12,8 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
-import Config from '@metaverse-systems/the-seed/dist/Config';
-import ResourcePak from '@metaverse-systems/the-seed/dist/ResourcePak';
+import Config from '@metaverse-systems/the-seed/Config';
+import ResourcePak from '@metaverse-systems/the-seed/ResourcePak';
 import { ScratchHome, useScratchHome, writeScopes } from '../helpers/scratchHome';
 import { makeScratchDir, stubWorkspaceFolders } from '../helpers/workspaceStub';
 

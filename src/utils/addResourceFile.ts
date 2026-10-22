@@ -1,8 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import ResourcePak from '@metaverse-systems/the-seed/dist/ResourcePak';
-import { ProjectError } from '@metaverse-systems/the-seed/dist/ProjectError';
-import { replaceResourceHint } from '@metaverse-systems/the-seed/dist/cli/Hints';
+import ResourcePak from '@metaverse-systems/the-seed/ResourcePak';
+import { ProjectError } from '@metaverse-systems/the-seed/ProjectError';
+import { replaceResourceHint } from '@metaverse-systems/the-seed/Hints';
 
 export interface AddedResource {
   name: string;

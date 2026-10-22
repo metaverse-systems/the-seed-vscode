@@ -9,7 +9,7 @@ import {
   DiscoveryCancelledError,
   ProjectManifestError,
   walkDependencies,
-} from '@metaverse-systems/the-seed/dist/DependencyWalker';
+} from '@metaverse-systems/the-seed/DependencyWalker';
 
 // Choices made where the contract leaves a detail open (the implementation matches these):
 // - `discoveryFailure` returns the object with exactly the keys `status`, `complete` and `message`,

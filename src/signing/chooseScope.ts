@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
-import Signing from '@metaverse-systems/the-seed/dist/Signing';
-import Config from '@metaverse-systems/the-seed/dist/Config';
-import Scopes from '@metaverse-systems/the-seed/dist/Scopes';
+import Signing from '@metaverse-systems/the-seed/Signing';
+import Config from '@metaverse-systems/the-seed/Config';
+import Scopes from '@metaverse-systems/the-seed/Scopes';
 
 /**
  * Chooses the scope a signing command works on.

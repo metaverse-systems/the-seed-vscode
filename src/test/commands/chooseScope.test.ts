@@ -7,7 +7,7 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
-import Signing from '@metaverse-systems/the-seed/dist/Signing';
+import Signing from '@metaverse-systems/the-seed/Signing';
 import { ScratchHome, useScratchHome, writeScopes } from '../helpers/scratchHome';
 
 type ChooseScope = (signing: Signing, purpose: string) => Promise<string | undefined>;

@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import Config from '@metaverse-systems/the-seed/dist/Config';
-import Installer from '@metaverse-systems/the-seed/dist/Installer';
+import Config from '@metaverse-systems/the-seed/Config';
+import Installer from '@metaverse-systems/the-seed/Installer';
 import type { TheSeedViewProvider } from '../panels/TheSeedViewProvider';
 import type { InstallerStatusPayload } from '../types/messages';
 

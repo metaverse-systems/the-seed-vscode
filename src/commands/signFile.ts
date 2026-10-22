@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import Signing from '@metaverse-systems/the-seed/dist/Signing';
+import Signing from '@metaverse-systems/the-seed/Signing';
 import { chooseScope } from '../signing/chooseScope';
 import { describeSignFailure } from '../signing/signFailure';
 

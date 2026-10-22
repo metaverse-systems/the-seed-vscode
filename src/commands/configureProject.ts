@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { askQuestions } from '../askQuestions';
-import Config from '@metaverse-systems/the-seed/dist/Config';
+import Config from '@metaverse-systems/the-seed/Config';
 
 export async function configureProject(outputChannel: vscode.OutputChannel): Promise<void> {
   const config = new Config();

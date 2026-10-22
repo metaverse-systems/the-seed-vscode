@@ -3,9 +3,9 @@ import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
 import { packageStatusFrom, packageNotification } from '../../build/packageOutcome';
-import Config from '@metaverse-systems/the-seed/dist/Config';
-import Package from '@metaverse-systems/the-seed/dist/Package';
-import type { PackageResult } from '@metaverse-systems/the-seed/dist/types';
+import Config from '@metaverse-systems/the-seed/Config';
+import Package from '@metaverse-systems/the-seed/Package';
+import type { PackageResult } from '@metaverse-systems/the-seed/types';
 
 // Choices made where the contract leaves a detail open (the implementation matches these):
 // - `packageStatusFrom` returns exactly the keys the contract lists (no `currentFile`), compared

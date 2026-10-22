@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
-import ResourcePak from '@metaverse-systems/the-seed/dist/ResourcePak';
-import Config from '@metaverse-systems/the-seed/dist/Config';
-import { ProjectError } from '@metaverse-systems/the-seed/dist/ProjectError';
+import ResourcePak from '@metaverse-systems/the-seed/ResourcePak';
+import Config from '@metaverse-systems/the-seed/Config';
+import { ProjectError } from '@metaverse-systems/the-seed/ProjectError';
 import { detectResourcePak } from './detectResourcePak';
 
 /** The text shown for a refusal by the tool: its message, then its hint when it has one. */

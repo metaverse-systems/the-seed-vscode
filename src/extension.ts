@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { askQuestions } from "./askQuestions";
-import ResourcePak from "@metaverse-systems/the-seed/dist/ResourcePak";
-import Config from "@metaverse-systems/the-seed/dist/Config";
+import ResourcePak from "@metaverse-systems/the-seed/ResourcePak";
+import Config from "@metaverse-systems/the-seed/Config";
 import { createOutputChannel } from "./outputChannel";
 import { wrapCommand } from "./commands/wrapCommand";
 import { configureProject } from "./commands/configureProject";
@@ -22,11 +22,11 @@ import { chooseScope } from "./signing/chooseScope";
 import { createSigningCert } from "./commands/createSigningCert";
 import { signFile } from "./commands/signFile";
 import { verifySignature } from "./commands/verifySignature";
-import Signing from "@metaverse-systems/the-seed/dist/Signing";
+import Signing from "@metaverse-systems/the-seed/Signing";
 import { TheSeedViewProvider } from "./panels/TheSeedViewProvider";
 import { chooseProjectFolder, choosePakProject, describeError } from "./utils/projectFolder";
 import { addResourceFile } from "./utils/addResourceFile";
-import { ProjectError } from "@metaverse-systems/the-seed/dist/ProjectError";
+import { ProjectError } from "@metaverse-systems/the-seed/ProjectError";
 import * as path from "path";
 
 export function activate(context: vscode.ExtensionContext) {

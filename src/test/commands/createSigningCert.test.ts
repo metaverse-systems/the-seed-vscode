@@ -9,8 +9,8 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
-import Config from '@metaverse-systems/the-seed/dist/Config';
-import Signing from '@metaverse-systems/the-seed/dist/Signing';
+import Config from '@metaverse-systems/the-seed/Config';
+import Signing from '@metaverse-systems/the-seed/Signing';
 import { createSigningCert } from '../../commands/createSigningCert';
 import { ScratchHome, createCertFor, useScratchHome, writeScopes } from '../helpers/scratchHome';
 

@@ -1,13 +1,13 @@
 import * as vscode from 'vscode';
-import Config from '@metaverse-systems/the-seed/dist/Config';
-import Package from '@metaverse-systems/the-seed/dist/Package';
+import Config from '@metaverse-systems/the-seed/Config';
+import Package from '@metaverse-systems/the-seed/Package';
 import { removeSync } from 'fs-extra';
 import * as path from 'path';
 import { acquireOperationLock, releaseOperationLock } from '../operationLock';
 import type { TheSeedViewProvider } from '../panels/TheSeedViewProvider';
 import type { PackageStatusPayload } from '../types/messages';
 import { packageStatusFrom, packageNotification } from '../build/packageOutcome';
-import type { PackageResult } from '@metaverse-systems/the-seed/dist/types';
+import type { PackageResult } from '@metaverse-systems/the-seed/types';
 
 /**
  * Creates the packageProject command handler.

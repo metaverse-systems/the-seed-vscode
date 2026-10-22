@@ -13,7 +13,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
-import Signing from '@metaverse-systems/the-seed/dist/Signing';
+import Signing from '@metaverse-systems/the-seed/Signing';
 import { signFile } from '../../commands/signFile';
 import { ScratchHome, createCertFor, fixturePath, useScratchHome, writeScopes } from '../helpers/scratchHome';
 

@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import Config from '@metaverse-systems/the-seed/dist/Config';
+import Config from '@metaverse-systems/the-seed/Config';
 
 /**
  * Makes vscode.workspace.workspaceFolders report the given folders (none for

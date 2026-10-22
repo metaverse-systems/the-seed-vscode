@@ -1,4 +1,4 @@
-import { DependencyDiscoveryError } from '@metaverse-systems/the-seed/dist/DependencyWalker';
+import { DependencyDiscoveryError } from '@metaverse-systems/the-seed/DependencyWalker';
 import type { BuildStatusPayload, RecursiveBuildCompletePayload } from '../types/messages';
 
 /**
