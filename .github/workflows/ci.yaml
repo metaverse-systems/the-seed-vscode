@@ -224,13 +224,13 @@ jobs:
             echo "| Host suite | ${HOST_OUTCOME:-skipped} |"
           } >> "$GITHUB_STEP_SUMMARY"
           if [ -f test-results/host.log ]; then
-            grep -E '^(FAILED|SILENT SKIP|PLATFORM SKIP ON LINUX|LEFTOVER|REAL HOME CHANGED|RESULTS MISSING|MALFORMED KNOWN GAP|STALE KNOWN GAP):' test-results/host.log | while IFS= read -r line; do
+            { grep -E '^(FAILED|SILENT SKIP|PLATFORM SKIP ON LINUX|LEFTOVER|REAL HOME CHANGED|RESULTS MISSING|MALFORMED KNOWN GAP|STALE KNOWN GAP):' test-results/host.log || true; } | while IFS= read -r line; do
               echo "::error::$line"
             done
-            grep -E '^(KNOWN GAP|PLATFORM SKIP):' test-results/host.log | while IFS= read -r line; do
+            { grep -E '^(KNOWN GAP|PLATFORM SKIP):' test-results/host.log || true; } | while IFS= read -r line; do
               echo "::notice::$line"
             done
-            grep -E '^Totals:' test-results/host.log | while IFS= read -r line; do
+            { grep -E '^Totals:' test-results/host.log || true; } | while IFS= read -r line; do
               echo "$line" >> "$GITHUB_STEP_SUMMARY"
               echo "::notice::$line"
             done
