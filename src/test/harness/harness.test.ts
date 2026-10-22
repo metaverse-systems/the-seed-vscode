@@ -4,10 +4,13 @@ import {
   classifyResults,
   totalsLine,
   selectTestFiles,
+  validateKnownGaps,
+  knownGapOutcome,
   HostResults,
   CaseResult,
 } from './results';
 import { isLacking } from './platform';
+import { KnownGap } from './knownGaps';
 
 function makeCase(overrides: Partial<CaseResult> & { title: string }): CaseResult {
   return {
@@ -381,5 +384,281 @@ suite('Harness: isLacking', () => {
     assert.strictEqual(isLacking('posix-toolchain', 'win32'), true);
     assert.strictEqual(isLacking('posix-toolchain', 'linux'), false);
     assert.strictEqual(isLacking('posix-toolchain', 'darwin'), false);
+  });
+});
+
+function makeGap(overrides: Partial<KnownGap> = {}): KnownGap {
+  return {
+    id: 'sample-gap',
+    review: 'the-seed-vscode-1',
+    finding: 3,
+    fixedBy: 'Fix the sample',
+    signature: 'sample failure text',
+    reason: 'The sample case fails today.',
+    cases: ['sample case'],
+    ...overrides,
+  };
+}
+
+function source(id: string, title: string): { file: string; text: string } {
+  return { file: 'src/test/sample.test.ts', text: `  knownGapTest('${id}', '${title}', async () => {\n  });\n` };
+}
+
+const sampleSources = [source('sample-gap', 'sample case')];
+
+const reviewText = [
+  '# Review',
+  '### 1. First finding',
+  'text',
+  '### 3. Third finding',
+  'text',
+  '### 12. Last finding',
+  '',
+].join('\n');
+
+const roadmapText = [
+  '| Order | Findings |',
+  '|---|---|',
+  '| 1. Fix the sample | 1, 3 (the dependency) | notes |',
+  '| 2. Other task | 12 | notes |',
+  '',
+  '- [ ] **Task 1 — Fix the sample**',
+  '- [X] **Task 2 — Other task**',
+  '',
+].join('\n');
+
+const parentDocs = { review: reviewText, roadmap: roadmapText };
+
+function violations(entries: KnownGap[], sources = sampleSources, docs?: { review: string; roadmap: string }): string[] {
+  return validateKnownGaps(entries, sources, docs).violations;
+}
+
+function assertViolation(lines: string[], detail: string): void {
+  assert.ok(
+    lines.some((line) => line.startsWith('MALFORMED KNOWN GAP: ') && line.includes(detail)),
+    `expected a MALFORMED KNOWN GAP line containing "${detail}", got ${JSON.stringify(lines)}`
+  );
+}
+
+suite('Harness: validateKnownGaps', () => {
+  test('an empty list with no marked cases has no violations', () => {
+    const result = validateKnownGaps([], []);
+    assert.deepStrictEqual(result.violations, []);
+  });
+
+  test('a well-formed entry matching its marked case has no violations', () => {
+    assert.deepStrictEqual(violations([makeGap()]), []);
+  });
+
+  test('an id that is not kebab-case is a violation naming the id', () => {
+    for (const id of ['Sample_Gap', 'sample gap', '-sample', 'sample-', 'a--b', '']) {
+      const lines = violations([makeGap({ id, cases: [] })], []);
+      assertViolation(lines, 'id');
+    }
+  });
+
+  test('a duplicate id is a violation', () => {
+    const lines = violations([makeGap(), makeGap()]);
+    assertViolation(lines, 'duplicate');
+    assertViolation(lines, 'sample-gap');
+  });
+
+  test('a review other than the-seed-vscode-1 is a violation', () => {
+    const entry = makeGap({ review: 'other-review' as unknown as 'the-seed-vscode-1' });
+    assertViolation(violations([entry]), 'review');
+  });
+
+  test('a finding outside 1 to 12, not an integer, or not new is a violation', () => {
+    for (const finding of [0, 13, 2.5, -1, 'old'] as unknown as Array<number | 'new'>) {
+      assertViolation(violations([makeGap({ finding })]), 'finding');
+    }
+  });
+
+  test('findings 1 and 12 and new are accepted', () => {
+    assert.deepStrictEqual(violations([makeGap({ finding: 1 })]), []);
+    assert.deepStrictEqual(violations([makeGap({ finding: 12 })]), []);
+    assert.deepStrictEqual(violations([makeGap({ finding: 'new', description: 'A defect.' })]), []);
+  });
+
+  test('a new finding needs a non-empty description', () => {
+    assertViolation(violations([makeGap({ finding: 'new' })]), 'description');
+    assertViolation(violations([makeGap({ finding: 'new', description: '' })]), 'description');
+    assertViolation(violations([makeGap({ finding: 'new', description: '   ' })]), 'description');
+  });
+
+  test('an empty fixedBy is a violation', () => {
+    assertViolation(violations([makeGap({ fixedBy: '' })]), 'fixedBy');
+  });
+
+  test('an empty reason is a violation', () => {
+    assertViolation(violations([makeGap({ reason: '' })]), 'reason');
+  });
+
+  test('a signature shorter than 12 characters is a violation and exactly 12 is accepted', () => {
+    assertViolation(violations([makeGap({ signature: 'elevenchars' })]), 'signature');
+    assert.deepStrictEqual(violations([makeGap({ signature: '123456789012' })]), []);
+  });
+
+  test('cases that differ from the marked titles are a violation naming the id', () => {
+    assertViolation(violations([makeGap({ cases: ['another case'] })]), 'sample-gap');
+    assertViolation(violations([makeGap({ cases: ['sample case', 'extra case'] })]), 'cases');
+  });
+
+  test('cases are compared as a set, ignoring order', () => {
+    const sources = [source('sample-gap', 'first'), source('sample-gap', 'second')];
+    assert.deepStrictEqual(violations([makeGap({ cases: ['second', 'first'] })], sources), []);
+  });
+
+  test('a marked id that is not listed is a violation naming the id', () => {
+    const lines = violations([], [source('unlisted-gap', 'some case')]);
+    assertViolation(lines, 'unlisted-gap');
+  });
+
+  test('marked calls are found in every source', () => {
+    const sources = [
+      { file: 'a.ts', text: "knownGapTest('first-gap', 'one', () => {});" },
+      { file: 'b.ts', text: "knownGapTest('second-gap', 'two', () => {});" },
+    ];
+    const entries = [
+      makeGap({ id: 'first-gap', cases: ['one'] }),
+      makeGap({ id: 'second-gap', cases: ['two'] }),
+    ];
+    assert.deepStrictEqual(violations(entries, sources), []);
+  });
+
+  test('every violation is reported, one line each', () => {
+    const lines = violations([makeGap({ fixedBy: '', reason: '' })]);
+    assert.strictEqual(lines.length, 2);
+    for (const line of lines) {
+      assert.ok(line.startsWith('MALFORMED KNOWN GAP: '));
+    }
+  });
+
+  test('without parent documents the notice is given and there is no error', () => {
+    const result = validateKnownGaps([makeGap()], sampleSources);
+    assert.deepStrictEqual(result.violations, []);
+    assert.deepStrictEqual(result.notices, [
+      'Known-gap references not checked against the review: the parent repository is not present.',
+    ]);
+  });
+
+  test('with parent documents there is no notice', () => {
+    const result = validateKnownGaps([makeGap()], sampleSources, parentDocs);
+    assert.deepStrictEqual(result.violations, []);
+    assert.deepStrictEqual(result.notices, []);
+  });
+
+  test('a finding with no heading in the review is a violation', () => {
+    assertViolation(violations([makeGap({ finding: 5 })], sampleSources, parentDocs), '5');
+  });
+
+  test('a heading must start a line as "### <finding>."', () => {
+    const docs = { review: 'see ### 3. inline\n### 33. other\n', roadmap: roadmapText };
+    assertViolation(violations([makeGap()], sampleSources, docs), 'finding 3');
+  });
+
+  test('a fixedBy that is not a roadmap task title is a violation', () => {
+    const lines = violations([makeGap({ fixedBy: 'No such task' })], sampleSources, parentDocs);
+    assertViolation(lines, 'No such task');
+  });
+
+  test('a task title is read from either an unchecked or a checked task line', () => {
+    const entry = makeGap({ finding: 12, fixedBy: 'Other task' });
+    assert.deepStrictEqual(violations([entry], sampleSources, parentDocs), []);
+  });
+
+  test('a finding missing from the order-table row of its task is a violation', () => {
+    const lines = violations([makeGap({ finding: 12, fixedBy: 'Fix the sample' })], sampleSources, parentDocs);
+    assertViolation(lines, 'Fix the sample');
+  });
+
+  test('a parenthesised note in the findings cell is ignored', () => {
+    const docs = {
+      review: reviewText,
+      roadmap: roadmapText.replace('1, 3 (the dependency)', '1, (3), 7'),
+    };
+    assertViolation(violations([makeGap()], sampleSources, docs), 'Fix the sample');
+    assert.deepStrictEqual(violations([makeGap()], sampleSources, parentDocs), []);
+  });
+
+  test('a new finding needs only the roadmap task, not a heading or a table row', () => {
+    const entry = makeGap({ finding: 'new', description: 'A defect.', fixedBy: 'Other task' });
+    assert.deepStrictEqual(violations([entry], sampleSources, parentDocs), []);
+    const missing = makeGap({ finding: 'new', description: 'A defect.', fixedBy: 'No such task' });
+    assertViolation(violations([missing], sampleSources, parentDocs), 'No such task');
+  });
+});
+
+suite('Harness: knownGapOutcome', () => {
+  test('an error containing the signature passes as a gap', () => {
+    const entry = makeGap();
+    assert.doesNotThrow(() => knownGapOutcome(entry, 'sample case', new Error('boom: sample failure text here')));
+  });
+
+  test('an error without the signature is rethrown unchanged', () => {
+    const entry = makeGap();
+    const error = new Error('something else');
+    assert.throws(() => knownGapOutcome(entry, 'sample case', error), (thrown) => thrown === error);
+  });
+
+  test('no error is stale and the message says what to remove', () => {
+    const entry = makeGap();
+    assert.throws(
+      () => knownGapOutcome(entry, 'sample case', null),
+      {
+        message:
+          'STALE KNOWN GAP: sample-gap (the-seed-vscode-1 finding 3, fixed by "Fix the sample"): ' +
+          '"sample case" now passes; remove the knownGapTest marker and the entry from src/test/harness/knownGaps.ts',
+      }
+    );
+  });
+
+  test('the stale message names a new finding as "new"', () => {
+    const entry = makeGap({ finding: 'new', description: 'A defect.' });
+    assert.throws(
+      () => knownGapOutcome(entry, 'sample case', null),
+      /^Error: STALE KNOWN GAP: sample-gap \(the-seed-vscode-1 finding new, fixed by "Fix the sample"\)/
+    );
+  });
+});
+
+suite('Harness: known gaps in results', () => {
+  const gap = makeGap();
+
+  test('a recorded gap prints a KNOWN GAP line and is not a failure', () => {
+    const results = makeResults('linux', [
+      makeCase({ title: 'Suite sample case [known gap: the-seed-vscode-1 finding 3]', knownGap: 'sample-gap' }),
+    ]);
+    const outcome = classifyResults(results, [gap]);
+    assert.strictEqual(outcome.passed, true);
+    assert.deepStrictEqual(outcome.failures, []);
+    assert.deepStrictEqual(outcome.notices, [
+      'KNOWN GAP: Suite sample case [known gap: the-seed-vscode-1 finding 3] (the-seed-vscode-1 finding 3; fixed by "Fix the sample")',
+    ]);
+  });
+
+  test('the KNOWN GAP line says "new" for a new defect', () => {
+    const newGap = makeGap({ finding: 'new', description: 'A defect.' });
+    const results = makeResults('linux', [makeCase({ title: 'Suite sample case', knownGap: 'sample-gap' })]);
+    assert.deepStrictEqual(classifyResults(results, [newGap]).notices, [
+      'KNOWN GAP: Suite sample case (the-seed-vscode-1 finding new; fixed by "Fix the sample")',
+    ]);
+  });
+
+  test('a failed case marked as a known gap is still a failure', () => {
+    const results = makeResults('linux', [makeCase({ title: 'Suite sample case', state: 'failed', error: 'x', knownGap: 'sample-gap' })]);
+    const outcome = classifyResults(results, [gap]);
+    assert.strictEqual(outcome.passed, false);
+    assert.deepStrictEqual(outcome.failures, ['FAILED: Suite sample case']);
+  });
+
+  test('the totals line counts gaps apart from passes', () => {
+    const results = makeResults('linux', [
+      makeCase({ title: 'one' }),
+      makeCase({ title: 'two' }),
+      makeCase({ title: 'three', knownGap: 'sample-gap' }),
+      makeCase({ title: 'four', state: 'failed', error: 'x' }),
+    ]);
+    assert.strictEqual(totalsLine(results), 'Totals: 2 passed, 1 failed, 1 known gaps, 0 platform skips');
   });
 });

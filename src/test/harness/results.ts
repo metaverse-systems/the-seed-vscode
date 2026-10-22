@@ -1,4 +1,5 @@
 import * as path from 'path';
+import type { KnownGap } from './knownGaps';
 
 export const STAGES = ['compile', 'typecheck', 'lint', 'host'] as const;
 export type Stage = typeof STAGES[number];
@@ -78,7 +79,7 @@ export interface Classification {
 }
 
 /** Turns the reporter's results into the lines the runner prints and whether the run passed. */
-export function classifyResults(results: HostResults): Classification {
+export function classifyResults(results: HostResults, gaps: readonly KnownGap[] = []): Classification {
   const failures: string[] = [];
   const notices: string[] = [];
   for (const test of results.cases) {
@@ -91,6 +92,11 @@ export function classifyResults(results: HostResults): Classification {
       failures.push(`FAILED: ${test.title}`);
     } else if (test.state === 'pending') {
       failures.push(`SILENT SKIP: ${test.title}`);
+    } else if (test.knownGap) {
+      const entry = gaps.find((candidate) => candidate.id === test.knownGap);
+      if (entry) {
+        notices.push(`KNOWN GAP: ${test.title} (${entry.review} finding ${entry.finding}; fixed by "${entry.fixedBy}")`);
+      }
     }
   }
   return { passed: failures.length === 0, failures, notices };
@@ -146,4 +152,150 @@ export function selectTestFiles(all: readonly string[], selection: Selection, ro
     files.reverse();
   }
   return [...hooks, ...files];
+}
+
+export interface KnownGapValidation {
+  violations: string[];
+  notices: string[];
+}
+
+const KEBAB_CASE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+const MARKED_CALL = /^[ \t]*knownGapTest\(\s*'([a-z0-9-]+)'\s*,\s*'([^']*)'/gm;
+
+/** The `knownGapTest('<id>', '<title>'` calls in the given sources, as id to titles. */
+function markedCases(sources: readonly { file: string; text: string }[]): Map<string, string[]> {
+  const found = new Map<string, string[]>();
+  for (const source of sources) {
+    for (const match of source.text.matchAll(MARKED_CALL)) {
+      const titles = found.get(match[1]) ?? [];
+      titles.push(match[2]);
+      found.set(match[1], titles);
+    }
+  }
+  return found;
+}
+
+function roadmapTaskTitles(roadmap: string): Set<string> {
+  const titles = new Set<string>();
+  for (const match of roadmap.matchAll(/^- \[[ xX]\] \*\*Task \d+ — (.+?)\*\*/gm)) {
+    titles.add(match[1].trim());
+  }
+  return titles;
+}
+
+/** The findings listed in the order-table row of the task with the given title, or null when there is no row. */
+function orderTableFindings(roadmap: string, title: string): number[] | null {
+  for (const match of roadmap.matchAll(/^\|\s*\d+\.\s*(.+?)\s*\|([^|]*)\|/gm)) {
+    if (match[1].trim() === title) {
+      return match[2]
+        .replace(/\([^)]*\)/g, '')
+        .split(',')
+        .map((part) => part.trim())
+        .filter((part) => /^\d+$/.test(part))
+        .map(Number);
+    }
+  }
+  return null;
+}
+
+/**
+ * Checks the known-gap list: each entry's fields, the match between each
+ * entry's cases and the `knownGapTest` calls in the sources, and, when the
+ * parent documents are given, the references to the review and the roadmap.
+ */
+export function validateKnownGaps(
+  entries: readonly KnownGap[],
+  sources: readonly { file: string; text: string }[],
+  parentDocs?: { review: string; roadmap: string }
+): KnownGapValidation {
+  const violations: string[] = [];
+  const notices: string[] = [];
+  const report = (detail: string): void => {
+    violations.push(`MALFORMED KNOWN GAP: ${detail}`);
+  };
+
+  const marked = markedCases(sources);
+  const seen = new Set<string>();
+  const taskTitles = parentDocs ? roadmapTaskTitles(parentDocs.roadmap) : new Set<string>();
+
+  for (const entry of entries) {
+    const name = `"${entry.id}"`;
+    if (typeof entry.id !== 'string' || !KEBAB_CASE.test(entry.id)) {
+      report(`${name}: id must be kebab-case`);
+    }
+    if (seen.has(entry.id)) {
+      report(`${name}: duplicate id`);
+    }
+    seen.add(entry.id);
+    if (entry.review !== 'the-seed-vscode-1') {
+      report(`${name}: review must be "the-seed-vscode-1"`);
+    }
+    const isNew = entry.finding === 'new';
+    if (!isNew && !(Number.isInteger(entry.finding) && (entry.finding as number) >= 1 && (entry.finding as number) <= 12)) {
+      report(`${name}: finding must be an integer from 1 to 12, or "new"`);
+    }
+    if (isNew && (typeof entry.description !== 'string' || entry.description.trim() === '')) {
+      report(`${name}: description is required when finding is "new"`);
+    }
+    if (typeof entry.fixedBy !== 'string' || entry.fixedBy.trim() === '') {
+      report(`${name}: fixedBy must be a non-empty roadmap task title`);
+    }
+    if (typeof entry.reason !== 'string' || entry.reason.trim() === '') {
+      report(`${name}: reason must be non-empty`);
+    }
+    if (typeof entry.signature !== 'string' || entry.signature.length < 12) {
+      report(`${name}: signature must be at least 12 characters`);
+    }
+
+    const expected = [...new Set(marked.get(entry.id) ?? [])].sort();
+    const actual = [...new Set(entry.cases ?? [])].sort();
+    if (expected.length !== actual.length || expected.some((title, index) => title !== actual[index])) {
+      report(`${name}: cases ${JSON.stringify(actual)} do not match the knownGapTest titles ${JSON.stringify(expected)}`);
+    }
+
+    if (parentDocs) {
+      if (!isNew && Number.isInteger(entry.finding)
+        && !new RegExp(`^### ${entry.finding}\\.`, 'm').test(parentDocs.review)) {
+        report(`${name}: finding ${entry.finding} has no "### ${entry.finding}." heading in the review`);
+      }
+      if (typeof entry.fixedBy === 'string' && entry.fixedBy.trim() !== '') {
+        if (!taskTitles.has(entry.fixedBy)) {
+          report(`${name}: fixedBy "${entry.fixedBy}" is not a roadmap task title`);
+        } else if (!isNew && Number.isInteger(entry.finding)) {
+          const listed = orderTableFindings(parentDocs.roadmap, entry.fixedBy);
+          if (!listed || !listed.includes(entry.finding as number)) {
+            report(`${name}: the roadmap's order table does not list finding ${entry.finding} for "${entry.fixedBy}"`);
+          }
+        }
+      }
+    }
+  }
+
+  for (const id of marked.keys()) {
+    if (!entries.some((entry) => entry.id === id)) {
+      report(`"${id}": used by knownGapTest but not listed in knownGaps.ts`);
+    }
+  }
+
+  if (!parentDocs) {
+    notices.push('Known-gap references not checked against the review: the parent repository is not present.');
+  }
+  return { violations, notices };
+}
+
+/**
+ * Decides a marked case's result from the error it threw (null when it passed):
+ * returns when the error carries the entry's signature, rethrows any other
+ * error, and fails a case that now passes.
+ */
+export function knownGapOutcome(entry: KnownGap, title: string, error: Error | null): void {
+  if (error === null) {
+    throw new Error(
+      `STALE KNOWN GAP: ${entry.id} (${entry.review} finding ${entry.finding}, fixed by "${entry.fixedBy}"): ` +
+      `"${title}" now passes; remove the knownGapTest marker and the entry from src/test/harness/knownGaps.ts`
+    );
+  }
+  if (!error.message.includes(entry.signature)) {
+    throw error;
+  }
 }

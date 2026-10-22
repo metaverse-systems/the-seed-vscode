@@ -1,6 +1,7 @@
 {
   "name": "the-seed-vscode",
   "displayName": "the-seed-vscode",
+  "publisher": "metaverse-systems",
   "description": "",
   "version": "0.3.0",
   "engines": {

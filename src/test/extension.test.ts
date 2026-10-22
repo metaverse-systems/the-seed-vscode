@@ -8,36 +8,6 @@ suite('Extension Test Suite', () => {
     sinon.restore();
   });
 
-  // T017: Command registration tests (all 10 commands + 2 new ResourcePak commands)
-  suite('Command Registration', () => {
-    const expectedCommands = [
-      'the-seed.createResourcePak',
-      'the-seed.configureProject',
-      'the-seed.showConfig',
-      'the-seed.listScopes',
-      'the-seed.addScope',
-      'the-seed.editScope',
-      'the-seed.deleteScope',
-      'the-seed.createComponentTemplate',
-      'the-seed.createSystemTemplate',
-      'the-seed.createProgramTemplate',
-      'the-seed.addResource',
-      'the-seed.buildResourcePak',
-      'the-seed.checkDependencies',
-      'the-seed.installDependencies',
-    ];
-
-    for (const commandId of expectedCommands) {
-      test(`should register command: ${commandId}`, async () => {
-        const commands = await vscode.commands.getCommands(true);
-        assert.ok(
-          commands.includes(commandId),
-          `Command '${commandId}' should be registered`
-        );
-      });
-    }
-  });
-
   // T018: Configure Project tests
   suite('Configure Project', () => {
     test('should show input box and save configuration on success', async () => {

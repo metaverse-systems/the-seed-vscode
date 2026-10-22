@@ -30,15 +30,47 @@ function run(entry, args, env) {
 }
 
 function hostCanStart() {
-  // Marker: switch this check to out/test/harness/globalSetup.js once the
-  // global setup module exists.
-  return fs.existsSync(path.join(root, 'out', 'test', 'harness', 'results.js'));
+  return fs.existsSync(path.join(root, 'out', 'test', 'harness', 'globalSetup.js'));
+}
+
+function collectTestSources(dir) {
+  const found = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      found.push(...collectTestSources(full));
+    } else if (entry.name.endsWith('.ts')) {
+      found.push({ file: path.relative(root, full), text: fs.readFileSync(full, 'utf8') });
+    }
+  }
+  return found;
+}
+
+// Prints the known-gap findings; returns false when any entry is malformed.
+function validateKnownGaps(results, knownGaps) {
+  const sources = collectTestSources(path.join(root, 'src', 'test'));
+  const review = path.join(root, '..', 'docs', 'reviews', 'the-seed-vscode-1.md');
+  const roadmap = path.join(root, '..', 'docs', 'roadmaps', 'the-seed-vscode-1.md');
+  const parentDocs = fs.existsSync(review) && fs.existsSync(roadmap)
+    ? { review: fs.readFileSync(review, 'utf8'), roadmap: fs.readFileSync(roadmap, 'utf8') }
+    : undefined;
+  const outcome = results.validateKnownGaps(knownGaps, sources, parentDocs);
+  for (const line of outcome.notices) {
+    console.log(line);
+  }
+  for (const line of outcome.violations) {
+    console.log(line);
+  }
+  return outcome.violations.length === 0;
 }
 
 function runHostOnce(hostOptions) {
   const results = loadResults();
 
-  // Hook: known-gap validation runs here, before the editor starts.
+  const knownGaps = require(path.join(root, 'out', 'test', 'harness', 'knownGaps.js')).KNOWN_GAPS;
+  if (!validateKnownGaps(results, knownGaps)) {
+    return false;
+  }
   // Hook: real-home guard and leftover scratch directories are recorded here.
 
   const scratchRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'the-seed-vscode-tests-'));
@@ -82,7 +114,7 @@ function runHostOnce(hostOptions) {
       return false;
     }
     const recorded = JSON.parse(fs.readFileSync(resultsFile, 'utf8'));
-    const outcome = results.classifyResults(recorded);
+    const outcome = results.classifyResults(recorded, knownGaps);
     for (const line of outcome.failures) {
       console.log(line);
     }
