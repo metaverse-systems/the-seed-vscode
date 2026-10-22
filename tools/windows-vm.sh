@@ -21,12 +21,14 @@
 #   DISK       disk size at creation     (default 80G)
 #   WINDOWS_ISO  a Windows ISO to use instead of the downloaded one
 #   SHARE_PORT   port of the HTTP share   (default 8765)
+#   RDP_PORT     host port forwarded to the guest's Remote Desktop (default 3389)
 #   DISPLAY_MODE QEMU display (default gtk; "none" for a headless run reached over RDP)
 #   DRY_RUN=1    print the QEMU command instead of running it
 #
 # Inside the guest the host is 10.0.2.2, so a share started with
 # "share" is at http://10.0.2.2:8765/. Remote Desktop, once enabled in
-# Windows, is on the host at localhost:3389.
+# Windows, is on the host at localhost:3389 (a second machine needs another
+# RDP_PORT, or QEMU refuses to start with "Could not set up host forwarding").
 #
 # Needs: qemu-system-x86_64, qemu-img, swtpm, curl, python3, /dev/kvm and
 # the OVMF firmware (Debian package ovmf).
@@ -38,6 +40,7 @@ MEMORY="${MEMORY:-8G}"
 CPUS="${CPUS:-4}"
 DISK="${DISK:-80G}"
 SHARE_PORT="${SHARE_PORT:-8765}"
+RDP_PORT="${RDP_PORT:-3389}"
 DISPLAY_MODE="${DISPLAY_MODE:-gtk}"
 
 # Windows 11 Enterprise evaluation, 24H2, x64, English. This is the
@@ -57,11 +60,17 @@ OVMF_CODE="/usr/share/OVMF/OVMF_CODE_4M.ms.fd"
 OVMF_VARS_TEMPLATE="/usr/share/OVMF/OVMF_VARS_4M.ms.fd"
 
 DISK_IMAGE="$VM_DIR/disk.qcow2"
+# A machine identity unique to this VM. QEMU's default serial number and UUID
+# are shared by every QEMU machine, and Windows setup looks them up in
+# Autopilot, where somebody else's registration turns the account page into
+# their company's sign-in.
+IDENTITY_FILE="$VM_DIR/identity"
 OVMF_VARS="$VM_DIR/OVMF_VARS.fd"
 TPM_DIR="$VM_DIR/tpm"
 # Unix socket paths are limited to about 100 bytes, so the control socket
 # goes in the runtime directory rather than under VM_DIR.
-TPM_SOCKET="${XDG_RUNTIME_DIR:-/tmp}/the-seed-vscode-vm-$(id -u).sock"
+# The name carries a hash of VM_DIR so two machines never share a socket.
+TPM_SOCKET="${XDG_RUNTIME_DIR:-/tmp}/the-seed-vscode-vm-$(printf %s "$VM_DIR" | md5sum | cut -c1-12).sock"
 
 die() { echo "windows-vm: $*" >&2; exit 1; }
 
@@ -109,6 +118,9 @@ cmd_download() {
 
 start_tpm() {
   mkdir -p "$TPM_DIR"
+  if [ -f "$TPM_DIR/swtpm.pid" ] && kill -0 "$(cat "$TPM_DIR/swtpm.pid")" 2>/dev/null; then
+    die "this machine seems to be running already (swtpm pid $(cat "$TPM_DIR/swtpm.pid"))"
+  fi
   swtpm socket --tpm2 --tpmstate "dir=$TPM_DIR" \
     --ctrl "type=unixio,path=$TPM_SOCKET" \
     --log "file=$TPM_DIR/swtpm.log,level=1" --daemon --pid "file=$TPM_DIR/swtpm.pid" \
@@ -130,10 +142,24 @@ stop_tpm() {
   rm -f "$TPM_SOCKET"
 }
 
+load_identity() {
+  if [ ! -f "$IDENTITY_FILE" ]; then
+    mkdir -p "$VM_DIR"
+    {
+      echo "UUID=$(cat /proc/sys/kernel/random/uuid)"
+      echo "SERIAL=TSV-$(tr -dc A-Z0-9 < /dev/urandom | head -c 10)"
+    } > "$IDENTITY_FILE"
+  fi
+  # shellcheck disable=SC1090
+  . "$IDENTITY_FILE"
+  [ -n "${UUID:-}" ] && [ -n "${SERIAL:-}" ] || die "$IDENTITY_FILE is incomplete; delete it to generate a new identity"
+}
+
 run_qemu() {
   # $1 is "install" (boot the CD first) or "start".
   local mode="$1"
   check_host
+  load_identity
   [ -f "$DISK_IMAGE" ] || die "no disk at $DISK_IMAGE; run \"$0 install\" first"
   [ -f "$OVMF_VARS" ] || cp "$OVMF_VARS_TEMPLATE" "$OVMF_VARS"
 
@@ -143,6 +169,9 @@ run_qemu() {
     -cpu host
     -smp "$CPUS"
     -m "$MEMORY"
+    -uuid "$UUID"
+    -smbios "type=1,manufacturer=the-seed,product=the-seed-vscode VM,serial=$SERIAL,uuid=$UUID"
+    -smbios "type=3,manufacturer=the-seed,serial=$SERIAL"
     -rtc base=localtime
     -drive "if=pflash,format=raw,readonly=on,file=$OVMF_CODE"
     -drive "if=pflash,format=raw,file=$OVMF_VARS"
@@ -155,7 +184,7 @@ run_qemu() {
     -drive "file=$DISK_IMAGE,if=none,id=hd0,format=qcow2,discard=unmap"
     -device ide-hd,drive=hd0,bus=ahci.0
     # e1000 is the network card Windows has a driver for out of the box.
-    -nic "user,model=e1000,hostfwd=tcp:127.0.0.1:3389-:3389"
+    -nic "user,model=e1000,hostfwd=tcp:127.0.0.1:$RDP_PORT-:3389"
     -vga std
     -usb -device usb-tablet
     -display "$DISPLAY_MODE"
@@ -191,8 +220,10 @@ Booting the Windows installer. When the window shows "Press any key to boot
 from CD or DVD", press a key within a few seconds (otherwise close the window
 and run install again). During setup:
   - choose "Custom: Install Windows only" and the single unallocated disk;
-  - at the account step, pick "Sign-in options" > "Domain join instead" to
-    make a local account without a Microsoft account.
+  - at the account step, make a local account without a Microsoft account:
+    for Enterprise, "Sign-in options" > "Domain join instead"; if that
+    option is missing, press Shift+F10 for a command prompt and run
+    "start ms-cxh:localonly", which opens the local-account form directly.
 After Windows is installed and the machine has rebooted into it, close the
 window and use "$0 start" from then on.
 MSG
@@ -247,7 +278,7 @@ cmd_snapshots() {
 
 cmd_destroy() {
   stop_tpm
-  rm -f "$DISK_IMAGE" "$OVMF_VARS"
+  rm -f "$DISK_IMAGE" "$OVMF_VARS" "$IDENTITY_FILE"
   rm -rf "$TPM_DIR"
   echo "Removed the machine's disk, firmware variables and TPM state; the ISOs in $VM_DIR are kept"
 }
