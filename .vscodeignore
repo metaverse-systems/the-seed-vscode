@@ -14,3 +14,7 @@ vsc-extension-quickstart.md
 **/*.tsx
 **/.vscode-test.*
 tools/**
+scripts/**
+test-results/**
+.github/**
+.gitattributes
