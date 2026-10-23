@@ -60,6 +60,7 @@ export function generateInstallerCommand(
 
       // Wrap Installer.run() in withProgress for notification-level spinner
       let success = false;
+      let failureMessage: string | undefined;
       await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
@@ -70,7 +71,11 @@ export function generateInstallerCommand(
           const config = new tool.Config();
           config.loadConfig();
           const installer = new tool.Installer(config);
-          success = (await installer.run(projectDir)).ok;
+          const result = await installer.run(projectDir);
+          success = result.ok;
+          if (!result.ok) {
+            failureMessage = result.message;
+          }
         }
       );
 
@@ -92,12 +97,12 @@ export function generateInstallerCommand(
         // Broadcast failed status
         const failedStatus: InstallerStatusPayload = {
           state: 'failed',
-          errorMessage: 'Installer generation failed. Check output for details.',
+          errorMessage: failureMessage ?? 'Installer generation failed. Check output for details.',
           timestamp: new Date().toISOString(),
         };
         viewProvider.postMessage({ type: 'installerStatus', payload: failedStatus });
 
-        vscode.window.showErrorMessage('Installer generation failed. Check the output channel for details.');
+        vscode.window.showErrorMessage(failureMessage ?? 'Installer generation failed. Check the output channel for details.');
       }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
