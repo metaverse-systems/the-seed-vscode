@@ -158,13 +158,13 @@ jobs:
           };
           const installed = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
           const expected = process.env.THE_SEED_VERSION;
-          const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
-          const locked = lock.packages['../the-seed'] && lock.packages['../the-seed'].version;
+          const manifest = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const declared = manifest.devDependencies && manifest.devDependencies['@metaverse-systems/the-seed'];
           if (installed !== expected) {
             fail(`the tool is ${installed}, expected ${expected}`);
           }
-          if (locked !== expected) {
-            fail(`package-lock.json records the tool as ${locked}, expected ${expected}`);
+          if (declared !== expected) {
+            fail(`package.json declares the tool as ${declared}, expected ${expected}`);
           }
           const component = path.join(root, 'native', 'build', 'Release', 'the_seed_native.node');
           const { REQUIRED_VERSIONS } = require(path.join(root, 'dist', 'RequiredVersions.js'));
@@ -189,7 +189,10 @@ jobs:
         id: prepare
         run: |
           npm ci
-          node -e "const fs=require('fs');const l='node_modules/@metaverse-systems/the-seed';fs.rmSync(l,{force:true,recursive:true});fs.symlinkSync(process.argv[1],l,'junction');console.log(require.resolve('@metaverse-systems/the-seed/Config'))" "$(npm root -g)/@metaverse-systems/the-seed"
+          if grep -nE '"file:|^\s*"\.\./' package-lock.json; then
+            echo "::error::package-lock.json must not contain a file: or ../ dependency"
+            exit 1
+          fi
 
       - name: Restore editor
         uses: actions/cache@v6
@@ -237,6 +240,7 @@ jobs:
               ;;
           esac
           mkdir -p test-results
+          export THE_SEED_TEST_TOOL="$(npm root -g)/@metaverse-systems/the-seed"
           npm test -- host -- --repeat "$REPEAT" 2>&1 | tee test-results/host.log
 
       - name: Summary
@@ -441,6 +445,7 @@ jobs:
             echo "export PKG_CONFIG_PATH=\"$HOME/deps/lib/pkgconfig\""
             echo "export LD_LIBRARY_PATH=\"$HOME/deps/lib\""
             echo "export THE_SEED_TEST_DEPS=\"$HOME/deps\""
+            echo 'export THE_SEED_TEST_TOOL="$(npm root -g)/@metaverse-systems/the-seed"'
           } > "$HOME/ci-env.sh"
 
       - name: Check the Windows toolchain and libraries
@@ -472,13 +477,13 @@ jobs:
           };
           const installed = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
           const expected = process.env.THE_SEED_VERSION;
-          const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
-          const locked = lock.packages['../the-seed'] && lock.packages['../the-seed'].version;
+          const manifest = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const declared = manifest.devDependencies && manifest.devDependencies['@metaverse-systems/the-seed'];
           if (installed !== expected) {
             fail(`the tool is ${installed}, expected ${expected}`);
           }
-          if (locked !== expected) {
-            fail(`package-lock.json records the tool as ${locked}, expected ${expected}`);
+          if (declared !== expected) {
+            fail(`package.json declares the tool as ${declared}, expected ${expected}`);
           }
           const component = path.join(root, 'native', 'build', 'Release', 'the_seed_native.node');
           const { REQUIRED_VERSIONS } = require(path.join(root, 'dist', 'RequiredVersions.js'));
@@ -505,7 +510,10 @@ jobs:
           . "$HOME/ci-env.sh"
           cd "$HOME/work/the-seed-vscode"
           npm ci
-          node -e "const fs=require('fs');const l='node_modules/@metaverse-systems/the-seed';fs.rmSync(l,{force:true,recursive:true});fs.symlinkSync(process.argv[1],l,'junction');console.log(require.resolve('@metaverse-systems/the-seed/Config'))" "$(npm root -g)/@metaverse-systems/the-seed"
+          if grep -nE '"file:|^\s*"\.\./' package-lock.json; then
+            echo "::error::package-lock.json must not contain a file: or ../ dependency"
+            exit 1
+          fi
 
       - name: Compile
         id: compile

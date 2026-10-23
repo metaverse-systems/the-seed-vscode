@@ -1,18 +1,17 @@
 import * as vscode from 'vscode';
 import { askQuestions } from '../askQuestions';
-import Config from '@metaverse-systems/the-seed/Config';
-import Template from '@metaverse-systems/the-seed/Template';
-import { ProjectError } from '@metaverse-systems/the-seed/ProjectError';
 import { chooseProjectFolder, describeError } from '../utils/projectFolder';
+import type { ToolApi } from '../tool/toolApi';
 
 export async function scaffoldTemplate(
   templateType: 'component' | 'system' | 'program',
-  outputChannel: vscode.OutputChannel
+  outputChannel: vscode.OutputChannel,
+  tool: ToolApi
 ): Promise<void> {
-  const config = new Config();
+  const config = new tool.Config();
   config.loadConfig();
 
-  const template = new Template(config);
+  const template = new tool.Template(config);
   template.type = templateType;
 
   const questions = template.askName();
@@ -43,7 +42,7 @@ export async function scaffoldTemplate(
   try {
     projectPath = template.createPackage(scopeName, templateName, folder);
   } catch (error) {
-    if (error instanceof ProjectError) {
+    if (error instanceof tool.ProjectError) {
       outputChannel.appendLine(`[ERROR] ${describeError(error)}`);
       vscode.window.showErrorMessage(describeError(error));
       return;

@@ -1,10 +1,9 @@
 import * as vscode from 'vscode';
-import Config from '@metaverse-systems/the-seed/Config';
-import Scopes from '@metaverse-systems/the-seed/Scopes';
+import type { ToolApi } from '../tool/toolApi';
 
-export async function deleteScope(outputChannel: vscode.OutputChannel): Promise<void> {
-  const config = new Config();
-  const scopes = new Scopes(config);
+export async function deleteScope(outputChannel: vscode.OutputChannel, tool: ToolApi): Promise<void> {
+  const config = new tool.Config();
+  const scopes = new tool.Scopes(config);
 
   const scopeNames = scopes.getScopes();
 

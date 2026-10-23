@@ -1,16 +1,10 @@
 import * as vscode from 'vscode';
-import Config from '@metaverse-systems/the-seed/Config';
-import Scopes, { validateScopeName } from '@metaverse-systems/the-seed/Scopes';
-import Template from '@metaverse-systems/the-seed/Template';
-import ResourcePak from '@metaverse-systems/the-seed/ResourcePak';
-import SigningModule from '@metaverse-systems/the-seed/Signing';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { detectResourcePak } from '../utils/detectResourcePak';
 import { chooseProjectFolder, describeError } from '../utils/projectFolder';
 import { addResourceFile } from '../utils/addResourceFile';
-import { ProjectError } from '@metaverse-systems/the-seed/ProjectError';
 import type {
   WebviewToExtensionMessage,
   ExtensionToWebviewMessage,
@@ -28,11 +22,15 @@ import type {
   SigningStatusPayload,
   SigningScopeStatus,
 } from '../types/messages';
+import { toToolStatusPayload } from '../tool/toolStatus';
 import { getActiveBuild, cancelActiveBuild } from '../commands/buildNative';
 import { cancelActiveRecursiveBuild } from '../commands/buildNativeRecursive';
-import { checkLibEcs, checkLibTheSeed, getInstallSteps } from '@metaverse-systems/the-seed/Dependencies';
 import { runBuildSteps } from '../build/buildRunner';
 import { acquireOperationLock, releaseOperationLock, getOperationLock } from '../operationLock';
+import type Config from '@metaverse-systems/the-seed/Config';
+import type { ToolApi } from '../tool/toolApi';
+import type { ToolService } from '../tool/toolService';
+import { isToolRefusal } from '../utils/projectFolder';
 
 function getConfigDir(): string {
   return path.join(os.homedir(), 'the-seed');
@@ -137,15 +135,53 @@ function noFolderChosen(requestId: string): ExtensionToWebviewMessage {
   };
 }
 
+/**
+ * The messages that work without the tool. Every other message is an operation: it is refused, with
+ * the reason, when the tool is not usable.
+ */
+export const TOOL_FREE_MESSAGES: ReadonlySet<WebviewToExtensionMessage['command']> = new Set<WebviewToExtensionMessage['command']>([
+  'cancelBuild',
+  'cancelRecursiveBuild',
+  'getBuildStatus',
+  'getResourcePakStatus',
+  'browseResourceFile',
+  'getDependencyStatus',
+  'cancelInstallDependencies',
+  'getPackageStatus',
+  'ready',
+  'getToolStatus',
+  'checkTool',
+  'openToolSetting',
+]);
+
 export async function handleMessage(
   message: WebviewToExtensionMessage,
-  pushMessage?: (msg: ExtensionToWebviewMessage) => void
+  pushMessage: ((msg: ExtensionToWebviewMessage) => void) | undefined,
+  service: ToolService
 ): Promise<ExtensionToWebviewMessage | null> {
+  let tool!: ToolApi;
   try {
+    if (!TOOL_FREE_MESSAGES.has(message.command)) {
+      const acquired = await service.acquire();
+      if (!acquired.ok) {
+        return {
+          type: 'error',
+          requestId: (message as { requestId?: string }).requestId,
+          payload: { message: acquired.status.message, code: 'toolUnavailable' },
+        };
+      }
+      tool = acquired.api;
+    }
     switch (message.command) {
       case 'ready': {
+        const acquired = await service.acquire();
+        const statusMessage: ExtensionToWebviewMessage = { type: 'toolStatus', payload: toToolStatusPayload(service.status) };
+        pushMessage?.(statusMessage);
+        if (!acquired.ok) {
+          return statusMessage;
+        }
         const configFileExists = fs.existsSync(getConfigFilePath());
-        const config = new Config();
+        const config = new acquired.api.Config();
         config.loadConfig();
         const isDefault = !configFileExists;
         return {
@@ -154,8 +190,20 @@ export async function handleMessage(
         };
       }
 
+      case 'getToolStatus':
+        return { type: 'toolStatus', requestId: message.requestId, payload: toToolStatusPayload(service.status) };
+
+      case 'checkTool': {
+        const status = await service.check('checkAgain');
+        return { type: 'toolStatus', requestId: message.requestId, payload: toToolStatusPayload(status) };
+      }
+
+      case 'openToolSetting':
+        await vscode.commands.executeCommand('workbench.action.openSettings', 'the-seed.toolPath');
+        return null;
+
       case 'getConfig': {
-        const config = new Config();
+        const config = new tool.Config();
         config.loadConfig();
         return {
           type: 'configLoaded',
@@ -165,7 +213,7 @@ export async function handleMessage(
       }
 
       case 'savePrefix': {
-        const config = new Config();
+        const config = new tool.Config();
         config.loadConfig();
         config.config.prefix = message.data.prefix;
         config.saveConfig();
@@ -177,12 +225,12 @@ export async function handleMessage(
       }
 
       case 'addScope': {
-        const config = new Config();
+        const config = new tool.Config();
         config.loadConfig();
         const scopeName = message.data.scopeName.startsWith('@')
           ? message.data.scopeName
           : `@${message.data.scopeName}`;
-        const invalid = validateScopeName(scopeName);
+        const invalid = tool.validateScopeName(scopeName);
         if (invalid !== null) {
           return { type: 'error', payload: { message: invalid } };
         }
@@ -194,7 +242,7 @@ export async function handleMessage(
             payload: { scopeName },
           };
         }
-        const scopes = new Scopes(config);
+        const scopes = new tool.Scopes(config);
         scopes.createOrEditScope(toScopeAnswers(message.data));
         config.saveConfig();
         return {
@@ -205,9 +253,9 @@ export async function handleMessage(
       }
 
       case 'confirmOverwriteScope': {
-        const config = new Config();
+        const config = new tool.Config();
         config.loadConfig();
-        const scopes = new Scopes(config);
+        const scopes = new tool.Scopes(config);
         scopes.createOrEditScope(toScopeAnswers(message.data));
         config.saveConfig();
         return {
@@ -218,9 +266,9 @@ export async function handleMessage(
       }
 
       case 'editScope': {
-        const config = new Config();
+        const config = new tool.Config();
         config.loadConfig();
-        const scopes = new Scopes(config);
+        const scopes = new tool.Scopes(config);
         scopes.createOrEditScope(toScopeAnswers(message.data));
         config.saveConfig();
         return {
@@ -231,9 +279,9 @@ export async function handleMessage(
       }
 
       case 'deleteScope': {
-        const config = new Config();
+        const config = new tool.Config();
         config.loadConfig();
-        const scopes = new Scopes(config);
+        const scopes = new tool.Scopes(config);
         scopes.deleteScope(message.data.scopeName);
         config.saveConfig();
         return {
@@ -244,7 +292,7 @@ export async function handleMessage(
       }
 
       case 'createTemplate': {
-        const config = new Config();
+        const config = new tool.Config();
         config.loadConfig();
         const { templateType, scopeName, templateName } = message.data;
 
@@ -254,13 +302,13 @@ export async function handleMessage(
           return noFolderChosen(message.requestId);
         }
 
-        const template = new Template(config);
+        const template = new tool.Template(config);
         template.type = templateType;
         let projectPath: string;
         try {
           projectPath = template.createPackage(scopeName, templateName, folder);
         } catch (error) {
-          if (error instanceof ProjectError && error.code === 'target-exists') {
+          if (error instanceof tool.ProjectError && error.code === 'target-exists') {
             return {
               type: 'templateExists',
               requestId: message.requestId,
@@ -380,9 +428,9 @@ export async function handleMessage(
       }
 
       case 'createResourcePak': {
-        const config = new Config();
+        const config = new tool.Config();
         config.loadConfig();
-        const rp = new ResourcePak(config);
+        const rp = new tool.ResourcePak(config);
         const { scopeName, pakName } = message.data;
         const scope = scopeName.startsWith('@') ? scopeName : `@${scopeName}`;
         const hasWorkspace = (vscode.workspace.workspaceFolders?.length ?? 0) > 0;
@@ -428,7 +476,7 @@ export async function handleMessage(
       }
 
       case 'addResource': {
-        const config = new Config();
+        const config = new tool.Config();
         config.loadConfig();
         const { resourceName, filePath: srcFilePath } = message.data;
 
@@ -437,7 +485,7 @@ export async function handleMessage(
           return noPakProject(message.requestId);
         }
 
-        const added = addResourceFile(new ResourcePak(config), packageDir, resourceName, srcFilePath);
+        const added = addResourceFile(new tool.ResourcePak(config), packageDir, resourceName, srcFilePath, tool);
         return {
           type: 'resourceAdded',
           requestId: message.requestId,
@@ -451,7 +499,7 @@ export async function handleMessage(
       }
 
       case 'buildResourcePak': {
-        const config = new Config();
+        const config = new tool.Config();
         config.loadConfig();
 
         const packageDir = detectedPakDir();
@@ -489,11 +537,11 @@ export async function handleMessage(
         }
 
         // Perform build
-        const rp = new ResourcePak(config);
+        const rp = new tool.ResourcePak(config);
         try {
           rp.build(packageDir);
         } catch (error) {
-          if (error instanceof ProjectError) {
+          if (error instanceof tool.ProjectError) {
             if (pushMessage) {
               pushMessage({
                 type: 'resourcePakBuildProgress',
@@ -540,7 +588,7 @@ export async function handleMessage(
       // ── Dependency Handlers ─────────────────────────────────
 
       case 'checkDependencies': {
-        const config = new Config();
+        const config = new tool.Config();
         config.loadConfig();
 
         if (!config.config.prefix || config.config.prefix === '') {
@@ -552,8 +600,8 @@ export async function handleMessage(
         }
 
         const target = message.data.target;
-        const ecsInstalled = checkLibEcs(config, target);
-        const seedInstalled = checkLibTheSeed(config, target);
+        const ecsInstalled = tool.checkLibEcs(config, target);
+        const seedInstalled = tool.checkLibTheSeed(config, target);
 
         const status: DependencyStatusPayload = {
           target,
@@ -596,7 +644,7 @@ export async function handleMessage(
       }
 
       case 'installDependencies': {
-        const config = new Config();
+        const config = new tool.Config();
         config.loadConfig();
 
         if (!config.config.prefix || config.config.prefix === '') {
@@ -621,7 +669,7 @@ export async function handleMessage(
         const target = message.data.target;
 
         // Check which libraries are missing
-        const steps = getInstallSteps(config, target);
+        const steps = tool.getInstallSteps(config, target);
         if (steps.length === 0) {
           return {
             type: 'error',
@@ -723,8 +771,8 @@ export async function handleMessage(
             }
 
             // Auto-refresh dependency status
-            const ecsInstalled = checkLibEcs(config, target);
-            const seedInstalled = checkLibTheSeed(config, target);
+            const ecsInstalled = tool.checkLibEcs(config, target);
+            const seedInstalled = tool.checkLibTheSeed(config, target);
             const refreshStatus: DependencyStatusPayload = {
               target,
               libraries: [
@@ -813,8 +861,8 @@ export async function handleMessage(
       }
 
       case 'getSigningStatus': {
-        const signing = new SigningModule();
-        const config = new Config();
+        const signing = new tool.Signing();
+        const config = new tool.Config();
         config.loadConfig();
         const scopes: SigningScopeStatus[] = Object.keys(config.config.scopes).map((scope) => {
           const certInfo = signing.getCertInfo(scope);
@@ -847,7 +895,7 @@ export async function handleMessage(
         };
     }
   } catch (err: unknown) {
-    if (err instanceof ProjectError) {
+    if (isToolRefusal(err)) {
       return {
         type: 'error',
         requestId: (message as { requestId?: string }).requestId,

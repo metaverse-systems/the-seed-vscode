@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
 import { askQuestions } from '../askQuestions';
-import Config from '@metaverse-systems/the-seed/Config';
+import type { ToolApi } from '../tool/toolApi';
 
-export async function configureProject(outputChannel: vscode.OutputChannel): Promise<void> {
-  const config = new Config();
+export async function configureProject(outputChannel: vscode.OutputChannel, tool: ToolApi): Promise<void> {
+  const config = new tool.Config();
   const questions = config.getQuestions();
   const answers = await askQuestions(questions);
 

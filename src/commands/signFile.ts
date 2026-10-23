@@ -1,12 +1,12 @@
 import * as vscode from 'vscode';
-import Signing from '@metaverse-systems/the-seed/Signing';
 import { chooseScope } from '../signing/chooseScope';
 import { describeSignFailure } from '../signing/signFailure';
+import type { ToolApi } from '../tool/toolApi';
 
-export async function signFile(outputChannel: vscode.OutputChannel, uri?: vscode.Uri): Promise<void> {
-  const signing = new Signing();
+export async function signFile(outputChannel: vscode.OutputChannel, tool: ToolApi, uri?: vscode.Uri): Promise<void> {
+  const signing = new tool.Signing();
 
-  const scope = await chooseScope(signing, 'sign files');
+  const scope = await chooseScope(signing, 'sign files', tool);
   if (!scope) {
     return;
   }

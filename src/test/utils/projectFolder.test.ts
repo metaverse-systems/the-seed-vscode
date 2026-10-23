@@ -12,14 +12,14 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
-import Config from '@metaverse-systems/the-seed/Config';
-import ResourcePak from '@metaverse-systems/the-seed/ResourcePak';
 import { writeScopes } from '../helpers/scratchHome';
 import { useScratchState } from '../helpers/scratchState';
+import type { ToolApi } from '../../tool/toolApi';
+import { testTool } from '../helpers/tool';
 
 interface ProjectFolder {
   chooseProjectFolder(): Promise<string | undefined>;
-  choosePakProject(): Promise<string | undefined>;
+  choosePakProject(tool: ToolApi): Promise<string | undefined>;
 }
 
 function load(): ProjectFolder {
@@ -42,9 +42,9 @@ suite('projectFolder', () => {
 
   function makePak(parent: string, name: string): string {
     writeScopes({ '@acme': 'Ada Lovelace' });
-    const config = new Config();
+    const config = new (testTool().Config)();
     config.loadConfig();
-    return new ResourcePak(config).createPackage('@acme', name, parent);
+    return new (testTool().ResourcePak)(config).createPackage('@acme', name, parent);
   }
 
   suite('chooseProjectFolder', () => {
@@ -88,7 +88,7 @@ suite('projectFolder', () => {
       state.setWorkspaceFolders([pak]);
       const dialog = sinon.stub(vscode.window, 'showOpenDialog').resolves(undefined);
 
-      assert.strictEqual(await load().choosePakProject(), pak);
+      assert.strictEqual(await load().choosePakProject(testTool()), pak);
       assert.ok(dialog.notCalled);
     });
 
@@ -99,7 +99,7 @@ suite('projectFolder', () => {
       state.setWorkspaceFolders([workspace]);
       const dialog = sinon.stub(vscode.window, 'showOpenDialog').resolves([vscode.Uri.file(pak)]);
 
-      assert.strictEqual(await load().choosePakProject(), pak);
+      assert.strictEqual(await load().choosePakProject(testTool()), pak);
       assert.ok(dialog.calledOnce);
       const options = dialog.firstCall.args[0] as vscode.OpenDialogOptions;
       assert.strictEqual(options.canSelectFolders, true);
@@ -113,7 +113,7 @@ suite('projectFolder', () => {
       state.setWorkspaceFolders([]);
       const dialog = sinon.stub(vscode.window, 'showOpenDialog').resolves([vscode.Uri.file(pak)]);
 
-      assert.strictEqual(await load().choosePakProject(), pak);
+      assert.strictEqual(await load().choosePakProject(testTool()), pak);
       assert.ok(dialog.calledOnce);
     });
 
@@ -122,7 +122,7 @@ suite('projectFolder', () => {
       sinon.stub(vscode.window, 'showOpenDialog').resolves(undefined);
       const error = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
 
-      assert.strictEqual(await load().choosePakProject(), undefined);
+      assert.strictEqual(await load().choosePakProject(testTool()), undefined);
       assert.ok(error.notCalled);
     });
 
@@ -135,7 +135,7 @@ suite('projectFolder', () => {
       let expectedMessage = '';
       let expectedHint: string | undefined;
       try {
-        new ResourcePak(new Config()).readProject(notPak);
+        new (testTool().ResourcePak)(new (testTool().Config)()).readProject(notPak);
       } catch (caught) {
         const refusal = caught as Error & { hint?: string };
         expectedMessage = refusal.message;
@@ -143,7 +143,7 @@ suite('projectFolder', () => {
       }
       assert.notStrictEqual(expectedMessage, '', 'the library must refuse the folder');
 
-      assert.strictEqual(await load().choosePakProject(), undefined);
+      assert.strictEqual(await load().choosePakProject(testTool()), undefined);
       assert.ok(error.calledOnce);
       const shown = String(error.firstCall.args[0]);
       assert.ok(shown.includes(expectedMessage), `shown text "${shown}" lacks the message`);

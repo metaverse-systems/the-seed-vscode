@@ -25,4 +25,16 @@ export default [{
         "no-throw-literal": "warn",
         semi: "warn",
     },
+}, {
+    files: ["src/**/*.ts", "src/**/*.tsx"],
+
+    rules: {
+        "@typescript-eslint/no-restricted-imports": ["error", {
+            patterns: [{
+                group: ["@metaverse-systems/the-seed", "@metaverse-systems/the-seed/*"],
+                allowTypeImports: true,
+                message: "Load the tool through src/tool (the user's installation); import only types from the package.",
+            }],
+        }],
+    },
 }];

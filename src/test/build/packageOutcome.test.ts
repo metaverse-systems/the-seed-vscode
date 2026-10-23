@@ -3,11 +3,9 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { makeScratchDir } from '../helpers/workspaceStub';
 import { packageStatusFrom, packageNotification } from '../../build/packageOutcome';
-import Config from '@metaverse-systems/the-seed/Config';
-import Package from '@metaverse-systems/the-seed/Package';
-import { nativeComponentMessage } from '@metaverse-systems/the-seed/NativeComponent';
 import { onPlatform } from '../harness/platform';
 import type { PackageResult } from '@metaverse-systems/the-seed/types';
+import { testTool } from '../helpers/tool';
 
 // Choices made where the contract leaves a detail open (the implementation matches these):
 // - `packageStatusFrom` returns exactly the keys the contract lists (no `currentFile`), compared
@@ -98,7 +96,7 @@ suite('packageOutcome', () => {
         return projectDir;
       });
       const configDir = path.join(tmpDir, 'config');
-      const config = new Config(configDir);
+      const config = new (testTool().Config)(configDir);
       config.config.prefix = path.join(tmpDir, 'prefix');
       const outputDir = path.join(tmpDir, 'dist');
 
@@ -108,7 +106,7 @@ suite('packageOutcome', () => {
       console.error = () => {};
       let packaged: PackageResult;
       try {
-        packaged = await new Package(config).run(outputDir, dirs);
+        packaged = await new (testTool().Package)(config).run(outputDir, dirs);
       } finally {
         console.log = log;
         console.error = error;
@@ -120,8 +118,8 @@ suite('packageOutcome', () => {
       assert.strictEqual(status.filesCopied, 0);
       await onPlatform({
         win32: () => {
-          assert.strictEqual(packaged.message, nativeComponentMessage());
-          assert.strictEqual(status.errorMessage, nativeComponentMessage());
+          assert.strictEqual(packaged.message, testTool().nativeComponentMessage());
+          assert.strictEqual(status.errorMessage, testTool().nativeComponentMessage());
         },
         other: () => {
           assert.ok((status.errorMessage ?? '').includes('Two different files would be packaged as app:'), String(status.errorMessage));

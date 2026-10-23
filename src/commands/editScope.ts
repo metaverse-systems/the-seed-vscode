@@ -1,12 +1,11 @@
 import * as vscode from 'vscode';
 import { askQuestions } from '../askQuestions';
-import Config from '@metaverse-systems/the-seed/Config';
-import Scopes from '@metaverse-systems/the-seed/Scopes';
 import type { ScopeAnswersType } from '@metaverse-systems/the-seed/types';
+import type { ToolApi } from '../tool/toolApi';
 
-export async function editScope(outputChannel: vscode.OutputChannel): Promise<void> {
-  const config = new Config();
-  const scopes = new Scopes(config);
+export async function editScope(outputChannel: vscode.OutputChannel, tool: ToolApi): Promise<void> {
+  const config = new tool.Config();
+  const scopes = new tool.Scopes(config);
 
   const scopeNames = scopes.getScopes();
 

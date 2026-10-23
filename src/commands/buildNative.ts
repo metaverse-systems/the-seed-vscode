@@ -1,12 +1,12 @@
 import * as vscode from 'vscode';
-import Config from '@metaverse-systems/the-seed/Config';
-import Build from '@metaverse-systems/the-seed/Build';
 import { runProjectBuild } from '../build/projectBuild';
 import { describeBuildRejection, describeFailedStep } from '../build/buildFailure';
 import { detectBuildableProject } from '../build/projectDetector';
 import type { TheSeedViewProvider } from '../panels/TheSeedViewProvider';
 import type { BuildStatusPayload } from '../types/messages';
 import { acquireOperationLock, releaseOperationLock, getOperationLock } from '../operationLock';
+import type { ToolApi } from '../tool/toolApi';
+import type { ToolHandler } from './wrapCommand';
 
 export function getActiveBuild(): AbortController | null {
   const lock = getOperationLock();
@@ -31,9 +31,9 @@ export function cancelActiveBuild(): boolean {
 export function buildNativeCommand(
   outputChannel: vscode.OutputChannel,
   viewProvider: TheSeedViewProvider
-): (oc: vscode.OutputChannel) => Promise<void> {
-  return async () => {
-    await executeBuild('native', true, outputChannel, viewProvider);
+): ToolHandler {
+  return async (_oc, tool) => {
+    await executeBuild('native', true, outputChannel, viewProvider, tool);
   };
 }
 
@@ -43,9 +43,9 @@ export function buildNativeCommand(
 export function buildWindowsCommand(
   outputChannel: vscode.OutputChannel,
   viewProvider: TheSeedViewProvider
-): (oc: vscode.OutputChannel) => Promise<void> {
-  return async () => {
-    await executeBuild('windows', true, outputChannel, viewProvider);
+): ToolHandler {
+  return async (_oc, tool) => {
+    await executeBuild('windows', true, outputChannel, viewProvider, tool);
   };
 }
 
@@ -55,9 +55,9 @@ export function buildWindowsCommand(
 export function buildIncrementalCommand(
   outputChannel: vscode.OutputChannel,
   viewProvider: TheSeedViewProvider
-): (oc: vscode.OutputChannel) => Promise<void> {
-  return async () => {
-    await executeBuild('native', false, outputChannel, viewProvider);
+): ToolHandler {
+  return async (_oc, tool) => {
+    await executeBuild('native', false, outputChannel, viewProvider, tool);
   };
 }
 
@@ -65,7 +65,8 @@ async function executeBuild(
   target: string,
   fullReconfigure: boolean,
   outputChannel: vscode.OutputChannel,
-  viewProvider: TheSeedViewProvider
+  viewProvider: TheSeedViewProvider,
+  tool: ToolApi
 ): Promise<void> {
   // Prompt for build mode before acquiring lock
   const buildModeItems: vscode.QuickPickItem[] = [
@@ -149,9 +150,9 @@ async function executeBuild(
   }
 
   // Load config and get build steps
-  const config = new Config();
+  const config = new tool.Config();
   config.loadConfig();
-  const build = new Build(config);
+  const build = new tool.Build(config);
 
   const buildType = fullReconfigure ? target : 'incremental';
   const buildLabel = release ? `${buildType} (release)` : buildType;

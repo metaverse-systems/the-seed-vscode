@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import Signing from '@metaverse-systems/the-seed/Signing';
 import { describeVerification } from '../signing/verificationMessage';
+import type { ToolApi } from '../tool/toolApi';
 
 /**
  * Verify the signature(s) of one file and show the outcome.
@@ -13,8 +13,8 @@ import { describeVerification } from '../signing/verificationMessage';
  * checked) go to the output channel. A file that cannot be verified at all (not found, a signature file
  * or manifest chosen) is shown as a failure.
  */
-export async function verifySignature(outputChannel: vscode.OutputChannel, uri?: vscode.Uri): Promise<void> {
-  const signing = new Signing();
+export async function verifySignature(outputChannel: vscode.OutputChannel, tool: ToolApi, uri?: vscode.Uri): Promise<void> {
+  const signing = new tool.Signing();
 
   // Determine target file
   let targetPath: string | undefined;

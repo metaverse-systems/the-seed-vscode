@@ -20,14 +20,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
-import Config from '@metaverse-systems/the-seed/Config';
-import Template from '@metaverse-systems/the-seed/Template';
-import ResourcePak from '@metaverse-systems/the-seed/ResourcePak';
+import type { ToolApi } from '../../tool/toolApi';
+import { activeToolService } from '../../tool/toolService';
 import { handleMessage } from '../../panels/messageHandler';
 import { useScratchState } from '../helpers/scratchState';
 import { readTree } from '../helpers/workspaceStub';
+import { testTool } from '../helpers/tool';
 
-type Scaffold = (kind: 'component' | 'system' | 'program', channel: vscode.OutputChannel) => Promise<void>;
+type Scaffold = (kind: 'component' | 'system' | 'program', channel: vscode.OutputChannel, tool: ToolApi) => Promise<void>;
 
 function loadScaffold(): Scaffold {
   const mod = require('../../commands/scaffoldTemplate') as { scaffoldTemplate: Scaffold };
@@ -92,11 +92,11 @@ suite('scaffoldTemplate', () => {
       stubPrompts(SCOPE, NAME);
       stubChooser(chosen);
 
-      await loadScaffold()(kind, vscode.window.createOutputChannel('scaffold-test'));
+      await loadScaffold()(kind, vscode.window.createOutputChannel('scaffold-test'), testTool());
 
-      const config = new Config();
+      const config = new (testTool().Config)();
       config.loadConfig();
-      const template = new Template(config);
+      const template = new (testTool().Template)(config);
       template.type = kind;
       template.createPackage(SCOPE, NAME, reference, FIXED);
 
@@ -114,11 +114,11 @@ suite('scaffoldTemplate', () => {
     stubPrompts(SCOPE, NAME);
     const dialog = stubChooser(scratch('unused'));
 
-    await loadScaffold()('component', vscode.window.createOutputChannel('scaffold-test'));
+    await loadScaffold()('component', vscode.window.createOutputChannel('scaffold-test'), testTool());
 
-    const config = new Config();
+    const config = new (testTool().Config)();
     config.loadConfig();
-    const template = new Template(config);
+    const template = new (testTool().Template)(config);
     template.type = 'component';
     template.createPackage(SCOPE, NAME, reference, FIXED);
 
@@ -133,7 +133,7 @@ suite('scaffoldTemplate', () => {
     stubPrompts(SCOPE, NAME);
     sinon.stub(vscode.window, 'showOpenDialog').resolves(undefined);
 
-    await loadScaffold()('system', vscode.window.createOutputChannel('scaffold-test'));
+    await loadScaffold()('system', vscode.window.createOutputChannel('scaffold-test'), testTool());
 
     assert.deepStrictEqual(fs.readdirSync(chosen), []);
     assert.deepStrictEqual(fs.readdirSync(state.prefix!), []);
@@ -148,9 +148,9 @@ suite('scaffoldTemplate', () => {
 
     await vscode.commands.executeCommand('the-seed.createResourcePak');
 
-    const config = new Config();
+    const config = new (testTool().Config)();
     config.loadConfig();
-    new ResourcePak(config).createPackage(SCOPE, NAME, reference);
+    new (testTool().ResourcePak)(config).createPackage(SCOPE, NAME, reference);
 
     assert.ok(fs.existsSync(path.join(chosen, NAME)), 'pak project must be created in the chosen folder');
     assertSameTree(path.join(chosen, NAME), path.join(reference, NAME));
@@ -166,11 +166,11 @@ suite('scaffoldTemplate', () => {
       command: 'createResourcePak',
       requestId: 'scaffold-pak',
       data: { scopeName: SCOPE, pakName: NAME },
-    });
+    }, undefined, activeToolService());
 
-    const config = new Config();
+    const config = new (testTool().Config)();
     config.loadConfig();
-    new ResourcePak(config).createPackage(SCOPE, NAME, reference);
+    new (testTool().ResourcePak)(config).createPackage(SCOPE, NAME, reference);
 
     assert.ok(response && response.type === 'resourcePakCreated', 'expected resourcePakCreated');
     if (response && response.type === 'resourcePakCreated') {

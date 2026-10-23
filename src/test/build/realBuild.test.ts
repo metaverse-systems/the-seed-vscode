@@ -25,6 +25,8 @@ import { getOperationLock } from '../../operationLock';
 import { requires } from '../harness/platform';
 import { BuildDeps, isElf, isWindowsImage, locateBuildDeps, requireProgram } from '../helpers/buildDeps';
 import { useScratchState } from '../helpers/scratchState';
+import { testTool } from '../helpers/tool';
+import type { ToolApi } from '../../tool/toolApi';
 
 const SCOPE = '@acme';
 const NATIVE = 'x86_64-linux-gnu';
@@ -33,7 +35,7 @@ const CASE_TIMEOUT = 240000;
 const ENV_KEYS = ['PKG_CONFIG_PATH', 'PKG_CONFIG_LIBDIR', 'MAKEFLAGS', 'MFLAGS'];
 
 type Kind = 'component' | 'system' | 'program';
-type Scaffold = (kind: Kind, channel: vscode.OutputChannel) => Promise<void>;
+type Scaffold = (kind: Kind, channel: vscode.OutputChannel, tool: ToolApi) => Promise<void>;
 
 suite('Real builds through the extension', function () {
   this.timeout(CASE_TIMEOUT);
@@ -85,7 +87,7 @@ suite('Real builds through the extension', function () {
   async function scaffold(kind: Kind, name: string): Promise<string> {
     nextName = name;
     const mod = require('../../commands/scaffoldTemplate') as { scaffoldTemplate: Scaffold };
-    await mod.scaffoldTemplate(kind, vscode.window.createOutputChannel('real-build-test'));
+    await mod.scaffoldTemplate(kind, vscode.window.createOutputChannel('real-build-test'), testTool());
     const project = path.join(state.workspaceFolders[0], name);
     assert.ok(fs.existsSync(path.join(project, 'package.json')), `${name} must be created in the workspace folder`);
     return project;

@@ -31,7 +31,22 @@
         }
       ]
     },
+    "configuration": {
+      "title": "The Seed",
+      "properties": {
+        "the-seed.toolPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "markdownDescription": "Where the the-seed tool is installed, when it is not in the global npm installation: its package directory (for example `/opt/node/lib/node_modules/@metaverse-systems/the-seed`), its `the-seed` command, or a path inside it. Leave empty to use the global installation, then the `the-seed` command on the path. Needs the-seed 2.0.0 or a later 2.x."
+        }
+      }
+    },
     "commands": [
+      {
+        "command": "the-seed.checkTool",
+        "title": "The Seed: Check Tool"
+      },
       {
         "command": "the-seed.createResourcePak",
         "title": "The Seed: Create ResourcePak"
@@ -168,6 +183,7 @@
     "test": "node scripts/run-checks.js"
   },
   "devDependencies": {
+    "@metaverse-systems/the-seed": "2.0.0",
     "@types/fs-extra": "^11.0.4",
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
@@ -187,7 +203,6 @@
     "vite": "^7.3.1"
   },
   "dependencies": {
-    "@metaverse-systems/the-seed": "file:../the-seed",
     "@vscode-elements/elements": "^2.5.0",
     "@vscode-elements/react-elements": "^2.4.0",
     "fs-extra": "^11.3.3",

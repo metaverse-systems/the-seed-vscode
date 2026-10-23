@@ -1,14 +1,13 @@
 import * as vscode from 'vscode';
-import Signing, { DEFAULT_VALIDITY_DAYS, MAX_VALIDITY_DAYS } from '@metaverse-systems/the-seed/Signing';
 import { chooseScope } from '../signing/chooseScope';
-import Config from '@metaverse-systems/the-seed/Config';
+import type { ToolApi } from '../tool/toolApi';
 
-export async function createSigningCert(outputChannel: vscode.OutputChannel): Promise<void> {
-  const config = new Config();
+export async function createSigningCert(outputChannel: vscode.OutputChannel, tool: ToolApi): Promise<void> {
+  const config = new tool.Config();
   config.loadConfig();
-  const signing = new Signing();
+  const signing = new tool.Signing();
 
-  const scope = await chooseScope(signing, 'create the certificate');
+  const scope = await chooseScope(signing, 'create the certificate', tool);
   if (!scope) {
     return;
   }
@@ -27,10 +26,10 @@ export async function createSigningCert(outputChannel: vscode.OutputChannel): Pr
 
   const validityStr = await vscode.window.showInputBox({
     prompt: 'Certificate validity (days)',
-    value: String(DEFAULT_VALIDITY_DAYS),
+    value: String(tool.DEFAULT_VALIDITY_DAYS),
     validateInput: (value) => {
-      if (!/^[1-9][0-9]*$/.test(value) || parseInt(value, 10) > MAX_VALIDITY_DAYS) {
-        return `A whole number of days from 1 to ${MAX_VALIDITY_DAYS}`;
+      if (!/^[1-9][0-9]*$/.test(value) || parseInt(value, 10) > tool.MAX_VALIDITY_DAYS) {
+        return `A whole number of days from 1 to ${tool.MAX_VALIDITY_DAYS}`;
       }
       return null;
     },

@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
-import Signing from '@metaverse-systems/the-seed/Signing';
-import Config from '@metaverse-systems/the-seed/Config';
-import Scopes from '@metaverse-systems/the-seed/Scopes';
+import type Signing from '@metaverse-systems/the-seed/Signing';
+import type { ToolApi } from '../tool/toolApi';
 
 /**
  * Chooses the scope a signing command works on.
@@ -11,11 +10,11 @@ import Scopes from '@metaverse-systems/the-seed/Scopes';
  * @param purpose what the scope is for, completing "Which scope should be used to ...?"
  * @returns the chosen scope, or undefined when there is none or the pick was dismissed
  */
-export async function chooseScope(signing: Signing, purpose: string): Promise<string | undefined> {
+export async function chooseScope(signing: Signing, purpose: string, tool: ToolApi): Promise<string | undefined> {
   void signing;
-  const config = new Config();
+  const config = new tool.Config();
   config.loadConfig();
-  const scopes = new Scopes(config).getScopes();
+  const scopes = new tool.Scopes(config).getScopes();
 
   if (scopes.length === 0) {
     const action = await vscode.window.showErrorMessage(

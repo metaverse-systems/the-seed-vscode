@@ -30,7 +30,10 @@ export type WebviewToExtensionMessage =
   | { command: 'importSigningCert'; requestId: string }
   | { command: 'signingCertInfo'; requestId: string }
   | { command: 'exportSigningCert'; requestId: string }
-  | { command: 'getSigningStatus'; requestId: string };
+  | { command: 'getSigningStatus'; requestId: string }
+  | { command: 'getToolStatus'; requestId: string }
+  | { command: 'checkTool'; requestId: string }
+  | { command: 'openToolSetting' };
 
 export interface ScopeFormData {
   scopeName: string;
@@ -66,7 +69,7 @@ export type ExtensionToWebviewMessage =
   | { type: 'scopeDeleted'; requestId: string; payload: ConfigPayload }
   | { type: 'templateCreated'; requestId: string; payload: TemplateCreatedPayload }
   | { type: 'templateExists'; requestId: string; payload: { projectPath: string } }
-  | { type: 'error'; requestId?: string; payload: { message: string; hint?: string } }
+  | { type: 'error'; requestId?: string; payload: { message: string; hint?: string; code?: 'toolUnavailable' } }
   | { type: 'buildStatus'; payload: BuildStatusPayload }
   | { type: 'buildStarted'; requestId: string }
   | { type: 'buildCancelled'; requestId: string }
@@ -87,7 +90,24 @@ export type ExtensionToWebviewMessage =
   | { type: 'packageStarted'; requestId: string }
   | { type: 'packageStatusResponse'; requestId: string; payload: PackageStatusPayload }
   | { type: 'installerStatus'; payload: InstallerStatusPayload }
-  | { type: 'signingStatus'; requestId?: string; payload: SigningStatusPayload };
+  | { type: 'signingStatus'; requestId?: string; payload: SigningStatusPayload }
+  | { type: 'toolStatus'; requestId?: string; payload: ToolStatusPayload };
+
+export type ToolStatusState = 'checking' | 'usable' | 'notFound' | 'notTheTool' | 'tooOld' | 'tooNew' | 'notLoadable' | 'reloadRequired';
+
+export interface ToolStatusPayload {
+  state: ToolStatusState;
+  usable: boolean;
+  message: string;
+  /** Real path of the installation in use or the one that failed. */
+  location: string | undefined;
+  version: string | undefined;
+  foundThrough: 'setting' | 'global' | 'path' | undefined;
+  /** The version the extension needs. */
+  required: string;
+  /** The setting that points at the tool. */
+  setting: string;
+}
 
 export interface TemplateCreatedPayload {
   projectPath: string;

@@ -110,6 +110,9 @@ function runHostOnce(hostOptions) {
       THE_SEED_TEST_HOME: home,
       THE_SEED_TEST_RESULTS: resultsFile,
     };
+    // The installation of the tool the test editor is pointed at.
+    env.THE_SEED_TEST_TOOL = process.env.THE_SEED_TEST_TOOL
+      || path.join(root, 'node_modules', '@metaverse-systems', 'the-seed');
     delete env.THE_SEED_TEST_ONLY;
     delete env.THE_SEED_TEST_ORDER;
     if (hostOptions.only) {

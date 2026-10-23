@@ -1,6 +1,4 @@
 import * as vscode from 'vscode';
-import Config from '@metaverse-systems/the-seed/Config';
-import Package from '@metaverse-systems/the-seed/Package';
 import { removeSync } from 'fs-extra';
 import * as path from 'path';
 import { acquireOperationLock, releaseOperationLock } from '../operationLock';
@@ -8,6 +6,8 @@ import type { TheSeedViewProvider } from '../panels/TheSeedViewProvider';
 import type { PackageStatusPayload } from '../types/messages';
 import { packageStatusFrom, packageNotification } from '../build/packageOutcome';
 import type { PackageResult } from '@metaverse-systems/the-seed/types';
+import type { ToolApi } from '../tool/toolApi';
+import type { ToolHandler } from './wrapCommand';
 
 /**
  * Creates the packageProject command handler.
@@ -16,8 +16,8 @@ import type { PackageResult } from '@metaverse-systems/the-seed/types';
 export function packageProjectCommand(
   outputChannel: vscode.OutputChannel,
   viewProvider: TheSeedViewProvider
-): (oc: vscode.OutputChannel) => Promise<void> {
-  return async () => {
+): ToolHandler {
+  return async (_oc, tool) => {
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!workspaceFolders || workspaceFolders.length === 0) {
       vscode.window.showErrorMessage('No workspace folder open. Open a project folder first.');
@@ -26,7 +26,7 @@ export function packageProjectCommand(
     const projectDir = workspaceFolders[0].uri.fsPath;
 
     // Validate Config is loaded with a non-default prefix
-    const config = new Config();
+    const config = new tool.Config();
     config.loadConfig();
     if (!config.config.prefix || config.config.prefix === '') {
       vscode.window.showErrorMessage(
@@ -102,7 +102,7 @@ export function packageProjectCommand(
           cancellable: false,
         },
         async () => {
-          const pkg = new Package(config);
+          const pkg = new tool.Package(config);
           result = await pkg.run(outputDir, [projectDir]);
         }
       );

@@ -1,10 +1,13 @@
 import * as vscode from 'vscode';
 import { handleMessage } from './messageHandler';
+import type { ToolService } from '../tool/toolService';
+import { toToolStatusPayload } from '../tool/toolStatus';
 import type { ExtensionToWebviewMessage, BuildStatusPayload, DependencyStatusPayload, InstallProgressPayload, PackageStatusPayload, InstallerStatusPayload, SigningStatusPayload, RecursiveBuildProgressPayload, RecursiveBuildCompletePayload } from '../types/messages';
 
-export class TheSeedViewProvider implements vscode.WebviewViewProvider {
+export class TheSeedViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
   public static readonly viewType = 'the-seed.mainView';
 
+  private readonly _statusSubscription: vscode.Disposable;
   private _view?: vscode.WebviewView;
   private _readyReceived = false;
   private _currentBuildStatus: BuildStatusPayload | null = null;
@@ -16,7 +19,20 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider {
   private _currentRecursiveBuildProgress: RecursiveBuildProgressPayload | null = null;
   private _currentRecursiveBuildComplete: RecursiveBuildCompletePayload | null = null;
 
-  constructor(private readonly _extensionUri: vscode.Uri) {}
+  constructor(
+    private readonly _extensionUri: vscode.Uri,
+    private readonly _service: ToolService
+  ) {
+    this._statusSubscription = this._service.onDidChangeStatus(() => this._postToolStatus());
+  }
+
+  public dispose(): void {
+    this._statusSubscription.dispose();
+  }
+
+  private _postToolStatus(): void {
+    this.postMessage({ type: 'toolStatus', payload: toToolStatusPayload(this._service.status) });
+  }
 
   public resolveWebviewView(
     webviewView: vscode.WebviewView,
@@ -41,7 +57,7 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider {
       }
       const response = await handleMessage(message, (pushMsg) => {
         webviewView.webview.postMessage(pushMsg);
-      });
+      }, this._service);
       if (response) {
         webviewView.webview.postMessage(response);
 
@@ -68,7 +84,10 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider {
 
     webviewView.onDidChangeVisibility(() => {
       if (webviewView.visible && this._readyReceived) {
-        this._refreshConfig();
+        this._postToolStatus();
+        if (this._service.status.state === 'usable') {
+          void this._refreshConfig();
+        }
         // Push current build state so the webview catches up
         if (this._currentBuildStatus) {
           this.postMessage({ type: 'buildStatus', payload: this._currentBuildStatus });
@@ -157,7 +176,7 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider {
       return;
     }
     try {
-      const response = await handleMessage({ command: 'getConfig', requestId: '__visibility__' });
+      const response = await handleMessage({ command: 'getConfig', requestId: '__visibility__' }, undefined, this._service);
       if (response) {
         this._view.webview.postMessage(response);
       }

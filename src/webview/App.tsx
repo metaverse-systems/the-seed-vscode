@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { getVsCodeApi } from './hooks/useVsCodeApi';
 import { ConfigurationSection } from './components/ConfigurationSection';
 import { DependenciesSection } from './components/DependenciesSection';
@@ -20,13 +20,28 @@ import type {
   InstallerStatusPayload,
   RecursiveBuildProgressPayload,
   RecursiveBuildCompletePayload,
+  ToolStatusPayload,
 } from '../types/messages';
 import '@vscode-elements/elements';
 
 const vscode = getVsCodeApi();
 
+const CHECKING_TOOL: ToolStatusPayload = {
+  state: 'checking',
+  usable: false,
+  message: 'Looking for the the-seed tool.',
+  location: undefined,
+  version: undefined,
+  foundThrough: undefined,
+  required: '2.0.0',
+  setting: 'the-seed.toolPath',
+};
+
 export const App: React.FC = () => {
   const [config, setConfig] = useState<ConfigPayload | null>(null);
+  const [toolStatus, setToolStatus] = useState<ToolStatusPayload>(CHECKING_TOOL);
+  const wasUsable = useRef(false);
+  const dependencyChecksSent = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingOverwrite, setPendingOverwrite] = useState<string | null>(null);
   const [pendingOverwriteData, setPendingOverwriteData] = useState<ScopeFormData | null>(null);
@@ -77,6 +92,9 @@ export const App: React.FC = () => {
           setConfig(message.payload);
           setError(null);
           break;
+        case 'toolStatus':
+          setToolStatus(message.payload);
+          break;
         case 'prefixSaved':
           setConfig((prev) =>
             prev ? { ...prev, prefix: message.payload.prefix } : prev
@@ -117,6 +135,13 @@ export const App: React.FC = () => {
             setTemplateError(text);
             setResourcePakLoading(false);
             setResourcePakError(text);
+            if (message.payload.code === 'toolUnavailable') {
+              // A refused request never produces its normal answer; end what was waiting for one.
+              setIsCheckingNative(false);
+              setIsCheckingWindows(false);
+              setIsInstalling(false);
+              setInstallError(text);
+            }
           }
           break;
         case 'buildStatus':
@@ -236,20 +261,34 @@ export const App: React.FC = () => {
       command: 'getResourcePakStatus',
       requestId: crypto.randomUUID(),
     });
-    // Auto-check dependencies for both targets on mount
-    vscode.postMessage({
-      command: 'checkDependencies',
-      requestId: crypto.randomUUID(),
-      data: { target: 'native' },
-    });
-    vscode.postMessage({
-      command: 'checkDependencies',
-      requestId: crypto.randomUUID(),
-      data: { target: 'windows' },
-    });
-
     return () => window.removeEventListener('message', handleMessage);
   }, []);
+
+  // Once the tool is usable: load the configuration again, and check the dependencies the first time.
+  useEffect(() => {
+    if (toolStatus.usable && !wasUsable.current) {
+      vscode.postMessage({ command: 'getConfig', requestId: crypto.randomUUID() });
+      if (!dependencyChecksSent.current) {
+        dependencyChecksSent.current = true;
+        for (const target of ['native', 'windows'] as const) {
+          vscode.postMessage({
+            command: 'checkDependencies',
+            requestId: crypto.randomUUID(),
+            data: { target },
+          });
+        }
+      }
+    }
+    wasUsable.current = toolStatus.usable;
+  }, [toolStatus.usable]);
+
+  const handleToolAction = (action: 'openToolSetting' | 'checkTool') => {
+    if (action === 'checkTool') {
+      vscode.postMessage({ command: 'checkTool', requestId: crypto.randomUUID() });
+    } else {
+      vscode.postMessage({ command: 'openToolSetting' });
+    }
+  };
 
   const handleSavePrefix = (prefix: string) => {
     vscode.postMessage({
@@ -451,6 +490,8 @@ export const App: React.FC = () => {
       )}
       <ConfigurationSection
         config={config}
+        toolStatus={toolStatus}
+        onToolAction={handleToolAction}
         onSavePrefix={handleSavePrefix}
         onAddScope={handleAddScope}
         onConfirmOverwriteScope={() => {

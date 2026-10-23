@@ -1,6 +1,4 @@
 import * as vscode from 'vscode';
-import Config from '@metaverse-systems/the-seed/Config';
-import { buildRecursive } from '@metaverse-systems/the-seed/RecursiveBuild';
 import type { BuildableProject, BuildStep } from '@metaverse-systems/the-seed/types';
 import { detectBuildableProject } from '../build/projectDetector';
 import type { TheSeedViewProvider } from '../panels/TheSeedViewProvider';
@@ -8,6 +6,8 @@ import type { BuildStatusPayload, RecursiveBuildProgressPayload, RecursiveBuildC
 import { discoveryFailure } from '../build/recursiveOutcome';
 import { describeBuildRejection } from '../build/buildFailure';
 import { acquireOperationLock, releaseOperationLock, getOperationLock } from '../operationLock';
+import type { ToolApi } from '../tool/toolApi';
+import type { ToolHandler } from './wrapCommand';
 
 export function getActiveRecursiveBuild(): AbortController | null {
   const lock = getOperationLock();
@@ -32,9 +32,9 @@ export function cancelActiveRecursiveBuild(): boolean {
 export function buildNativeRecursiveCommand(
   outputChannel: vscode.OutputChannel,
   viewProvider: TheSeedViewProvider
-): (oc: vscode.OutputChannel) => Promise<void> {
-  return async () => {
-    await executeRecursiveBuild('native', outputChannel, viewProvider);
+): ToolHandler {
+  return async (_oc, tool) => {
+    await executeRecursiveBuild('native', outputChannel, viewProvider, tool);
   };
 }
 
@@ -44,16 +44,17 @@ export function buildNativeRecursiveCommand(
 export function buildWindowsRecursiveCommand(
   outputChannel: vscode.OutputChannel,
   viewProvider: TheSeedViewProvider
-): (oc: vscode.OutputChannel) => Promise<void> {
-  return async () => {
-    await executeRecursiveBuild('windows', outputChannel, viewProvider);
+): ToolHandler {
+  return async (_oc, tool) => {
+    await executeRecursiveBuild('windows', outputChannel, viewProvider, tool);
   };
 }
 
 async function executeRecursiveBuild(
   target: 'native' | 'windows',
   outputChannel: vscode.OutputChannel,
-  viewProvider: TheSeedViewProvider
+  viewProvider: TheSeedViewProvider,
+  tool: ToolApi
 ): Promise<void> {
   // Prompt for build mode before acquiring lock
   const buildModeItems: vscode.QuickPickItem[] = [
@@ -184,9 +185,9 @@ async function executeRecursiveBuild(
 
           let result;
           try {
-            const config = new Config();
+            const config = new tool.Config();
             config.loadConfig();
-            result = await buildRecursive({
+            result = await tool.buildRecursive({
               config,
               target,
               fullReconfigure: true,
@@ -227,7 +228,7 @@ async function executeRecursiveBuild(
               },
             });
           } catch (err: unknown) {
-            const failure = discoveryFailure(err, target, new Date().toISOString());
+            const failure = discoveryFailure(err, target, new Date().toISOString(), tool);
             if (!failure) {
               const rejection = describeBuildRejection(err, `${target} (recursive)`, new Date().toISOString());
               outputChannel.appendLine(rejection.outputLine);

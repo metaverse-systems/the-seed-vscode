@@ -1,8 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import Config from '@metaverse-systems/the-seed/Config';
-import Signing from '@metaverse-systems/the-seed/Signing';
+import { testTool } from './tool';
 
 export interface ScratchHome {
   dir: string;
@@ -41,7 +40,7 @@ export function useScratchHome(): ScratchHome {
 
 /** Replaces the configured scopes; a null author name leaves the name empty. */
 export function writeScopes(authors: Record<string, string>): void {
-  const config = new Config();
+  const config = new (testTool().Config)();
   config.config.scopes = {};
   for (const [scope, name] of Object.entries(authors)) {
     config.config.scopes[scope] = { author: { name, email: '', url: '' } };
@@ -51,7 +50,7 @@ export function writeScopes(authors: Record<string, string>): void {
 
 /** Creates a signing certificate for a configured scope. */
 export async function createCertFor(scope: string, validityDays = 30): Promise<string> {
-  const info = await new Signing().createCert({ scope, validityDays });
+  const info = await new (testTool().Signing)().createCert({ scope, validityDays });
   return info.fingerprint;
 }
 

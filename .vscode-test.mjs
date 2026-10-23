@@ -47,6 +47,7 @@ export default defineConfig({
 		XDG_CONFIG_HOME: path.join(home, '.config'),
 		THE_SEED_TEST_HOME: home,
 		THE_SEED_TEST_RESULTS: results,
+		...(process.env.THE_SEED_TEST_TOOL ? { THE_SEED_TEST_TOOL: process.env.THE_SEED_TEST_TOOL } : {}),
 	},
 	mocha: {
 		ui: 'tdd',
