@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { acquireOperationLock, releaseOperationLock } from '../operationLock';
+import { acquireOperationLock, releaseOperationLock, lockRefusal } from '../operationLock';
 import type { TheSeedViewProvider } from '../panels/TheSeedViewProvider';
 import type { PackageStatusPayload } from '../types/messages';
 import { packageStatusFrom, packageNotification } from '../build/packageOutcome';
@@ -35,121 +35,180 @@ export function packageProjectCommand(
       return;
     }
 
-    // Acquire operation lock ('package') — mutual exclusion with build/install
+    // Acquire operation lock ('package') — mutual exclusion with the other long operations
     const lockResult = acquireOperationLock('package');
     if (!lockResult.success) {
-      const msg = lockResult.heldBy === 'build'
-        ? 'Cannot package while a build operation is in progress.'
-        : lockResult.heldBy === 'install'
-          ? 'Cannot package while an install operation is in progress.'
-          : 'A package operation is already in progress.';
-      vscode.window.showWarningMessage(msg);
+      vscode.window.showWarningMessage(lockRefusal('package', lockResult.heldBy ?? 'package'));
       return;
     }
 
-    // Remove existing dist/ directory
     const outputDir = path.join(projectDir, 'dist');
-    try {
-      fs.rmSync(outputDir, { recursive: true, force: true });
-    } catch {
-      // Directory may not exist — that's fine
-    }
-
-    // Broadcast running status
-    const runningStatus: PackageStatusPayload = {
-      state: 'running',
-      timestamp: new Date().toISOString(),
-    };
-    viewProvider.postMessage({ type: 'packageStatus', payload: runningStatus });
-
-    // Show output channel with timestamped separator header
-    outputChannel.show(true);
-    const timestamp = new Date().toISOString();
-    outputChannel.appendLine(`\n${'═'.repeat(60)}`);
-    outputChannel.appendLine(`Package started at ${timestamp}`);
-    outputChannel.appendLine(`Project: ${projectDir}`);
-    outputChannel.appendLine(`${'═'.repeat(60)}\n`);
-
-    // Monkey-patch console.log/console.error to capture per-file output
-    const originalLog = console.log;
-    const originalError = console.error;
+    // Where the previous output waits while the tool runs, until it is dropped or put back
+    let aside: string | null = null;
+    // Console methods replaced for the run, restored in finally
+    let originalLog: typeof console.log | null = null;
+    let originalError: typeof console.error | null = null;
     let result: PackageResult | undefined;
 
     try {
-      console.log = (...args: unknown[]) => {
-        const line = args.map(String).join(' ');
-        outputChannel.appendLine(line);
-        if (line.startsWith('Copying ')) {
-          const currentStatus: PackageStatusPayload = {
-            state: 'running',
-            currentFile: line,
+      // Move the previous output aside within the project, so the tool gets a free
+      // output directory and a refused or failed run can put the last result back
+      if (fs.existsSync(outputDir)) {
+        try {
+          aside = fs.mkdtempSync(path.join(projectDir, '.dist-previous-'));
+          fs.renameSync(outputDir, path.join(aside, 'dist'));
+        } catch (err: unknown) {
+          // dist/ is still in place: only the empty directory made for it is removed
+          const madeAside = aside;
+          aside = null;
+          if (madeAside !== null) {
+            try {
+              fs.rmSync(madeAside, { recursive: true, force: true });
+            } catch {
+              // Nothing was moved into it; an empty directory left behind holds no output
+            }
+          }
+          const reason = err instanceof Error ? err.message : String(err);
+          const errorMessage = `could not move the previous output aside: ${reason}`;
+          outputChannel.appendLine(`\n── Packaging failed: ${errorMessage} ──`);
+          outputChannel.show(true);
+          const failedStatus: PackageStatusPayload = {
+            state: 'failed',
+            errorMessage,
+            filesCopied: 0,
             timestamp: new Date().toISOString(),
           };
-          viewProvider.postMessage({ type: 'packageStatus', payload: currentStatus });
+          viewProvider.postMessage({ type: 'packageStatus', payload: failedStatus });
+          vscode.window.showErrorMessage(`Packaging failed: ${errorMessage}`);
+          return;
         }
-      };
-
-      console.error = (...args: unknown[]) => {
-        const line = args.map(String).join(' ');
-        outputChannel.appendLine(`[ERROR] ${line}`);
-      };
-
-      // Wrap Package.run() in withProgress for notification-level spinner
-      await vscode.window.withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: 'Packaging project...',
-          cancellable: false,
-        },
-        async () => {
-          const pkg = new tool.Package(config);
-          result = await pkg.run(outputDir, [projectDir]);
-        }
-      );
-
-      const packaged = result!;
-      if (packaged.success) {
-        outputChannel.appendLine(`\n── Packaged ${packaged.fileCount} files into dist/ ──`);
-      } else {
-        outputChannel.appendLine('\n── Packaging failed ──');
-        if (packaged.message) {
-          outputChannel.appendLine(packaged.message);
-        }
-        outputChannel.show(true);
       }
 
-      viewProvider.postMessage({
-        type: 'packageStatus',
-        payload: packageStatusFrom(packaged, new Date().toISOString()),
-      });
-
-      const notification = packageNotification(packaged);
-      if (notification.kind === 'info') {
-        vscode.window.showInformationMessage(notification.text);
-      } else {
-        vscode.window.showErrorMessage(notification.text);
-      }
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-
-      outputChannel.appendLine(`\n── Packaging failed: ${errorMessage} ──`);
-      outputChannel.show(true);
-
-      // Broadcast failed status
-      const failedStatus: PackageStatusPayload = {
-        state: 'failed',
-        errorMessage,
-        filesCopied: 0,
+      // Broadcast running status
+      const runningStatus: PackageStatusPayload = {
+        state: 'running',
         timestamp: new Date().toISOString(),
       };
-      viewProvider.postMessage({ type: 'packageStatus', payload: failedStatus });
+      viewProvider.postMessage({ type: 'packageStatus', payload: runningStatus });
 
-      // Show error notification
-      vscode.window.showErrorMessage(`Packaging failed: ${errorMessage}`);
+      // Show output channel with timestamped separator header
+      outputChannel.show(true);
+      const timestamp = new Date().toISOString();
+      outputChannel.appendLine(`\n${'═'.repeat(60)}`);
+      outputChannel.appendLine(`Package started at ${timestamp}`);
+      outputChannel.appendLine(`Project: ${projectDir}`);
+      outputChannel.appendLine(`${'═'.repeat(60)}\n`);
+
+      try {
+        // Replace console.log/console.error to capture per-file output
+        originalLog = console.log;
+        originalError = console.error;
+        console.log = (...args: unknown[]) => {
+          const line = args.map(String).join(' ');
+          outputChannel.appendLine(line);
+          if (line.startsWith('Copying ')) {
+            const currentStatus: PackageStatusPayload = {
+              state: 'running',
+              currentFile: line,
+              timestamp: new Date().toISOString(),
+            };
+            viewProvider.postMessage({ type: 'packageStatus', payload: currentStatus });
+          }
+        };
+
+        console.error = (...args: unknown[]) => {
+          const line = args.map(String).join(' ');
+          outputChannel.appendLine(`[ERROR] ${line}`);
+        };
+
+        // Wrap Package.run() in withProgress for notification-level spinner
+        await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: 'Packaging project...',
+            cancellable: false,
+          },
+          async () => {
+            const pkg = new tool.Package(config);
+            result = await pkg.run(outputDir, [projectDir]);
+          }
+        );
+
+        const packaged = result!;
+        if (packaged.success) {
+          outputChannel.appendLine(`\n── Packaged ${packaged.fileCount} files into dist/ ──`);
+        } else {
+          outputChannel.appendLine('\n── Packaging failed ──');
+          if (packaged.message) {
+            outputChannel.appendLine(packaged.message);
+          }
+          outputChannel.show(true);
+        }
+
+        viewProvider.postMessage({
+          type: 'packageStatus',
+          payload: packageStatusFrom(packaged, new Date().toISOString()),
+        });
+
+        const notification = packageNotification(packaged);
+        if (notification.kind === 'info') {
+          vscode.window.showInformationMessage(notification.text);
+        } else {
+          vscode.window.showErrorMessage(notification.text);
+        }
+
+        // The new result replaces the previous output
+        if (packaged.success && aside !== null) {
+          const previous = aside;
+          aside = null;
+          try {
+            fs.rmSync(previous, { recursive: true, force: true });
+          } catch (err: unknown) {
+            const reason = err instanceof Error ? err.message : String(err);
+            outputChannel.appendLine(`[WARNING] Could not remove the previous output at ${previous}: ${reason}`);
+          }
+        }
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+
+        outputChannel.appendLine(`\n── Packaging failed: ${errorMessage} ──`);
+        outputChannel.show(true);
+
+        // Broadcast failed status
+        const failedStatus: PackageStatusPayload = {
+          state: 'failed',
+          errorMessage,
+          filesCopied: 0,
+          timestamp: new Date().toISOString(),
+        };
+        viewProvider.postMessage({ type: 'packageStatus', payload: failedStatus });
+
+        // Show error notification
+        vscode.window.showErrorMessage(`Packaging failed: ${errorMessage}`);
+      }
     } finally {
       // Restore console methods
-      console.log = originalLog;
-      console.error = originalError;
+      if (originalLog !== null) {
+        console.log = originalLog;
+      }
+      if (originalError !== null) {
+        console.error = originalError;
+      }
+
+      // Unless the run succeeded, drop what it left at dist/ and put the previous output back
+      if (aside !== null) {
+        try {
+          fs.rmSync(outputDir, { recursive: true, force: true });
+          fs.renameSync(path.join(aside, 'dist'), outputDir);
+          fs.rmSync(aside, { recursive: true, force: true });
+        } catch (err: unknown) {
+          const reason = err instanceof Error ? err.message : String(err);
+          const message = `Packaging failed: the previous output is in ${path.join(aside, 'dist')}: ${reason}`;
+          outputChannel.appendLine(message);
+          outputChannel.show(true);
+          vscode.window.showErrorMessage(message);
+        }
+      }
 
       // Always release the operation lock
       releaseOperationLock();

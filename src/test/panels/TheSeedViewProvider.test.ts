@@ -2,78 +2,16 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as sinon from 'sinon';
-import { TheSeedViewProvider } from '../../panels/TheSeedViewProvider';
+import { TheSeedViewProvider, activeViewProvider } from '../../panels/TheSeedViewProvider';
 import * as vscode from 'vscode';
 import { activeToolService } from '../../tool/toolService';
 import { useScratchState } from '../helpers/scratchState';
-import { withToolSetting } from '../helpers/tool';
-import { getOperationLock } from '../../operationLock';
-
-interface Posted {
-  type: string;
-  requestId?: string;
-  payload?: Record<string, unknown>;
-}
-
-interface FakeView {
-  view: vscode.WebviewView;
-  posted: Posted[];
-  receive(message: object): Promise<void>;
-  setVisible(visible: boolean): void;
-}
-
-/** A webview view that records what is posted to it and lets a case send messages and change visibility. */
-function fakeView(provider: TheSeedViewProvider): FakeView {
-  const posted: Posted[] = [];
-  let received: (message: object) => Promise<void> = async () => undefined;
-  let visibility: () => void = () => undefined;
-  const webview = {
-    options: {},
-    html: '',
-    cspSource: 'test',
-    asWebviewUri: (uri: vscode.Uri) => uri,
-    postMessage: async (message: Posted) => {
-      posted.push(message);
-      return true;
-    },
-    onDidReceiveMessage: (callback: (message: object) => Promise<void>) => {
-      received = callback;
-      return { dispose: () => undefined };
-    },
-  };
-  const view = {
-    webview,
-    visible: true,
-    onDidChangeVisibility: (callback: () => void) => {
-      visibility = callback;
-      return { dispose: () => undefined };
-    },
-  };
-  provider.resolveWebviewView(
-    view as unknown as vscode.WebviewView,
-    {} as vscode.WebviewViewResolveContext,
-    { isCancellationRequested: false, onCancellationRequested: sinon.stub() },
-  );
-  return {
-    view: view as unknown as vscode.WebviewView,
-    posted,
-    receive: (message) => received(message),
-    setVisible: (visible) => {
-      view.visible = visible;
-      visibility();
-    },
-  };
-}
-
-async function until(condition: () => boolean, what: string): Promise<void> {
-  const deadline = Date.now() + 5000;
-  while (!condition()) {
-    if (Date.now() > deadline) {
-      throw new Error(`timed out waiting for ${what}`);
-    }
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-}
+import { testTool, withToolSetting } from '../helpers/tool';
+import { requires } from '../harness/platform';
+import { useFakeGit } from '../helpers/fakeGit';
+import { acquireOperationLock, getOperationLock } from '../../operationLock';
+import { fakeView, until } from '../helpers/fakeView';
+import type { FakeView, Posted } from '../helpers/fakeView';
 
 suite('TheSeedViewProvider', () => {
   let provider: TheSeedViewProvider;
@@ -210,6 +148,28 @@ suite('TheSeedViewProvider', () => {
       assert.strictEqual(answer.type, 'buildStarted');
       assert.notStrictEqual(answer.payload?.message, 'A build is already in progress.');
     });
+
+    for (const [command, target] of [['startBuild', 'native'], ['startRecursiveBuild', 'native']] as const) {
+      test(`${command} through the sidebar while a build holds the lock answers buildStarted and shows the palette's warning once`, async () => {
+        const held = acquireOperationLock('build');
+        assert.ok(held.success, 'the case holds the build lock');
+        const pick = sinon.stub(vscode.window, 'showQuickPick').resolves(undefined);
+        const warning = sinon.stub(vscode.window, 'showWarningMessage').resolves(undefined);
+        const fake = fakeView(provider);
+
+        await fake.receive({ command, requestId: 'held-1', data: { target } });
+
+        const answer = fake.posted.find((message) => message.requestId === 'held-1');
+        assert.ok(answer, 'the request was answered');
+        assert.strictEqual(answer.type, 'buildStarted', `the answer is not an error reply: ${JSON.stringify(answer.payload)}`);
+        await until(() => warning.callCount > 0, "the fired command's warning");
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        assert.deepStrictEqual(warning.getCalls().map((call) => call.args[0]), ['A build is already in progress.']);
+        assert.ok(pick.notCalled, 'nothing is asked while the lock is held');
+        assert.strictEqual(getOperationLock().type, 'build', 'the holder is unchanged');
+        assert.strictEqual(getOperationLock().abortController, held.abortController, 'the holder is the same build');
+      });
+    }
   });
 
   suite('creating a project from the sidebar', function () {
@@ -421,5 +381,131 @@ suite('TheSeedViewProvider', () => {
         );
       });
     });
+  });
+
+  suite('replay when the sidebar is reopened', function () {
+    this.timeout(60000);
+    useScratchState({ workspaceFolders: 1 });
+
+    teardown(() => {
+      (provider as unknown as { dispose?: () => void }).dispose?.();
+    });
+
+    /** The extension's own provider, resolved on a fake view whose page has loaded. */
+    async function openSidebar(): Promise<FakeView> {
+      const extensionProvider = activeViewProvider();
+      assert.ok(extensionProvider, "the extension's view provider exists");
+      const fake = fakeView(extensionProvider);
+      await fake.receive({ command: 'ready' });
+      return fake;
+    }
+
+    const ofType = (messages: Posted[], type: string, state?: string): Posted[] =>
+      messages.filter((message) => message.type === type && (state === undefined || message.payload?.state === state));
+
+    suite('dependency installation', () => {
+      requires('posix-toolchain');
+      const git = useFakeGit();
+
+      setup(() => {
+        sinon.stub(vscode.window, 'showQuickPick').resolves({ label: 'native' } as vscode.QuickPickItem);
+        sinon.stub(vscode.window, 'showInformationMessage').resolves(undefined);
+        sinon.stub(vscode.window, 'showWarningMessage').resolves(undefined);
+        sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+      });
+
+      const starts: { from: string; start: (fake: FakeView) => Promise<{ done: Thenable<unknown> | null }> }[] = [
+        {
+          from: 'the sidebar',
+          start: async (fake) => {
+            await fake.receive({ command: 'installDependencies', requestId: 'install-1', data: { target: 'native' } });
+            return { done: null };
+          },
+        },
+        {
+          from: 'the palette',
+          start: async () => ({ done: vscode.commands.executeCommand('the-seed.installDependencies', 'native') }),
+        },
+      ];
+
+      for (const { from, start } of starts) {
+        test(`an installation started from ${from} is replayed as running after ready, and not once it has ended`, async () => {
+          git.slow(30);
+          const fake = await openSidebar();
+
+          const { done } = await start(fake);
+          try {
+            await until(() => ofType(fake.posted, 'installDependenciesProgress', 'running').length > 0, 'the installation to post its running state');
+
+            const replayed = await fake.reopen();
+
+            const progress = ofType(replayed, 'installDependenciesProgress', 'running');
+            assert.ok(progress.length > 0, `the running installation is replayed after ready; posted after ready: ${JSON.stringify(replayed.map((message) => message.type))}`);
+            assert.strictEqual(progress[0].payload?.target, 'native');
+          } finally {
+            await fake.receive({ command: 'cancelInstallDependencies', requestId: 'cancel-1' });
+            await until(() => !getOperationLock().active, 'the installation to end');
+            await done;
+          }
+
+          const again = await fake.reopen();
+          assert.deepStrictEqual(ofType(again, 'installDependenciesProgress'), [], 'no install progress is replayed once the run has ended');
+        });
+      }
+    });
+
+    type Pending = { run: sinon.SinonStub; finish: () => void };
+
+    const palette: { name: string; commandId: string; type: string; begin: () => Pending }[] = [
+      {
+        name: 'packaging run',
+        commandId: 'the-seed.packageProject',
+        type: 'packageStatus',
+        begin: () => {
+          let finish: () => void = () => undefined;
+          const run = sinon.stub(testTool().Package.prototype, 'run').callsFake(() => new Promise((resolve) => {
+            finish = () => resolve({ success: false, message: 'stubbed packaging run', outputDir: '', projects: [], files: [], signatures: 0, fileCount: 0, notPackaged: [] });
+          }) as never);
+          return { run, finish: () => finish() };
+        },
+      },
+      {
+        name: 'installer run',
+        commandId: 'the-seed.generateWindowsInstaller',
+        type: 'installerStatus',
+        begin: () => {
+          let finish: () => void = () => undefined;
+          const run = sinon.stub(testTool().Installer.prototype, 'run').callsFake(() => new Promise((resolve) => {
+            finish = () => resolve({ ok: false, status: 1, message: 'stubbed installer run' });
+          }) as never);
+          return { run, finish: () => finish() };
+        },
+      },
+    ];
+
+    for (const { name, commandId, type, begin } of palette) {
+      test(`a palette ${name} is replayed as running after ready, and not once it has ended`, async () => {
+        sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+        sinon.stub(vscode.window, 'showWarningMessage').resolves(undefined);
+        sinon.stub(vscode.window, 'showInformationMessage').resolves(undefined);
+        const pending = begin();
+        const fake = await openSidebar();
+
+        const running = vscode.commands.executeCommand(commandId);
+        try {
+          await until(() => pending.run.called, `the ${name} to start`);
+
+          const replayed = await fake.reopen();
+
+          assert.ok(ofType(replayed, type, 'running').length > 0, `the running ${name} is replayed after ready; posted after ready: ${JSON.stringify(replayed.map((message) => message.type))}`);
+        } finally {
+          pending.finish();
+          await running;
+        }
+
+        const again = await fake.reopen();
+        assert.deepStrictEqual(ofType(again, type), [], `no ${type} is replayed once the run has ended`);
+      });
+    }
   });
 });

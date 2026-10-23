@@ -83,7 +83,7 @@ export type ExtensionToWebviewMessage =
   | { type: 'resourcePakBuilt'; requestId: string; payload: ResourcePakBuiltPayload }
   | { type: 'resourcePakBuildProgress'; payload: ResourcePakBuildProgressPayload }
   | { type: 'dependencyStatus'; requestId?: string; payload: DependencyStatusPayload }
-  | { type: 'installDependenciesStarted'; requestId: string }
+  | { type: 'installDependenciesStarted'; requestId?: string }
   | { type: 'installDependenciesCancelled'; requestId: string }
   | { type: 'installDependenciesProgress'; payload: InstallProgressPayload }
   | { type: 'packageStatus'; payload: PackageStatusPayload }

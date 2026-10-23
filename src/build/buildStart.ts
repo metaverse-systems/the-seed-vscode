@@ -1,20 +1,13 @@
 import * as vscode from 'vscode';
 import { detectBuildableProject } from './projectDetector';
-import { acquireOperationLock, getOperationLock } from '../operationLock';
+import { acquireOperationLock, getOperationLock, lockRefusal } from '../operationLock';
 import type { OperationType } from '../operationLock';
 
 export const NO_BUILDABLE_PROJECT = 'No buildable project found. Open a file in a The Seed project.';
 
 /** The refusal shown when a build is started while `holder` holds the operation lock. */
 export function buildRefusal(holder: OperationType): string {
-  switch (holder) {
-    case 'install':
-      return 'Cannot build while an install operation is in progress.';
-    case 'package':
-      return 'Cannot build while a packaging operation is in progress.';
-    default:
-      return 'A build is already in progress.';
-  }
+  return lockRefusal('build', holder);
 }
 
 export type BuildProjectChoice =

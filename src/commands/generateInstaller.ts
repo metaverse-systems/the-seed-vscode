@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { acquireOperationLock, releaseOperationLock, lockRefusal } from '../operationLock';
 import type { TheSeedViewProvider } from '../panels/TheSeedViewProvider';
 import type { InstallerStatusPayload } from '../types/messages';
 import type { ToolApi } from '../tool/toolApi';
@@ -20,27 +21,44 @@ export function generateInstallerCommand(
     }
     const projectDir = workspaceFolders[0].uri.fsPath;
 
-    // Broadcast running status
-    const runningStatus: InstallerStatusPayload = {
-      state: 'running',
-      currentStep: 'Initializing...',
-      timestamp: new Date().toISOString(),
-    };
-    viewProvider.postMessage({ type: 'installerStatus', payload: runningStatus });
+    // Validate Config is loaded with a non-default prefix; the same configuration drives the installer
+    const config = new tool.Config();
+    config.loadConfig();
+    if (!config.config.prefix || config.config.prefix === '') {
+      vscode.window.showErrorMessage(
+        'No prefix configured. Run "The Seed: Configure Project" first.'
+      );
+      return;
+    }
 
-    // Show output channel with timestamped separator header
-    outputChannel.show(true);
-    const timestamp = new Date().toISOString();
-    outputChannel.appendLine(`\n${'═'.repeat(60)}`);
-    outputChannel.appendLine(`Installer generation started at ${timestamp}`);
-    outputChannel.appendLine(`Project: ${projectDir}`);
-    outputChannel.appendLine(`${'═'.repeat(60)}\n`);
+    // Acquire operation lock ('installer') — mutual exclusion with the other long operations
+    const lockResult = acquireOperationLock('installer');
+    if (!lockResult.success) {
+      vscode.window.showWarningMessage(lockRefusal('installer', lockResult.heldBy ?? 'installer'));
+      return;
+    }
 
     // Monkey-patch console.log/console.error to capture output
     const originalLog = console.log;
     const originalError = console.error;
 
     try {
+      // Broadcast running status
+      const runningStatus: InstallerStatusPayload = {
+        state: 'running',
+        currentStep: 'Initializing...',
+        timestamp: new Date().toISOString(),
+      };
+      viewProvider.postMessage({ type: 'installerStatus', payload: runningStatus });
+
+      // Show output channel with timestamped separator header
+      outputChannel.show(true);
+      const timestamp = new Date().toISOString();
+      outputChannel.appendLine(`\n${'═'.repeat(60)}`);
+      outputChannel.appendLine(`Installer generation started at ${timestamp}`);
+      outputChannel.appendLine(`Project: ${projectDir}`);
+      outputChannel.appendLine(`${'═'.repeat(60)}\n`);
+
       console.log = (...args: unknown[]) => {
         const line = args.map(String).join(' ');
         outputChannel.appendLine(line);
@@ -68,8 +86,6 @@ export function generateInstallerCommand(
           cancellable: false,
         },
         async () => {
-          const config = new tool.Config();
-          config.loadConfig();
           const installer = new tool.Installer(config);
           const result = await installer.run(projectDir);
           success = result.ok;
@@ -123,6 +139,9 @@ export function generateInstallerCommand(
       // Restore console methods
       console.log = originalLog;
       console.error = originalError;
+
+      // Always release the operation lock
+      releaseOperationLock();
     }
   };
 }
