@@ -183,6 +183,7 @@
     "test": "node scripts/run-checks.js"
   },
   "devDependencies": {
+    "@metaverse-systems/the-seed": "2.0.0",
     "@types/fs-extra": "^11.0.4",
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
@@ -202,7 +203,6 @@
     "vite": "^7.3.1"
   },
   "dependencies": {
-    "@metaverse-systems/the-seed": "file:../the-seed",
     "@vscode-elements/elements": "^2.5.0",
     "@vscode-elements/react-elements": "^2.4.0",
     "fs-extra": "^11.3.3",

@@ -158,13 +158,13 @@ jobs:
           };
           const installed = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
           const expected = process.env.THE_SEED_VERSION;
-          const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
-          const locked = lock.packages['../the-seed'] && lock.packages['../the-seed'].version;
+          const manifest = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const declared = manifest.devDependencies && manifest.devDependencies['@metaverse-systems/the-seed'];
           if (installed !== expected) {
             fail(`the tool is ${installed}, expected ${expected}`);
           }
-          if (locked !== expected) {
-            fail(`package-lock.json records the tool as ${locked}, expected ${expected}`);
+          if (declared !== expected) {
+            fail(`package.json declares the tool as ${declared}, expected ${expected}`);
           }
           const component = path.join(root, 'native', 'build', 'Release', 'the_seed_native.node');
           const { REQUIRED_VERSIONS } = require(path.join(root, 'dist', 'RequiredVersions.js'));
@@ -472,13 +472,13 @@ jobs:
           };
           const installed = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
           const expected = process.env.THE_SEED_VERSION;
-          const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
-          const locked = lock.packages['../the-seed'] && lock.packages['../the-seed'].version;
+          const manifest = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const declared = manifest.devDependencies && manifest.devDependencies['@metaverse-systems/the-seed'];
           if (installed !== expected) {
             fail(`the tool is ${installed}, expected ${expected}`);
           }
-          if (locked !== expected) {
-            fail(`package-lock.json records the tool as ${locked}, expected ${expected}`);
+          if (declared !== expected) {
+            fail(`package.json declares the tool as ${declared}, expected ${expected}`);
           }
           const component = path.join(root, 'native', 'build', 'Release', 'the_seed_native.node');
           const { REQUIRED_VERSIONS } = require(path.join(root, 'dist', 'RequiredVersions.js'));

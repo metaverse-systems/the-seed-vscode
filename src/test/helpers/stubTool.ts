@@ -156,8 +156,8 @@ export interface CopyTestToolOptions {
 /**
  * Makes a scratch copy of the installation named by THE_SEED_TEST_TOOL (dist, package.json, templates,
  * and native only when asked) whose classes behave like the real tool's. Its dependencies come from
- * the source installation's own node_modules when it has one (a linked checkout does), else from the
- * extension's node_modules; the link is a junction so it also works on Windows.
+ * the source installation's own node_modules, with the extension's node_modules behind them; the links
+ * are junctions so they also work on Windows.
  */
 export function copyTestTool(dir: string, options: CopyTestToolOptions): string {
   const source = process.env.THE_SEED_TEST_TOOL;
@@ -175,10 +175,56 @@ export function copyTestTool(dir: string, options: CopyTestToolOptions): string 
       fs.cpSync(from, path.join(dir, part), { recursive: true });
     }
   }
-  const ownModules = path.join(source, 'node_modules');
-  const modules = fs.existsSync(ownModules) ? fs.realpathSync(ownModules) : path.join(extensionRoot, 'node_modules');
-  fs.symlinkSync(modules, path.join(dir, 'node_modules'), 'junction');
+  linkModules(source, dir);
   return dir;
+}
+
+/**
+ * Gives `dir` a node_modules that resolves what the tool at `source` needs. A linked checkout has
+ * all of its own, so that directory is used whole. A registry installation keeps only the packages
+ * it could not share with the extension in its own node_modules, so those are laid over the
+ * extension's packages entry by entry.
+ */
+function linkModules(source: string, dir: string): void {
+  const target = path.join(dir, 'node_modules');
+  const ownModules = path.join(source, 'node_modules');
+  const sharedModules = path.join(extensionRoot, 'node_modules');
+  if (!fs.existsSync(ownModules)) {
+    fs.symlinkSync(sharedModules, target, 'junction');
+    return;
+  }
+  const own = fs.realpathSync(ownModules);
+  if (fs.existsSync(path.join(own, 'tslib'))) {
+    fs.symlinkSync(own, target, 'junction');
+    return;
+  }
+  fs.mkdirSync(target);
+  const entries = new Map<string, string>();
+  for (const base of [sharedModules, own]) {
+    for (const name of fs.readdirSync(base)) {
+      if (name.startsWith('@') && entries.has(name)) {
+        continue;
+      }
+      entries.set(name, path.join(base, name));
+    }
+  }
+  for (const [name, from] of entries) {
+    if (name === '.bin') {
+      continue;
+    }
+    if (name.startsWith('@')) {
+      fs.mkdirSync(path.join(target, name));
+      for (const base of [path.join(sharedModules, name), path.join(own, name)]) {
+        for (const member of fs.existsSync(base) ? fs.readdirSync(base) : []) {
+          const link = path.join(target, name, member);
+          fs.rmSync(link, { force: true, recursive: true });
+          fs.symlinkSync(path.join(base, member), link, 'junction');
+        }
+      }
+      continue;
+    }
+    fs.symlinkSync(from, path.join(target, name), 'junction');
+  }
 }
 
 export interface ScratchDirs {

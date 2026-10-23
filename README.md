@@ -126,7 +126,7 @@ _Coming soon_
 
 ## Running the checks
 
-Prerequisites: run `npm ci`; the tool must be resolvable as `@metaverse-systems/the-seed` (the sibling `../the-seed` checkout, built with its native component, or a global install linked into `node_modules`); on Linux, install `xvfb`: the runner always starts the editor under `xvfb-run -a` with X11 forced, even on a desktop session, so no window appears. Set `THE_SEED_TEST_VISIBLE=1` to use the real display instead.
+Prerequisites: run `npm ci`, which installs the tool at the version in `devDependencies` from the public registry and builds its native component (the tests use that copy unless `THE_SEED_TEST_TOOL` names another installation, see Working with the tool below); on Linux, install `xvfb`: the runner always starts the editor under `xvfb-run -a` with X11 forced, even on a desktop session, so no window appears. Set `THE_SEED_TEST_VISIBLE=1` to use the real display instead.
 
 ```sh
 npm test                 # compile, typecheck, lint, then the host suite
@@ -161,6 +161,15 @@ No line-level ESLint disables are used.
 ## 🛠️ Development & Debugging
 - Run `npm run compile` to bundle the extension.
 - Use `vsce package` to package it for publishing.
+
+### Working with the tool
+
+The tool is a separate install that the extension uses at run time: `npm install -g --foreground-scripts @metaverse-systems/the-seed@2`. The extension finds it in the global npm installation, then through the `the-seed` command on the path. The `the-seed.toolPath` setting names another installation (its package directory, its `the-seed` command, or a path inside it), and **The Seed: Check Tool** rechecks it and reports what was found. The tool is a development-only dependency here (exactly `2.0.0` in `devDependencies`), used for its types and by the tests; it is never shipped.
+
+To run the extension against a local checkout of the tool:
+- In the tool's checkout, build it and run `npm link`; the global installation then points at the checkout. Or set `the-seed.toolPath` to the checkout in the Extension Development Host.
+- For type changes made in both repositories together, run `npm link @metaverse-systems/the-seed` here. Run `npm ci` to undo it and return to the registry copy.
+- To run the tests against a checkout (or the global installation), set `THE_SEED_TEST_TOOL` to its package directory, for example `THE_SEED_TEST_TOOL=$(realpath ../the-seed) npm test`. The default is the `devDependencies` copy in `node_modules`.
 
 ## 📄 License
 MIT License © [Metaverse Systems](https://github.com/metaverse-systems)
