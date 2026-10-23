@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { removeSync } from 'fs-extra';
+import * as fs from 'fs';
 import * as path from 'path';
 import { acquireOperationLock, releaseOperationLock } from '../operationLock';
 import type { TheSeedViewProvider } from '../panels/TheSeedViewProvider';
@@ -50,7 +50,7 @@ export function packageProjectCommand(
     // Remove existing dist/ directory
     const outputDir = path.join(projectDir, 'dist');
     try {
-      removeSync(outputDir);
+      fs.rmSync(outputDir, { recursive: true, force: true });
     } catch {
       // Directory may not exist — that's fine
     }

@@ -1,5 +1,7 @@
 // Pure-function cases for the package and bundle checks: no editor API.
 import * as assert from 'assert';
+import * as fs from 'fs';
+import * as path from 'path';
 import {
   EXPECTED_PACKAGE_FILES,
   ALLOWED_BUNDLE_LIBRARIES,
@@ -77,6 +79,36 @@ suite('Package contents: expected file set', () => {
   test('EXPECTED_PACKAGE_FILES is the eleven entries of the shipped package', () => {
     assert.strictEqual(EXPECTED_PACKAGE_FILES.length, 11);
     assert.deepStrictEqual([...EXPECTED_PACKAGE_FILES], EXPECTED_ENTRIES);
+  });
+
+  test('.vscodeignore is an allow-list that agrees with EXPECTED_PACKAGE_FILES', () => {
+    const text = fs.readFileSync(path.resolve(__dirname, '..', '..', '..', '.vscodeignore'), 'utf8');
+    const rules = text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line !== '' && !line.startsWith('#'));
+    assert.strictEqual(rules[0], '**', 'the first rule must exclude everything');
+
+    // Names the package tool gives files that are not in the package under the same name.
+    const renamed: Record<string, string> = {
+      'readme.md': 'README.md',
+      'changelog.md': 'CHANGELOG.md',
+      'LICENSE.txt': 'LICENSE',
+    };
+    const allowed = rules
+      .filter((rule) => rule.startsWith('!'))
+      .map((rule) => rule.slice(1))
+      .sort();
+    const expected = EXPECTED_PACKAGE_FILES.filter((entry) => entry.startsWith('extension/'))
+      .map((entry) => entry.slice('extension/'.length))
+      .map((name) => {
+        const directory = path.posix.dirname(name);
+        const file = path.posix.basename(name);
+        const original = directory === '.' ? renamed[file] ?? file : file;
+        return directory === '.' ? original : `${directory}/${original}`;
+      })
+      .sort();
+    assert.deepStrictEqual(allowed, expected);
   });
 });
 

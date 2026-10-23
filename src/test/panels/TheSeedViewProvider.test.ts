@@ -127,7 +127,7 @@ suite('TheSeedViewProvider', () => {
     assert.ok(capturedHtml.includes('<div id="root">'), 'HTML should have root element');
     assert.ok(capturedHtml.includes('Content-Security-Policy'), 'HTML should have CSP meta tag');
 
-    // Verify script/style URIs reference out/webview/assets
+    // Verify script/style URIs reference dist/webview/assets
     assert.ok(
       capturedHtml.includes('assets/index.js'),
       'HTML should reference the built JS bundle'
@@ -174,7 +174,7 @@ suite('TheSeedViewProvider', () => {
 
     const rootPath = capturedOptions.localResourceRoots![0].fsPath;
     assert.ok(
-      rootPath.includes('out') && rootPath.includes('webview'),
+      rootPath.includes('dist') && rootPath.includes('webview'),
       'localResourceRoots should include the webview build directory'
     );
   });

@@ -180,6 +180,10 @@ function runHost(hostOptions) {
     console.log('host: compile first ("npm run compile")');
     return false;
   }
+  if (!fs.existsSync(bundlePath)) {
+    console.log('host: bundle first ("npm run bundle")');
+    return false;
+  }
   for (let attempt = 1; attempt <= hostOptions.repeat; attempt++) {
     if (hostOptions.repeat > 1) {
       console.log(`-- host run ${attempt} of ${hostOptions.repeat} --`);
@@ -200,8 +204,121 @@ function clean() {
   return true;
 }
 
+const bundlePath = path.join(root, 'dist', 'extension.js');
+
+// Host source modules, as bundle keys: every .ts under src/ outside src/test/
+// and src/webview/, without declaration files; relative to src/, forward
+// slashes, no extension, sorted.
+function listHostModules() {
+  const sourceRoot = path.join(root, 'src');
+  const keys = [];
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      const relative = path.relative(sourceRoot, full).split(path.sep).join('/');
+      if (relative === 'test' || relative === 'webview') {
+        continue;
+      }
+      if (entry.isDirectory()) {
+        walk(full);
+      } else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.d.ts')) {
+        keys.push(relative.slice(0, -'.ts'.length));
+      }
+    }
+  };
+  walk(sourceRoot);
+  return keys.sort();
+}
+
+// The esbuild options shared by the bundle and watch stages. The entry
+// re-exports activate and deactivate and maps every host module to its
+// namespace (bundledModules), which the tests use to run against the bundle.
+function hostBundleOptions() {
+  const keys = listHostModules();
+  const lines = ["export { activate, deactivate } from './extension';"];
+  keys.forEach((key, index) => {
+    lines.push(`import * as m${index} from './${key}';`);
+  });
+  lines.push('export const bundledModules = {');
+  keys.forEach((key, index) => {
+    lines.push(`  '${key}': m${index},`);
+  });
+  lines.push('};');
+  return {
+    stdin: { contents: lines.join('\n') + '\n', resolveDir: path.join(root, 'src'), loader: 'ts', sourcefile: 'bundle-entry.ts' },
+    absWorkingDir: root,
+    bundle: true,
+    platform: 'node',
+    format: 'cjs',
+    target: 'node20',
+    outfile: bundlePath,
+    sourcemap: false,
+    minify: false,
+    metafile: true,
+    logLevel: 'warning',
+    external: ['vscode', '@metaverse-systems/the-seed', '@metaverse-systems/the-seed/*'],
+  };
+}
+
+function loadEsbuild() {
+  return require(resolveEntry('esbuild'));
+}
+
+// Builds dist/extension.js and checks what went into it, then builds the
+// sidebar into dist/webview.
 function bundle() {
+  const checksPath = path.join(root, 'out', 'test', 'harness', 'packageContents.js');
+  if (!fs.existsSync(checksPath)) {
+    console.log('bundle: compile first ("npm run compile")');
+    return false;
+  }
+  const { bundleInputFailures, ALLOWED_BUNDLE_LIBRARIES } = require(checksPath);
+  let result;
+  try {
+    result = loadEsbuild().buildSync(hostBundleOptions());
+  } catch {
+    // esbuild has already printed the errors.
+    return false;
+  }
+  const inputs = Object.keys(result.metafile.inputs);
+  const failures = bundleInputFailures(inputs, fs.readFileSync(bundlePath, 'utf8'), ALLOWED_BUNDLE_LIBRARIES);
+  for (const line of failures) {
+    console.log(line);
+  }
+  if (result.warnings.length > 0) {
+    console.log(`bundle: esbuild reported ${result.warnings.length} warning(s)`);
+  }
+  if (failures.length > 0 || result.warnings.length > 0) {
+    return false;
+  }
+  console.log(`Bundle: dist/extension.js (${inputs.length} inputs, ${Math.round(fs.statSync(bundlePath).size / 1024)} KB)`);
   return run(resolveEntry('vite', 'bin', 'vite.js'), ['build', '--config', 'vite.config.webview.mts']);
+}
+
+// Development only: rebuilds dist/extension.js, with a linked source map, on
+// every source change until stopped. The sidebar is built once with
+// "npm run build:webview".
+async function watch() {
+  const esbuild = loadEsbuild();
+  const reporter = {
+    name: 'watch-reporter',
+    setup(build) {
+      build.onStart(() => {
+        console.log('[watch] build started');
+      });
+      build.onEnd((result) => {
+        console.log(`[watch] build finished (${result.errors.length} errors)`);
+      });
+    },
+  };
+  const context = await esbuild.context({ ...hostBundleOptions(), sourcemap: 'linked', plugins: [reporter] });
+  await context.watch();
+  await new Promise((resolve) => {
+    process.once('SIGINT', resolve);
+    process.once('SIGTERM', resolve);
+  });
+  await context.dispose();
+  return true;
 }
 
 function notAvailable(stage) {
@@ -218,14 +335,14 @@ const stageRunners = {
   lint: () => run(resolveEntry('eslint', 'bin', 'eslint.js'), ['--max-warnings', '0', 'src']),
   bundle,
   package: notAvailable('package'),
-  watch: notAvailable('watch'),
+  watch,
 };
 
 // The stages that may start from a fresh checkout: they bootstrap the
 // compiled argument parser. Naming no stage at all does too.
 const BOOTSTRAP_STAGES = ['compile', 'package', 'watch'];
 
-function main(argv) {
+async function main(argv) {
   // The argument parser lives in the compiled output. On a fresh checkout
   // clean and compile run first, when no stage or a stage that can start from
   // nothing is named, and the arguments are parsed afterwards; the named clean
@@ -241,7 +358,7 @@ function main(argv) {
     }
     for (const stage of ['clean', 'compile']) {
       console.log(`== ${stage} ==`);
-      const ok = stageRunners[stage]();
+      const ok = await stageRunners[stage]();
       console.log(`${stage}: ${ok ? 'passed' : 'FAILED'}`);
       if (!ok) {
         return 1;
@@ -258,6 +375,7 @@ function main(argv) {
   }
 
   let compileFailed = false;
+  let bundleFailed = false;
   let failed = false;
   for (const stage of parsed.stages) {
     if (bootstrapped && (stage === 'clean' || stage === 'compile')) {
@@ -269,12 +387,20 @@ function main(argv) {
       failed = true;
       continue;
     }
-    const ok = stage === 'host' ? runHost(parsed.host) : stageRunners[stage]();
+    if (stage === 'host' && bundleFailed) {
+      console.log('host: not run (bundle failed)');
+      failed = true;
+      continue;
+    }
+    const ok = stage === 'host' ? runHost(parsed.host) : await stageRunners[stage]();
     console.log(`${stage}: ${ok ? 'passed' : 'FAILED'}`);
     if (!ok) {
       failed = true;
       if (stage === 'compile') {
         compileFailed = true;
+      }
+      if (stage === 'bundle') {
+        bundleFailed = true;
       }
     }
   }
@@ -282,7 +408,9 @@ function main(argv) {
 }
 
 if (require.main === module) {
-  process.exitCode = main(process.argv.slice(2));
+  main(process.argv.slice(2)).then((code) => {
+    process.exitCode = code;
+  });
 }
 
 module.exports = { main };

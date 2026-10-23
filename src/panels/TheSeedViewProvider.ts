@@ -45,7 +45,7 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider, vscode.D
     webviewView.webview.options = {
       enableScripts: true,
       localResourceRoots: [
-        vscode.Uri.joinPath(this._extensionUri, 'out', 'webview'),
+        vscode.Uri.joinPath(this._extensionUri, 'dist', 'webview'),
       ],
     };
 
@@ -189,10 +189,10 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider, vscode.D
     const nonce = getNonce();
 
     const scriptUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this._extensionUri, 'out', 'webview', 'assets', 'index.js')
+      vscode.Uri.joinPath(this._extensionUri, 'dist', 'webview', 'assets', 'index.js')
     );
     const styleUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this._extensionUri, 'out', 'webview', 'assets', 'index.css')
+      vscode.Uri.joinPath(this._extensionUri, 'dist', 'webview', 'assets', 'index.css')
     );
 
     return `<!DOCTYPE html>
