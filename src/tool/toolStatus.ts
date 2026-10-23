@@ -1,3 +1,4 @@
+import type { ToolStatusPayload } from '../types/messages';
 import type { LookupReport, ToolCandidate } from './resolveTool';
 import { INSTALL_COMMAND, REQUIRED_TOOL_VERSION, SUPPORTED_RANGE_TEXT, TOOL_PACKAGE_NAME, TOOL_SETTING } from './requiredVersion';
 
@@ -83,4 +84,18 @@ export function describeToolStatus(status: ToolStatus): string {
 export function statusKey(state: ToolState, installation: ToolCandidate | undefined, report: LookupReport): string {
   const location = installation?.packageDir ?? (state === 'notTheTool' ? report.settingValue ?? '' : '');
   return `${state}|${location}|${installation?.version ?? ''}`;
+}
+
+/** The form of a status that is sent to the sidebar. */
+export function toToolStatusPayload(status: ToolStatus): ToolStatusPayload {
+  return {
+    state: status.state,
+    usable: status.state === 'usable',
+    message: status.message,
+    location: status.installation?.packageDir,
+    version: status.installation?.version,
+    foundThrough: status.installation?.foundThrough,
+    required: REQUIRED_TOOL_VERSION,
+    setting: TOOL_SETTING,
+  };
 }

@@ -6,19 +6,80 @@
 //   own ProjectError class.
 import * as assert from 'assert';
 import * as fs from 'fs';
+import * as path from 'path';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import { wrapCommand } from '../../commands/wrapCommand';
 import { handleMessage } from '../../panels/messageHandler';
 import { describeError } from '../../utils/projectFolder';
-import { activeToolService } from '../../tool/toolService';
+import { getOperationLock } from '../../operationLock';
+import { activeToolService, createVscodeNotifier, ToolService } from '../../tool/toolService';
+import { loadInstallation } from '../../tool/loadTool';
 import type { ToolApi } from '../../tool/toolApi';
 import { useScratchState } from '../helpers/scratchState';
-import { testTool } from '../helpers/tool';
+import { copyTestTool, makeStubTool, stubLoadError } from '../helpers/stubTool';
+import { testTool, withToolSetting } from '../helpers/tool';
+import { readTree } from '../helpers/workspaceStub';
 
 type Handler = (outputChannel: vscode.OutputChannel, tool: ToolApi) => Promise<void>;
 type Gated = (handler: Handler, outputChannel: vscode.OutputChannel, service: unknown) => () => Promise<void>;
 type Message = Parameters<typeof handleMessage>[0];
+
+type PanelCommand = Message['command'] | 'getToolStatus' | 'checkTool' | 'openToolSetting';
+type Kind = 'operation' | 'toolFree' | 'special';
+
+interface Loose {
+  type: string;
+  requestId?: string;
+  payload: { message?: string; code?: string; state?: string; usable?: boolean };
+}
+
+const manifest = require(path.resolve(__dirname, '..', '..', '..', 'package.json')) as {
+  contributes: { commands: Array<{ command: string }> };
+};
+const GATED_COMMANDS: string[] = manifest.contributes.commands
+  .map((entry) => entry.command)
+  .filter((command) => command !== 'the-seed.checkTool');
+
+const SCOPE_FORM = { scopeName: '@gate', authorName: 'Gate', authorEmail: '', authorUrl: '' };
+const TEMPLATE_FORM = { templateType: 'component', scopeName: '@gate', templateName: 'gate' };
+
+/** Every panel message, how the gate treats it and a sample of it; the compiler keeps this complete. */
+const PANEL_MESSAGES: Record<PanelCommand, { kind: Kind; message: object }> = {
+  ready: { kind: 'special', message: { command: 'ready' } },
+  getConfig: { kind: 'operation', message: { command: 'getConfig', requestId: 'r' } },
+  savePrefix: { kind: 'operation', message: { command: 'savePrefix', requestId: 'r', data: { prefix: '/nowhere' } } },
+  addScope: { kind: 'operation', message: { command: 'addScope', requestId: 'r', data: SCOPE_FORM } },
+  confirmOverwriteScope: { kind: 'operation', message: { command: 'confirmOverwriteScope', requestId: 'r', data: SCOPE_FORM } },
+  editScope: { kind: 'operation', message: { command: 'editScope', requestId: 'r', data: SCOPE_FORM } },
+  deleteScope: { kind: 'operation', message: { command: 'deleteScope', requestId: 'r', data: { scopeName: '@gate' } } },
+  createTemplate: { kind: 'operation', message: { command: 'createTemplate', requestId: 'r', data: TEMPLATE_FORM } },
+  startBuild: { kind: 'operation', message: { command: 'startBuild', requestId: 'r', data: { target: 'native' } } },
+  cancelBuild: { kind: 'toolFree', message: { command: 'cancelBuild', requestId: 'r' } },
+  getBuildStatus: { kind: 'toolFree', message: { command: 'getBuildStatus', requestId: 'r' } },
+  startRecursiveBuild: { kind: 'operation', message: { command: 'startRecursiveBuild', requestId: 'r', data: { target: 'native' } } },
+  cancelRecursiveBuild: { kind: 'toolFree', message: { command: 'cancelRecursiveBuild', requestId: 'r' } },
+  getResourcePakStatus: { kind: 'toolFree', message: { command: 'getResourcePakStatus', requestId: 'r' } },
+  createResourcePak: { kind: 'operation', message: { command: 'createResourcePak', requestId: 'r', data: { scopeName: '@gate', pakName: 'gate' } } },
+  browseResourceFile: { kind: 'toolFree', message: { command: 'browseResourceFile', requestId: 'r' } },
+  addResource: { kind: 'operation', message: { command: 'addResource', requestId: 'r', data: { resourceName: 'gate', filePath: '/nowhere/file.png' } } },
+  buildResourcePak: { kind: 'operation', message: { command: 'buildResourcePak', requestId: 'r' } },
+  checkDependencies: { kind: 'operation', message: { command: 'checkDependencies', requestId: 'r', data: { target: 'native' } } },
+  installDependencies: { kind: 'operation', message: { command: 'installDependencies', requestId: 'r', data: { target: 'native' } } },
+  cancelInstallDependencies: { kind: 'toolFree', message: { command: 'cancelInstallDependencies', requestId: 'r' } },
+  getDependencyStatus: { kind: 'toolFree', message: { command: 'getDependencyStatus', requestId: 'r' } },
+  startPackage: { kind: 'operation', message: { command: 'startPackage', requestId: 'r' } },
+  getPackageStatus: { kind: 'toolFree', message: { command: 'getPackageStatus', requestId: 'r' } },
+  generateInstaller: { kind: 'operation', message: { command: 'generateInstaller', requestId: 'r' } },
+  createSigningCert: { kind: 'operation', message: { command: 'createSigningCert', requestId: 'r' } },
+  importSigningCert: { kind: 'operation', message: { command: 'importSigningCert', requestId: 'r' } },
+  signingCertInfo: { kind: 'operation', message: { command: 'signingCertInfo', requestId: 'r' } },
+  exportSigningCert: { kind: 'operation', message: { command: 'exportSigningCert', requestId: 'r' } },
+  getSigningStatus: { kind: 'operation', message: { command: 'getSigningStatus', requestId: 'r' } },
+  getToolStatus: { kind: 'toolFree', message: { command: 'getToolStatus', requestId: 'r' } },
+  checkTool: { kind: 'toolFree', message: { command: 'checkTool', requestId: 'r' } },
+  openToolSetting: { kind: 'toolFree', message: { command: 'openToolSetting' } },
+};
 
 const gated = wrapCommand as unknown as Gated;
 
@@ -153,6 +214,309 @@ suite('tool gate', () => {
       if (response.type === 'configLoaded') {
         assert.strictEqual(response.requestId, 'gate-config');
       }
+    });
+  });
+
+  suite('with a tool that cannot be used', function () {
+    this.timeout(120000);
+    const state = useScratchState({ workspaceFolders: 1 });
+
+    function snapshot(): Map<string, unknown>[] {
+      return [state.home, state.prefix as string, ...state.workspaceFolders].map((root) => readTree(root));
+    }
+
+    function stubMessages(): { error: sinon.SinonStub; warning: sinon.SinonStub; info: sinon.SinonStub } {
+      return {
+        error: sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined),
+        warning: sinon.stub(vscode.window, 'showWarningMessage').resolves(undefined),
+        info: sinon.stub(vscode.window, 'showInformationMessage').resolves(undefined),
+      };
+    }
+
+    test('every command is refused with the status message and changes nothing', async () => {
+      const shown = stubMessages();
+      const empty = state.dir('no-tool');
+      await withToolSetting(empty, async () => {
+        const service = activeToolService();
+        assert.strictEqual(service.status.state, 'notTheTool');
+        const message = `The Seed: ${service.status.message}`;
+        assert.ok(shown.warning.callCount <= 1, 'the change of state is announced at most once');
+        shown.warning.resetHistory();
+        const before = snapshot();
+        const registered = await vscode.commands.getCommands(true);
+
+        for (const command of GATED_COMMANDS) {
+          shown.error.resetHistory();
+          await vscode.commands.executeCommand(command);
+          assert.strictEqual(shown.error.callCount, 1, `${command} shows one error`);
+          assert.strictEqual(shown.error.firstCall.args[0], message, command);
+          assert.deepStrictEqual(shown.error.firstCall.args.slice(1), ['Open Setting', 'Check Again'], command);
+          assert.strictEqual(getOperationLock().active, false, `${command} left the operation lock held`);
+        }
+
+        assert.strictEqual(shown.warning.callCount, 0, 'no warning accompanies a refusal');
+        assert.strictEqual(shown.info.callCount, 0, 'no other message is shown');
+        for (const command of manifest.contributes.commands.map((entry) => entry.command)) {
+          assert.ok(registered.includes(command), `${command} is still registered`);
+        }
+        assert.deepStrictEqual(snapshot(), before, 'nothing was written');
+      });
+    });
+
+    test('the notice for a state is shown once however many commands are refused', async () => {
+      const shown = stubMessages();
+      await withToolSetting(state.dir('once'), async () => {
+        for (const command of GATED_COMMANDS.slice(0, 4)) {
+          await vscode.commands.executeCommand(command);
+        }
+      });
+      assert.strictEqual(shown.warning.callCount, 1, 'one notice for the state');
+      assert.strictEqual(shown.error.callCount, 4, 'one refusal per command');
+    });
+
+    test('a refused command writes the channel line and calls no handler', async () => {
+      const shown = stubMessages();
+      await withToolSetting(state.dir('channel'), async () => {
+        const { channel, lines } = fakeChannel();
+        let called = false;
+        await gated(async () => {
+          called = true;
+        }, channel, activeToolService())();
+        assert.strictEqual(called, false);
+        assert.strictEqual(lines.length, 1);
+        assert.ok(
+          lines[0].endsWith(`ERROR: ${activeToolService().status.message}`) && /^\[\d{4}-\d\d-\d\dT[\d:.]+Z\] /.test(lines[0]),
+          lines[0],
+        );
+        assert.strictEqual(shown.error.callCount, 1);
+      });
+    });
+
+    test('the-seed.checkTool shows the warning again for a state already shown', async () => {
+      const shown = stubMessages();
+      await withToolSetting(state.dir('again'), async () => {
+        shown.warning.resetHistory();
+        await vscode.commands.executeCommand('the-seed.checkTool');
+        assert.strictEqual(shown.warning.callCount, 1);
+        assert.strictEqual(shown.warning.firstCall.args[0], `The Seed: ${activeToolService().status.message}`);
+        assert.strictEqual(shown.info.callCount, 0);
+      });
+    });
+
+    suite('panel messages', () => {
+      test('every message is an operation, tool-free or special, and operations are refused', async () => {
+        stubMessages();
+        sinon.stub(vscode.window, 'showOpenDialog').resolves(undefined);
+        sinon.stub(vscode.commands, 'executeCommand').resolves(undefined);
+        await withToolSetting(state.dir('panel'), async () => {
+          const service = activeToolService();
+          const before = snapshot();
+          for (const [command, entry] of Object.entries(PANEL_MESSAGES)) {
+            const response = (await handleWith(entry.message, service)) as unknown as Loose | null;
+            if (entry.kind === 'operation') {
+              assert.ok(response, `${command} gets a response`);
+              assert.strictEqual(response.type, 'error', command);
+              assert.strictEqual(response.payload.code, 'toolUnavailable', command);
+              assert.strictEqual(response.payload.message, service.status.message, command);
+              assert.strictEqual(response.requestId, 'r', command);
+            } else if (response) {
+              assert.ok(response.payload?.code !== 'toolUnavailable', `${command} is not refused`);
+            }
+            assert.strictEqual(getOperationLock().active, false, `${command} left the operation lock held`);
+          }
+          assert.deepStrictEqual(snapshot(), before, 'nothing was written');
+        });
+      });
+
+      test('ready returns toolStatus, pushes it and returns no configLoaded', async () => {
+        stubMessages();
+        await withToolSetting(state.dir('ready'), async () => {
+          const pushed: Loose[] = [];
+          const call = handleMessage as unknown as (m: Message, push: (m: Loose) => void, s: unknown) => Promise<Loose | null>;
+          const response = await call({ command: 'ready' } as Message, (m) => pushed.push(m), activeToolService());
+          assert.ok(response);
+          assert.strictEqual(response.type, 'toolStatus');
+          assert.strictEqual(response.payload.usable, false);
+          assert.strictEqual(response.payload.state, 'notTheTool');
+          assert.deepStrictEqual(pushed.map((m) => m.type), ['toolStatus']);
+        });
+      });
+
+      test('ready with a usable tool still returns configLoaded and also pushes toolStatus', async () => {
+        const pushed: Loose[] = [];
+        const call = handleMessage as unknown as (m: Message, push: (m: Loose) => void, s: unknown) => Promise<Loose | null>;
+        const response = await call({ command: 'ready' } as Message, (m) => pushed.push(m), activeToolService());
+        assert.ok(response);
+        assert.strictEqual(response.type, 'configLoaded');
+        assert.deepStrictEqual(pushed.map((m) => m.type), ['toolStatus']);
+        assert.strictEqual(pushed[0].payload.usable, true);
+      });
+
+      test('checkTool checks again and returns toolStatus', async () => {
+        const shown = stubMessages();
+        await withToolSetting(state.dir('check-tool'), async () => {
+          const response = (await handleWith({ command: 'checkTool', requestId: 'c' }, activeToolService())) as unknown as Loose | null;
+          assert.ok(response);
+          assert.strictEqual(response.type, 'toolStatus');
+          assert.strictEqual(response.requestId, 'c');
+          assert.strictEqual(response.payload.state, 'notTheTool');
+        });
+        assert.ok(shown.warning.called, 'the check the user asked for shows the notice');
+      });
+
+      test('getToolStatus returns the current status', async () => {
+        const response = (await handleWith({ command: 'getToolStatus', requestId: 'g' }, activeToolService())) as unknown as Loose | null;
+        assert.ok(response);
+        assert.strictEqual(response.type, 'toolStatus');
+        assert.strictEqual(response.requestId, 'g');
+        assert.strictEqual(response.payload.usable, true);
+      });
+
+      test('openToolSetting opens the setting and returns nothing', async () => {
+        const execute = sinon.stub(vscode.commands, 'executeCommand').resolves(undefined);
+        const response = await handleWith({ command: 'openToolSetting' }, activeToolService());
+        assert.strictEqual(response, null);
+        assert.ok(execute.calledWith('workbench.action.openSettings', 'the-seed.toolPath'));
+      });
+    });
+
+    suite('each unusable state', () => {
+      async function expectRefused(): Promise<void> {
+        const service = activeToolService();
+        const { channel, lines } = fakeChannel();
+        let called = false;
+        await gated(async () => {
+          called = true;
+        }, channel, service)();
+        assert.strictEqual(called, false, 'the handler is never called');
+        assert.ok(lines[0].includes(service.status.message), lines[0]);
+        const response = (await handleWith({ command: 'getConfig', requestId: 'x' }, service)) as unknown as Loose | null;
+        assert.ok(response);
+        assert.strictEqual(response.type, 'error');
+        assert.strictEqual(response.payload.code, 'toolUnavailable');
+        assert.strictEqual(response.payload.message, service.status.message);
+        assert.strictEqual(getOperationLock().active, false);
+      }
+
+      function includesAll(text: string, parts: string[]): void {
+        for (const part of parts) {
+          assert.ok(text.includes(part), `"${part}" is not in: ${text}`);
+        }
+      }
+
+      test('tooOld', async () => {
+        const shown = stubMessages();
+        const stub = makeStubTool(state.dir('old'), { version: '1.2.1' });
+        await withToolSetting(stub, async () => {
+          assert.strictEqual(activeToolService().status.state, 'tooOld');
+          await expectRefused();
+          includesAll(activeToolService().status.message, ['1.2.1', '2.0.0 or a later 2.x', 'npm install -g']);
+        });
+        assert.strictEqual(shown.error.callCount, 1);
+      });
+
+      test('tooNew', async () => {
+        const shown = stubMessages();
+        const stub = makeStubTool(state.dir('new'), { version: '3.0.0' });
+        await withToolSetting(stub, async () => {
+          assert.strictEqual(activeToolService().status.state, 'tooNew');
+          await expectRefused();
+          includesAll(activeToolService().status.message, ['3.0.0', '2.x', 'npm install -g']);
+        });
+        assert.strictEqual(shown.error.callCount, 1);
+      });
+
+      test('notLoadable', async () => {
+        const shown = stubMessages();
+        const stub = makeStubTool(state.dir('broken'), { version: '2.0.0', throwOnLoad: 'Config' });
+        await withToolSetting(stub, async () => {
+          assert.strictEqual(activeToolService().status.state, 'notLoadable');
+          await expectRefused();
+          const message = activeToolService().status.message;
+          includesAll(message, [stubLoadError('Config'), 'npm install -g']);
+          assert.ok(!message.includes('second line of the error'), 'only the first line of the error');
+        });
+        assert.strictEqual(shown.error.callCount, 1);
+      });
+
+      test('notFound', async () => {
+        const shown = stubMessages();
+        const service: ToolService = new ToolService({
+          lookup: {
+            platform: process.platform,
+            env: { PATH: '' },
+            homedir: state.dir('empty-home'),
+            runNpmRoot: async () => undefined,
+            defaultRoots: [],
+          },
+          readSetting: () => undefined,
+          load: loadInstallation,
+          notifier: createVscodeNotifier(() => service.check('checkAgain')),
+        });
+        try {
+          await service.check('activate');
+          assert.strictEqual(service.status.state, 'notFound');
+          const { channel, lines } = fakeChannel();
+          let called = false;
+          await gated(async () => {
+            called = true;
+          }, channel, service)();
+          assert.strictEqual(called, false);
+          assert.ok(lines[0].includes(service.status.message));
+          includesAll(service.status.message, ['not found', '2.0.0 or a later 2.x', 'npm install -g', 'the-seed.toolPath']);
+          const response = (await handleWith({ command: 'getConfig', requestId: 'n' }, service)) as unknown as Loose | null;
+          assert.ok(response);
+          assert.strictEqual(response.payload.code, 'toolUnavailable');
+          assert.strictEqual(response.payload.message, service.status.message);
+          assert.strictEqual(shown.error.callCount, 1);
+        } finally {
+          service.dispose();
+        }
+      });
+    });
+
+    suite('recovery and change in place', () => {
+      test('installing the tool at the set path is noticed by the next command without a restart', async () => {
+        const shown = stubMessages();
+        const where = state.dir('late');
+        await withToolSetting(where, async () => {
+          await vscode.commands.executeCommand('the-seed.showConfig');
+          assert.strictEqual(shown.error.callCount, 1, 'refused while the tool is missing');
+          shown.error.resetHistory();
+
+          copyTestTool(where, { native: true });
+          await vscode.commands.executeCommand('the-seed.showConfig');
+
+          assert.strictEqual(shown.error.callCount, 0, 'not refused once the tool is there');
+          assert.strictEqual(activeToolService().status.state, 'usable');
+          assert.strictEqual(activeToolService().status.installation?.packageDir, fs.realpathSync(where));
+        });
+      });
+
+      test('a change of the loaded installation asks for a reload', async () => {
+        const shown = stubMessages();
+        const stub = makeStubTool(state.dir('changing'), { version: '2.7.0' });
+        await withToolSetting(stub, async () => {
+          assert.strictEqual(activeToolService().status.state, 'usable');
+          const manifestFile = path.join(stub, 'package.json');
+          const changed = JSON.parse(fs.readFileSync(manifestFile, 'utf8')) as { version: string };
+          changed.version = '2.8.0';
+          fs.writeFileSync(manifestFile, JSON.stringify(changed));
+
+          const { channel } = fakeChannel();
+          let called = false;
+          await gated(async () => {
+            called = true;
+          }, channel, activeToolService())();
+
+          assert.strictEqual(called, false);
+          assert.strictEqual(activeToolService().status.state, 'reloadRequired');
+          assert.strictEqual(shown.error.callCount, 1);
+          assert.ok(String(shown.error.firstCall.args[0]).includes('Reload the window'));
+          assert.ok(shown.error.firstCall.args.includes('Reload Window'));
+          assert.ok(String(shown.error.firstCall.args[0]).includes('2.7.0') && String(shown.error.firstCall.args[0]).includes('2.8.0'));
+        });
+      });
     });
   });
 });

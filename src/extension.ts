@@ -40,6 +40,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Register the Webview panel provider for the activity bar
   const viewProvider = new TheSeedViewProvider(context.extensionUri, toolService);
+  context.subscriptions.push(viewProvider);
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
       TheSeedViewProvider.viewType,
@@ -384,9 +385,8 @@ export function activate(context: vscode.ExtensionContext) {
     const status = await toolService.check("checkAgain");
     if (status.state === "usable") {
       void vscode.window.showInformationMessage(`The Seed: ${status.message}`);
-    } else {
-      await toolService.showNotice(status);
     }
+    // An unusable status was already announced by the check the user asked for.
   });
 
   context.subscriptions.push(

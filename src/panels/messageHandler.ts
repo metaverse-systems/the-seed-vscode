@@ -22,6 +22,7 @@ import type {
   SigningStatusPayload,
   SigningScopeStatus,
 } from '../types/messages';
+import { toToolStatusPayload } from '../tool/toolStatus';
 import { getActiveBuild, cancelActiveBuild } from '../commands/buildNative';
 import { cancelActiveRecursiveBuild } from '../commands/buildNativeRecursive';
 import { runBuildSteps } from '../build/buildRunner';
@@ -147,6 +148,10 @@ export const TOOL_FREE_MESSAGES: ReadonlySet<WebviewToExtensionMessage['command'
   'getDependencyStatus',
   'cancelInstallDependencies',
   'getPackageStatus',
+  'ready',
+  'getToolStatus',
+  'checkTool',
+  'openToolSetting',
 ]);
 
 export async function handleMessage(
@@ -169,8 +174,14 @@ export async function handleMessage(
     }
     switch (message.command) {
       case 'ready': {
+        const acquired = await service.acquire();
+        const statusMessage: ExtensionToWebviewMessage = { type: 'toolStatus', payload: toToolStatusPayload(service.status) };
+        pushMessage?.(statusMessage);
+        if (!acquired.ok) {
+          return statusMessage;
+        }
         const configFileExists = fs.existsSync(getConfigFilePath());
-        const config = new tool.Config();
+        const config = new acquired.api.Config();
         config.loadConfig();
         const isDefault = !configFileExists;
         return {
@@ -178,6 +189,18 @@ export async function handleMessage(
           payload: buildConfigPayload(config, isDefault),
         };
       }
+
+      case 'getToolStatus':
+        return { type: 'toolStatus', requestId: message.requestId, payload: toToolStatusPayload(service.status) };
+
+      case 'checkTool': {
+        const status = await service.check('checkAgain');
+        return { type: 'toolStatus', requestId: message.requestId, payload: toToolStatusPayload(status) };
+      }
+
+      case 'openToolSetting':
+        await vscode.commands.executeCommand('workbench.action.openSettings', 'the-seed.toolPath');
+        return null;
 
       case 'getConfig': {
         const config = new tool.Config();

@@ -4,10 +4,13 @@ import { PrefixEditor } from './PrefixEditor';
 import { ScopesList } from './ScopesList';
 import { ScopeForm } from './ScopeForm';
 import { ConfirmDialog } from './ConfirmDialog';
-import type { ConfigPayload, ScopeFormData } from '../../types/messages';
+import { toolBlockView } from '../../types/toolBlock';
+import type { ConfigPayload, ScopeFormData, ToolStatusPayload } from '../../types/messages';
 
 interface ConfigurationSectionProps {
   config: ConfigPayload | null;
+  toolStatus: ToolStatusPayload;
+  onToolAction: (action: 'openToolSetting' | 'checkTool') => void;
   onSavePrefix: (prefix: string) => void;
   onAddScope: (data: ScopeFormData) => void;
   onConfirmOverwriteScope: () => void;
@@ -19,6 +22,8 @@ interface ConfigurationSectionProps {
 
 export const ConfigurationSection: React.FC<ConfigurationSectionProps> = ({
   config,
+  toolStatus,
+  onToolAction,
   onSavePrefix,
   onAddScope,
   onConfirmOverwriteScope,
@@ -31,16 +36,35 @@ export const ConfigurationSection: React.FC<ConfigurationSectionProps> = ({
   const [showAddForm, setShowAddForm] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
 
-  if (!config) {
+  const view = toolBlockView(toolStatus);
+  const toolBlock = (
+    <div className="tool-block" role="status">
+      <p>{view.text}</p>
+      {view.buttons.length > 0 && (
+        <div className="tool-block-buttons">
+          {view.buttons.map((button) => (
+            <vscode-button key={button.action} onClick={() => onToolAction(button.action)}>
+              {button.label}
+            </vscode-button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  if (!view.showEditors || !config) {
     return (
       <SectionLayout title="Configuration" defaultCollapsed>
-        <p>Loading configuration...</p>
+        {toolBlock}
+        {view.showLoading || (view.showEditors && !config) ? <p>Loading configuration...</p> : null}
       </SectionLayout>
     );
   }
 
   return (
     <SectionLayout title="Configuration" defaultCollapsed>
+      {toolBlock}
+      <div className="section-divider" />
       <PrefixEditor
         prefix={config.prefix}
         isDefault={config.isDefault}
