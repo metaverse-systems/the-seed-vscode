@@ -310,17 +310,12 @@ export function activate(context: vscode.ExtensionContext) {
 
   const signFileDisposable = vscode.commands.registerCommand(
     "the-seed.signFile",
-    wrapCommand(async (oc, tool) => {
-      // Get URI from context menu if available
-      await signFile(oc, tool);
-    }, outputChannel, toolService)
+    wrapCommand(signFile, outputChannel, toolService)
   );
 
   const verifySignatureDisposable = vscode.commands.registerCommand(
     "the-seed.verifySignature",
-    wrapCommand(async (oc, tool) => {
-      await verifySignature(oc, tool);
-    }, outputChannel, toolService)
+    wrapCommand(verifySignature, outputChannel, toolService)
   );
 
   const signingCertInfoDisposable = vscode.commands.registerCommand(
