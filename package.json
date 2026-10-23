@@ -31,6 +31,17 @@
         }
       ]
     },
+    "configuration": {
+      "title": "The Seed",
+      "properties": {
+        "the-seed.toolPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "markdownDescription": "Where the the-seed tool is installed, when it is not in the global npm installation: its package directory (for example `/opt/node/lib/node_modules/@metaverse-systems/the-seed`), its `the-seed` command, or a path inside it. Leave empty to use the global installation, then the `the-seed` command on the path. Needs the-seed 2.0.0 or a later 2.x."
+        }
+      }
+    },
     "commands": [
       {
         "command": "the-seed.createResourcePak",

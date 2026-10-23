@@ -1,0 +1,204 @@
+import * as fs from 'fs';
+import * as path from 'path';
+import { makeScratchDir } from './workspaceStub';
+
+/** One value the extension takes from the tool: where it lives, what it is and what it is called here. */
+export interface ExpectedExport {
+  subpath: string;
+  exportName: string;
+  member: string;
+  kind: 'class' | 'function' | 'number';
+}
+
+const entry = (subpath: string, exportName: string, member: string, kind: ExpectedExport['kind']): ExpectedExport => (
+  { subpath, exportName, member, kind }
+);
+
+/** Every value of the published 2.0.0 package that the extension's sources and tests use. */
+export const EXPECTED_EXPORTS: readonly ExpectedExport[] = [
+  entry('Config', 'default', 'Config', 'class'),
+  entry('Config', 'ConfigError', 'ConfigError', 'class'),
+  entry('Scopes', 'default', 'Scopes', 'class'),
+  entry('Scopes', 'validateScopeName', 'validateScopeName', 'function'),
+  entry('Template', 'default', 'Template', 'class'),
+  entry('ResourcePak', 'default', 'ResourcePak', 'class'),
+  entry('Signing', 'default', 'Signing', 'class'),
+  entry('Signing', 'DEFAULT_VALIDITY_DAYS', 'DEFAULT_VALIDITY_DAYS', 'number'),
+  entry('Signing', 'MAX_VALIDITY_DAYS', 'MAX_VALIDITY_DAYS', 'number'),
+  entry('Build', 'default', 'Build', 'class'),
+  entry('RecursiveBuild', 'buildRecursive', 'buildRecursive', 'function'),
+  entry('Package', 'default', 'Package', 'class'),
+  entry('Installer', 'default', 'Installer', 'class'),
+  entry('ProjectError', 'ProjectError', 'ProjectError', 'class'),
+  entry('DependencyWalker', 'DependencyDiscoveryError', 'DependencyDiscoveryError', 'class'),
+  entry('DependencyWalker', 'ConflictingProjectError', 'ConflictingProjectError', 'class'),
+  entry('DependencyWalker', 'CyclicDependencyError', 'CyclicDependencyError', 'class'),
+  entry('DependencyWalker', 'DiscoveryCancelledError', 'DiscoveryCancelledError', 'class'),
+  entry('DependencyWalker', 'ProjectManifestError', 'ProjectManifestError', 'class'),
+  entry('DependencyWalker', 'walkDependencies', 'walkDependencies', 'function'),
+  entry('Hints', 'replaceResourceHint', 'replaceResourceHint', 'function'),
+  entry('Dependencies', 'checkLibEcs', 'checkLibEcs', 'function'),
+  entry('Dependencies', 'checkLibTheSeed', 'checkLibTheSeed', 'function'),
+  entry('Dependencies', 'getInstallSteps', 'getInstallSteps', 'function'),
+  entry('NativeComponent', 'nativeComponentMessage', 'nativeComponentMessage', 'function'),
+  entry('NativeComponent', 'NativeComponentMissingError', 'NativeComponentMissingError', 'class'),
+];
+
+export const TOOL_NAME = '@metaverse-systems/the-seed';
+
+/** Root of the extension (the directory holding package.json), from out/test/helpers. */
+const extensionRoot = path.resolve(__dirname, '..', '..', '..');
+
+/** The devDependency's own package directory. */
+export const DEV_DEPENDENCY_DIR = path.join(extensionRoot, 'node_modules', '@metaverse-systems', 'the-seed');
+
+/** The first line of the error a stub raises when `throwOnLoad` names `subpath`. */
+export function stubLoadError(subpath: string): string {
+  return `stub module failed to start: ${subpath}`;
+}
+
+export interface StubToolOptions {
+  version: string;
+  name?: string;
+  /** Write a package.json that is not JSON, or one without a version. */
+  packageJson?: 'malformed' | 'noVersion';
+  /** Subpath whose module throws when it is required. */
+  throwOnLoad?: string;
+  /** Member name left out of its module. */
+  missingExport?: string;
+}
+
+function moduleSource(subpath: string, options: StubToolOptions): string {
+  const lines = ["'use strict';", "Object.defineProperty(exports, '__esModule', { value: true });"];
+  if (options.throwOnLoad === subpath) {
+    lines.push(`throw new Error(${JSON.stringify(stubLoadError(subpath))} + '\\nsecond line of the error');`);
+  }
+  for (const item of EXPECTED_EXPORTS) {
+    if (item.subpath !== subpath || item.member === options.missingExport) {
+      continue;
+    }
+    const value = item.kind === 'class'
+      ? `class ${item.member} {}`
+      : item.kind === 'function'
+        ? `function ${item.member}() {}`
+        : '365';
+    lines.push(`exports[${JSON.stringify(item.exportName)}] = ${value};`);
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+/**
+ * Writes a scratch installation of the tool at `dir`: a package.json with the tool's name, the chosen
+ * version and the same `exports` keys as the published package, and a module for every key exporting
+ * each value the extension uses, with the right kind and no behaviour. Returns `dir`.
+ */
+export function makeStubTool(dir: string, options: StubToolOptions): string {
+  const realManifest = JSON.parse(fs.readFileSync(path.join(DEV_DEPENDENCY_DIR, 'package.json'), 'utf8')) as {
+    exports: Record<string, string | { default?: string }>;
+  };
+  fs.mkdirSync(dir, { recursive: true });
+
+  const exportsMap: Record<string, string | { default?: string }> = {};
+  for (const [key, target] of Object.entries(realManifest.exports)) {
+    exportsMap[key] = target;
+    const file = typeof target === 'string' ? undefined : target.default;
+    if (file === undefined) {
+      continue;
+    }
+    const subpath = key === '.' ? '' : key.slice(2);
+    const full = path.join(dir, file);
+    fs.mkdirSync(path.dirname(full), { recursive: true });
+    fs.writeFileSync(full, moduleSource(subpath, options));
+  }
+  const script = path.join(dir, 'dist', 'scripts', 'the-seed.js');
+  fs.mkdirSync(path.dirname(script), { recursive: true });
+  fs.writeFileSync(script, "#!/usr/bin/env node\n'use strict';\n", { mode: 0o755 });
+
+  const manifest: Record<string, unknown> = {
+    name: options.name ?? TOOL_NAME,
+    version: options.version,
+    main: 'dist/index.js',
+    bin: { 'the-seed': 'dist/scripts/the-seed.js' },
+    exports: exportsMap,
+  };
+  if (options.packageJson === 'noVersion') {
+    delete manifest.version;
+  }
+  const text = options.packageJson === 'malformed' ? '{ "name": "@metaverse-systems/the-seed", ' : JSON.stringify(manifest, null, 2);
+  fs.writeFileSync(path.join(dir, 'package.json'), text);
+  return dir;
+}
+
+export type ShimLayout = 'symlink' | 'shim';
+
+/**
+ * Puts a `the-seed` command in `binDir`. `symlink` (the default on POSIX) links it to the stub's
+ * `dist/scripts/the-seed.js` inside `packageDir`. `shim` writes the plain script and `.cmd` files a
+ * Windows install leaves, which point at no package; the caller places the package at
+ * `<binDir>/node_modules/@metaverse-systems/the-seed` (or `<binDir>/../lib/node_modules/...`).
+ */
+export function makeCommandShim(binDir: string, packageDir: string, layout?: ShimLayout): void {
+  const chosen: ShimLayout = layout ?? (process.platform === 'win32' ? 'shim' : 'symlink');
+  fs.mkdirSync(binDir, { recursive: true });
+  if (chosen === 'symlink') {
+    fs.symlinkSync(path.join(packageDir, 'dist', 'scripts', 'the-seed.js'), path.join(binDir, 'the-seed'));
+    return;
+  }
+  fs.writeFileSync(path.join(binDir, 'the-seed'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+  fs.writeFileSync(path.join(binDir, 'the-seed.cmd'), '@ECHO off\r\nEXIT /b 0\r\n');
+}
+
+export interface CopyTestToolOptions {
+  /** Copy the tool's native component too. */
+  native: boolean;
+}
+
+/**
+ * Makes a scratch copy of the installation named by THE_SEED_TEST_TOOL (dist, package.json, templates,
+ * and native only when asked) whose classes behave like the real tool's. Its dependencies come from
+ * the source installation's own node_modules when it has one (a linked checkout does), else from the
+ * extension's node_modules; the link is a junction so it also works on Windows.
+ */
+export function copyTestTool(dir: string, options: CopyTestToolOptions): string {
+  const source = process.env.THE_SEED_TEST_TOOL;
+  if (!source) {
+    throw new Error('THE_SEED_TEST_TOOL is not set');
+  }
+  fs.mkdirSync(dir, { recursive: true });
+  const parts = ['dist', 'package.json', 'templates'];
+  if (options.native) {
+    parts.push('native');
+  }
+  for (const part of parts) {
+    const from = path.join(source, part);
+    if (fs.existsSync(from)) {
+      fs.cpSync(from, path.join(dir, part), { recursive: true });
+    }
+  }
+  const ownModules = path.join(source, 'node_modules');
+  const modules = fs.existsSync(ownModules) ? fs.realpathSync(ownModules) : path.join(extensionRoot, 'node_modules');
+  fs.symlinkSync(modules, path.join(dir, 'node_modules'), 'junction');
+  return dir;
+}
+
+export interface ScratchDirs {
+  dir(label: string): string;
+}
+
+/** Makes scratch directories for the enclosing suite and removes them after each case. */
+export function useScratchDirs(): ScratchDirs {
+  let created: string[] = [];
+  teardown(() => {
+    for (const made of created) {
+      fs.rmSync(made, { recursive: true, force: true });
+    }
+    created = [];
+  });
+  return {
+    dir(label: string): string {
+      const made = fs.realpathSync(makeScratchDir(label));
+      created.push(made);
+      return made;
+    },
+  };
+}

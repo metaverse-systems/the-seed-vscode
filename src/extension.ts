@@ -28,8 +28,13 @@ import { chooseProjectFolder, choosePakProject, describeError } from "./utils/pr
 import { addResourceFile } from "./utils/addResourceFile";
 import { ProjectError } from "@metaverse-systems/the-seed/ProjectError";
 import * as path from "path";
+import { createToolService, setActiveToolService } from "./tool/toolService";
 
 export function activate(context: vscode.ExtensionContext) {
+  const toolService = createToolService();
+  setActiveToolService(toolService);
+  context.subscriptions.push(toolService, { dispose: () => setActiveToolService(undefined) });
+
   const outputChannel = createOutputChannel();
   context.subscriptions.push(outputChannel);
 
@@ -403,6 +408,9 @@ export function activate(context: vscode.ExtensionContext) {
     signingCertInfoDisposable,
     exportSigningCertDisposable
   );
+
+  // The first check runs in the background so activation never waits for it or fails because of it.
+  void toolService.check("activate");
 }
 
 export function deactivate() {}
