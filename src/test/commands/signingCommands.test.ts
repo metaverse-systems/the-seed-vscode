@@ -216,10 +216,12 @@ suite('Signing Commands', () => {
     test('signFile on a text file warns by name and asks for neither scope nor certificate', async () => {
       const sign = sinon.spy(testTool().Signing.prototype, 'signFile');
       const hasCert = sinon.spy(testTool().Signing.prototype, 'hasCert');
+      const isBinary = sinon.spy(testTool().Signing.prototype, 'isBinaryFile');
       const pick = sinon.stub(vscode.window, 'showQuickPick').resolves(undefined);
 
       await vscode.commands.executeCommand('the-seed.signFile', vscode.Uri.file(notes));
 
+      assert.deepStrictEqual(isBinary.getCalls().map((call) => call.args[0]), [notes], 'the chosen file was checked');
       assert.deepStrictEqual(messages(warning), ['Only binary files can be signed: notes.txt.']);
       assert.ok(sign.notCalled);
       assert.ok(hasCert.notCalled, 'the certificate check did not run');
@@ -230,10 +232,13 @@ suite('Signing Commands', () => {
     test('signFile on a selection of two programs and a text file signs both and summarises', async () => {
       const sign = sinon.spy(testTool().Signing.prototype, 'signFile');
       const hasCert = sinon.spy(testTool().Signing.prototype, 'hasCert');
+      const isBinary = sinon.spy(testTool().Signing.prototype, 'isBinaryFile');
       const selection = [vscode.Uri.file(program), vscode.Uri.file(notes), vscode.Uri.file(second)];
 
       await vscode.commands.executeCommand('the-seed.signFile', selection[0], selection);
 
+      // The command checks every selected file before signing any; the tool may check again while signing.
+      assert.deepStrictEqual(isBinary.getCalls().slice(0, 3).map((call) => call.args[0]), [program, notes, second]);
       assert.deepStrictEqual(sign.getCalls().map((call) => call.args[0]), [program, second]);
       assert.strictEqual(hasCert.callCount, 1);
       const warnings = messages(warning);
