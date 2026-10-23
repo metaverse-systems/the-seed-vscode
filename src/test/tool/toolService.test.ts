@@ -4,6 +4,8 @@ import * as path from 'path';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import { makeStubTool, useScratchDirs } from '../helpers/stubTool';
+import { activeToolService } from '../../tool/toolService';
+import { withToolSetting } from '../helpers/tool';
 
 // The service is built over an injected lookup environment, setting reader, loader and notifier, so no
 // case reads the real environment, the real setting or the developer's installation. The modules under
@@ -66,6 +68,7 @@ interface ToolServiceLike {
   check(reason: Reason): Promise<ToolStatus>;
   acquire(): Promise<Acquired>;
   whenChecked(): Promise<ToolStatus>;
+  watchSetting(onDidChangeConfiguration: vscode.Event<vscode.ConfigurationChangeEvent>): vscode.Disposable;
   showRefusal(status: ToolStatus): Promise<void> | void;
   onDidChangeStatus: vscode.Event<ToolStatus>;
   dispose(): void;
@@ -672,6 +675,169 @@ suite('tool service', () => {
     });
   });
 
+  suite('the setting', () => {
+    let changes: vscode.EventEmitter<vscode.ConfigurationChangeEvent>;
+
+    setup(() => {
+      changes = new vscode.EventEmitter<vscode.ConfigurationChangeEvent>();
+    });
+
+    teardown(() => {
+      changes.dispose();
+    });
+
+    const changeOf = (...affected: string[]): vscode.ConfigurationChangeEvent => ({
+      affectsConfiguration: (section: string) => affected.some((name) => name === section || name.startsWith(`${section}.`)),
+    });
+
+    /** Fires the change and returns the check it started, when it started one. */
+    function fire(service: ToolServiceLike, ...affected: string[]): { started: Promise<ToolStatus>[] } {
+      const spy = sinon.spy(service, 'check');
+      changes.fire(changeOf(...affected));
+      const started = spy.getCalls().map((call) => {
+        assert.strictEqual(call.args[0], 'setting');
+        return call.returnValue as Promise<ToolStatus>;
+      });
+      spy.restore();
+      return { started };
+    }
+
+    test('a change of the tool path rechecks, and the next acquire uses the new installation', async () => {
+      installGlobal('2.0.0');
+      const service = makeService();
+      service.watchSetting(changes.event);
+      const first = await service.acquire();
+      assert.ok(first.ok);
+      if (first.ok) {
+        assert.strictEqual(first.installation.foundThrough, 'global');
+      }
+
+      const mine = makeStubTool(scratch.dir('mine'), { version: '2.3.0' });
+      world.setting = mine;
+      const { started } = fire(service, 'the-seed.toolPath');
+      assert.strictEqual(started.length, 1, 'the change did not start a check');
+      assert.strictEqual((await started[0]).state, 'usable');
+
+      const next = await service.acquire();
+      assert.ok(next.ok);
+      if (next.ok && first.ok) {
+        assert.strictEqual(next.installation.packageDir, mine);
+        assert.strictEqual(next.installation.foundThrough, 'setting');
+        assert.strictEqual(next.installation.version, '2.3.0');
+        assert.notStrictEqual(next.api, first.api);
+      }
+    });
+
+    test('a setting naming a compatible installation wins over the global one', async () => {
+      installGlobal('2.0.0');
+      const mine = makeStubTool(scratch.dir('mine'), { version: '2.1.0' });
+      const service = makeService();
+      service.watchSetting(changes.event);
+      await service.check('activate');
+      assert.strictEqual(service.status.installation?.foundThrough, 'global');
+
+      world.setting = mine;
+      const { started } = fire(service, 'the-seed.toolPath');
+      const status = await started[0];
+      assert.strictEqual(status.state, 'usable');
+      assert.strictEqual(status.installation?.packageDir, mine);
+      assert.strictEqual(status.installation?.foundThrough, 'setting');
+      assert.strictEqual(status.others.length, 0, 'the global installation was consulted');
+    });
+
+    test('a setting that is not the tool gives notTheTool naming the setting and the path, with no fallback to the global installation', async () => {
+      installGlobal('2.0.0');
+      const service = makeService();
+      service.watchSetting(changes.event);
+      assert.strictEqual((await service.check('activate')).state, 'usable');
+
+      const missing = path.join(scratch.dir('elsewhere'), 'nonexistent');
+      world.setting = missing;
+      const { started } = fire(service, 'the-seed.toolPath');
+      const status = await started[0];
+      assert.strictEqual(status.state, 'notTheTool');
+      assert.ok(status.message.includes('the-seed.toolPath'), status.message);
+      assert.ok(status.message.includes(missing), status.message);
+      assert.strictEqual(status.installation, undefined);
+      assert.strictEqual(status.report.candidates.length, 0);
+
+      const result = await service.acquire();
+      assert.strictEqual(result.ok, false);
+      if (!result.ok) {
+        assert.strictEqual(result.status.state, 'notTheTool');
+      }
+    });
+
+    test('a directory holding another package gives notTheTool saying which package', async () => {
+      installGlobal('2.0.0');
+      const other = makeStubTool(scratch.dir('other'), { version: '2.0.0', name: 'some-other-package' });
+      world.setting = other;
+      const service = makeService();
+      const status = await service.check('activate');
+      assert.strictEqual(status.state, 'notTheTool');
+      assert.ok(status.message.includes('it is the package some-other-package'), status.message);
+    });
+
+    test('clearing the setting returns to the default lookup over the injected environment', async () => {
+      installGlobal('2.0.0');
+      const mine = makeStubTool(scratch.dir('mine'), { version: '2.3.0' });
+      world.setting = mine;
+      const service = makeService();
+      service.watchSetting(changes.event);
+      await service.check('activate');
+      assert.strictEqual(service.status.installation?.packageDir, mine);
+      assert.strictEqual(world.npmCalls, 0);
+
+      world.setting = '';
+      const { started } = fire(service, 'the-seed.toolPath');
+      const status = await started[0];
+      assert.strictEqual(status.state, 'usable');
+      assert.strictEqual(status.installation?.foundThrough, 'global');
+      assert.strictEqual(status.installation?.version, '2.0.0');
+      assert.strictEqual(world.npmCalls, 1);
+
+      const result = await service.acquire();
+      assert.ok(result.ok);
+      if (result.ok) {
+        assert.strictEqual(result.installation.foundThrough, 'global');
+      }
+    });
+
+    test('clearing a setting that was not the tool also returns to the default lookup', async () => {
+      installGlobal('2.0.0');
+      world.setting = path.join(scratch.dir('elsewhere'), 'nonexistent');
+      const service = makeService();
+      service.watchSetting(changes.event);
+      assert.strictEqual((await service.check('activate')).state, 'notTheTool');
+
+      world.setting = '';
+      const { started } = fire(service, 'the-seed.toolPath');
+      assert.strictEqual((await started[0]).state, 'usable');
+    });
+
+    test('a change to another setting does not recheck', async () => {
+      installGlobal('2.0.0');
+      const service = makeService();
+      service.watchSetting(changes.event);
+      await service.check('activate');
+      const calls = world.npmCalls;
+      const { started } = fire(service, 'the-seed.somethingElse', 'editor.fontSize');
+      assert.strictEqual(started.length, 0);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      assert.strictEqual(world.npmCalls, calls);
+    });
+
+    test('after the watch is disposed a change no longer rechecks', async () => {
+      installGlobal('2.0.0');
+      const service = makeService();
+      const watch = service.watchSetting(changes.event);
+      await service.check('activate');
+      watch.dispose();
+      const { started } = fire(service, 'the-seed.toolPath');
+      assert.strictEqual(started.length, 0);
+    });
+  });
+
   suite('keys', () => {
     test('the key is the state, the location and the version', async () => {
       const pkg = installGlobal('1.2.1');
@@ -835,6 +1001,77 @@ suite('tool service', () => {
       assert.ok(!status.message.includes('private.example.invalid'));
       assert.ok(!JSON.stringify(status).includes('SECRET-TOKEN-0123'));
     });
+  });
+});
+
+suite('tool setting in the editor', () => {
+  const scratch = useScratchDirs();
+  const service = (): ToolServiceLike => activeToolService() as unknown as ToolServiceLike;
+
+  test('a compatible installation named by the setting is used by the next acquire with no restart', async () => {
+    const stub = makeStubTool(scratch.dir('stub'), { version: '2.7.0' });
+    const before = await service().acquire();
+    assert.ok(before.ok);
+    await withToolSetting(stub, async () => {
+      const result = await service().acquire();
+      assert.ok(result.ok, result.ok ? '' : result.status.message);
+      if (result.ok) {
+        assert.strictEqual(result.installation.packageDir, fs.realpathSync(stub));
+        assert.strictEqual(result.installation.foundThrough, 'setting');
+        assert.strictEqual(result.installation.version, '2.7.0');
+      }
+    });
+    const after = await service().acquire();
+    assert.ok(after.ok);
+    if (before.ok && after.ok) {
+      assert.strictEqual(after.installation.packageDir, before.installation.packageDir);
+      assert.strictEqual(after.api, before.api, 'the test tool was loaded again');
+    }
+  });
+
+  test('a path that is not there gives notTheTool naming the setting and the path', async () => {
+    const missing = '/nonexistent';
+    await withToolSetting(missing, async () => {
+      const result = await service().acquire();
+      assert.strictEqual(result.ok, false);
+      if (!result.ok) {
+        assert.strictEqual(result.status.state, 'notTheTool');
+        assert.ok(result.status.message.includes('the-seed.toolPath'), result.status.message);
+        assert.ok(result.status.message.includes(missing), result.status.message);
+      }
+    });
+    assert.strictEqual(service().status.state, 'usable');
+  });
+
+  test('a directory holding another package gives notTheTool saying which package', async () => {
+    const other = makeStubTool(scratch.dir('other'), { version: '2.0.0', name: 'some-other-package' });
+    await withToolSetting(other, async () => {
+      const result = await service().acquire();
+      assert.strictEqual(result.ok, false);
+      if (!result.ok) {
+        assert.strictEqual(result.status.state, 'notTheTool');
+        assert.ok(result.status.message.includes('it is the package some-other-package'), result.status.message);
+        assert.ok(result.status.message.includes(other), result.status.message);
+      }
+    });
+  });
+
+  test('the test tool is back in use when a case fails inside withToolSetting', async () => {
+    await assert.rejects(withToolSetting('/nonexistent', () => {
+      throw new Error('failed inside');
+    }), /failed inside/);
+    const result = await service().acquire();
+    assert.ok(result.ok, result.ok ? '' : result.status.message);
+  });
+
+  test('the manifest declares the tool path setting as a machine-scoped string', () => {
+    const manifest = require(path.resolve(__dirname, '..', '..', '..', 'package.json')) as {
+      contributes: { configuration: { properties: Record<string, { type?: string; scope?: string }> } };
+    };
+    const declared = manifest.contributes.configuration.properties['the-seed.toolPath'];
+    assert.ok(declared, 'the-seed.toolPath is not declared');
+    assert.strictEqual(declared.type, 'string');
+    assert.strictEqual(declared.scope, 'machine');
   });
 });
 

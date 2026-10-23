@@ -168,6 +168,15 @@ export class ToolService implements vscode.Disposable {
     return { ok: false, status };
   }
 
+  /** Rechecks the tool whenever the tool location setting changes; dispose the result to stop listening. */
+  watchSetting(onDidChangeConfiguration: vscode.Event<vscode.ConfigurationChangeEvent>): vscode.Disposable {
+    return onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration(TOOL_SETTING)) {
+        void this.check('setting');
+      }
+    });
+  }
+
   dispose(): void {
     this.changed.dispose();
   }

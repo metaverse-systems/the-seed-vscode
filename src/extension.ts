@@ -29,7 +29,11 @@ import { createToolService, setActiveToolService } from "./tool/toolService";
 export function activate(context: vscode.ExtensionContext) {
   const toolService = createToolService();
   setActiveToolService(toolService);
-  context.subscriptions.push(toolService, { dispose: () => setActiveToolService(undefined) });
+  context.subscriptions.push(
+    toolService,
+    toolService.watchSetting(vscode.workspace.onDidChangeConfiguration),
+    { dispose: () => setActiveToolService(undefined) }
+  );
 
   const outputChannel = createOutputChannel();
   context.subscriptions.push(outputChannel);
