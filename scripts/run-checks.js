@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 'use strict';
 
-// Single entry point for the extension's checks: compile, typecheck, lint and
-// the host suite. Plain CommonJS, Node built-ins only, no shell.
+// Single entry point for the extension's build and checks: clean, compile,
+// typecheck, lint, bundle and the host suite, plus the package and watch
+// stages. Plain CommonJS, Node built-ins only, no shell.
 
 const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { spawnSync } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 
 const root = path.resolve(__dirname, '..');
 const resultsFile = path.join(root, 'test-results', 'host.json');
@@ -179,6 +180,10 @@ function runHost(hostOptions) {
     console.log('host: compile first ("npm run compile")');
     return false;
   }
+  if (!fs.existsSync(bundlePath)) {
+    console.log('host: bundle first ("npm run bundle")');
+    return false;
+  }
   for (let attempt = 1; attempt <= hostOptions.repeat; attempt++) {
     if (hostOptions.repeat > 1) {
       console.log(`-- host run ${attempt} of ${hostOptions.repeat} --`);
@@ -190,29 +195,263 @@ function runHost(hostOptions) {
   return true;
 }
 
+// Removes the build outputs. Never touches node_modules/, .vscode-test/,
+// test-results/ or packages in the root.
+function clean() {
+  for (const name of ['out', 'dist']) {
+    fs.rmSync(path.join(root, name), { recursive: true, force: true });
+  }
+  return true;
+}
+
+const bundlePath = path.join(root, 'dist', 'extension.js');
+
+// Host source modules, as bundle keys: every .ts under src/ outside src/test/
+// and src/webview/, without declaration files; relative to src/, forward
+// slashes, no extension, sorted.
+function listHostModules() {
+  const sourceRoot = path.join(root, 'src');
+  const keys = [];
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      const relative = path.relative(sourceRoot, full).split(path.sep).join('/');
+      if (relative === 'test' || relative === 'webview') {
+        continue;
+      }
+      if (entry.isDirectory()) {
+        walk(full);
+      } else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.d.ts')) {
+        keys.push(relative.slice(0, -'.ts'.length));
+      }
+    }
+  };
+  walk(sourceRoot);
+  return keys.sort();
+}
+
+// The esbuild options shared by the bundle and watch stages. The entry
+// re-exports activate and deactivate and maps every host module to its
+// namespace (bundledModules), which the tests use to run against the bundle.
+function hostBundleOptions() {
+  const keys = listHostModules();
+  const lines = ["export { activate, deactivate } from './extension';"];
+  keys.forEach((key, index) => {
+    lines.push(`import * as m${index} from './${key}';`);
+  });
+  lines.push('export const bundledModules = {');
+  keys.forEach((key, index) => {
+    lines.push(`  '${key}': m${index},`);
+  });
+  lines.push('};');
+  return {
+    stdin: { contents: lines.join('\n') + '\n', resolveDir: path.join(root, 'src'), loader: 'ts', sourcefile: 'bundle-entry.ts' },
+    absWorkingDir: root,
+    bundle: true,
+    platform: 'node',
+    format: 'cjs',
+    target: 'node20',
+    outfile: bundlePath,
+    sourcemap: false,
+    minify: false,
+    metafile: true,
+    logLevel: 'warning',
+    external: ['vscode', '@metaverse-systems/the-seed', '@metaverse-systems/the-seed/*'],
+  };
+}
+
+function loadEsbuild() {
+  return require(resolveEntry('esbuild'));
+}
+
+// Builds dist/extension.js and checks what went into it, then builds the
+// sidebar into dist/webview.
+function bundle() {
+  const checksPath = path.join(root, 'out', 'test', 'harness', 'packageContents.js');
+  if (!fs.existsSync(checksPath)) {
+    console.log('bundle: compile first ("npm run compile")');
+    return false;
+  }
+  const { bundleInputFailures, ALLOWED_BUNDLE_LIBRARIES } = require(checksPath);
+  let result;
+  try {
+    result = loadEsbuild().buildSync(hostBundleOptions());
+  } catch {
+    // esbuild has already printed the errors.
+    return false;
+  }
+  const inputs = Object.keys(result.metafile.inputs);
+  const failures = bundleInputFailures(inputs, fs.readFileSync(bundlePath, 'utf8'), ALLOWED_BUNDLE_LIBRARIES);
+  for (const line of failures) {
+    console.log(line);
+  }
+  if (result.warnings.length > 0) {
+    console.log(`bundle: esbuild reported ${result.warnings.length} warning(s)`);
+  }
+  if (failures.length > 0 || result.warnings.length > 0) {
+    return false;
+  }
+  console.log(`Bundle: dist/extension.js (${inputs.length} inputs, ${Math.round(fs.statSync(bundlePath).size / 1024)} KB)`);
+  return run(resolveEntry('vite', 'bin', 'vite.js'), ['build', '--config', 'vite.config.webview.mts']);
+}
+
+// Development only: rebuilds dist/extension.js, with a linked source map, on
+// every source change until stopped. The sidebar is built once with
+// "npm run build:webview".
+async function watch() {
+  const esbuild = loadEsbuild();
+  const reporter = {
+    name: 'watch-reporter',
+    setup(build) {
+      build.onStart(() => {
+        console.log('[watch] build started');
+      });
+      build.onEnd((result) => {
+        console.log(`[watch] build finished (${result.errors.length} errors)`);
+      });
+    },
+  };
+  const context = await esbuild.context({ ...hostBundleOptions(), sourcemap: 'linked', plugins: [reporter] });
+  await context.watch();
+  await new Promise((resolve) => {
+    process.once('SIGINT', resolve);
+    process.once('SIGTERM', resolve);
+  });
+  await context.dispose();
+  return true;
+}
+
+// Runs the package tool with stdin closed, echoing both streams as they
+// arrive; resolves to its exit status and everything it printed.
+function runPackager() {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [resolveEntry('@vscode', 'vsce', 'vsce'), 'package'], {
+      cwd: root,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const chunks = [];
+    child.stdout.on('data', (chunk) => {
+      process.stdout.write(chunk);
+      chunks.push(chunk);
+    });
+    child.stderr.on('data', (chunk) => {
+      process.stderr.write(chunk);
+      chunks.push(chunk);
+    });
+    child.on('error', (error) => {
+      chunks.push(Buffer.from(`${error.message}\n`));
+    });
+    child.on('close', (code, signal) => {
+      resolve({ exitCode: code === null ? (signal ? 1 : 0) : code, output: Buffer.concat(chunks).toString('utf8') });
+    });
+  });
+}
+
+// Builds the package from a clean build (the package tool runs
+// "vscode:prepublish") and fails on any package tool warning or error, a
+// runtime dependency, an editor range other than the tested version, or a
+// file list other than the expected one. The package is left in the root.
+async function packageExtension() {
+  for (const name of fs.readdirSync(root)) {
+    if (name.endsWith('.vsix')) {
+      fs.rmSync(path.join(root, name), { force: true });
+    }
+  }
+  const packager = await runPackager();
+
+  const checksPath = path.join(root, 'out', 'test', 'harness', 'packageContents.js');
+  if (!fs.existsSync(checksPath)) {
+    console.log('PACKAGE ERROR: the build did not complete');
+    return false;
+  }
+  const checks = require(checksPath);
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+  const testConfigText = fs.readFileSync(path.join(root, '.vscode-test.mjs'), 'utf8');
+  const facts = checks.manifestFacts(manifest, testConfigText);
+  const scanned = checks.scanPackagerOutput(packager.output);
+
+  const file = `${manifest.name}-${manifest.version}.vsix`;
+  const packagePath = path.join(root, file);
+  const produced = fs.existsSync(packagePath);
+  let entries = [];
+  let bytes = 0;
+  const readErrors = [];
+  if (produced) {
+    const zip = fs.readFileSync(packagePath);
+    bytes = zip.length;
+    try {
+      entries = checks.readZipEntryNames(zip);
+    } catch (error) {
+      readErrors.push(`${file} could not be read: ${error.message}`);
+    }
+  }
+  const compared = produced && readErrors.length === 0
+    ? checks.compareFileList(checks.EXPECTED_PACKAGE_FILES, entries)
+    : { missing: [], extra: [] };
+
+  const report = {
+    file,
+    produced,
+    exitCode: packager.exitCode,
+    warnings: scanned.warnings,
+    errors: [...scanned.errors, ...readErrors],
+    dependencies: facts.dependencies,
+    engineFloor: facts.engineFloor,
+    testedVersion: facts.testedVersion,
+    engineRange: facts.engineRange,
+    missing: compared.missing,
+    extra: compared.extra,
+    entries: entries.length,
+    bytes,
+  };
+  const outcome = checks.packageReportLines(report);
+  for (const line of outcome.failures) {
+    console.log(line);
+  }
+  if (!outcome.passed) {
+    return false;
+  }
+  console.log(`Package: ${file} (${entries.length} files, ${Math.round(bytes / 1024)} KB)`);
+  return true;
+}
+
 const stageRunners = {
+  clean,
   compile: () => run(resolveEntry('typescript', 'bin', 'tsc'), ['-p', './']),
   typecheck: () => run(resolveEntry('typescript', 'bin', 'tsc'), ['--noEmit', '-p', 'tsconfig.webview.json']),
   lint: () => run(resolveEntry('eslint', 'bin', 'eslint.js'), ['--max-warnings', '0', 'src']),
+  bundle,
+  package: packageExtension,
+  watch,
 };
 
-function main(argv) {
-  // The argument parser lives in the compiled output. On a fresh checkout the
-  // compile stage runs first (it is the only stage that can) and the rest of
-  // the arguments are parsed afterwards.
-  let compiled = null;
+// The stages that may start from a fresh checkout: they bootstrap the
+// compiled argument parser. Naming no stage at all does too.
+const BOOTSTRAP_STAGES = ['compile', 'package', 'watch'];
+
+async function main(argv) {
+  // The argument parser lives in the compiled output. On a fresh checkout
+  // clean and compile run first, when no stage or a stage that can start from
+  // nothing is named, and the arguments are parsed afterwards; the named clean
+  // and compile stages are then skipped, since they have just run.
+  let bootstrapped = false;
   const parserPath = path.join(root, 'out', 'test', 'harness', 'results.js');
   if (!fs.existsSync(parserPath)) {
-    if (argv.length > 0 && !argv.includes('compile')) {
+    const separator = argv.indexOf('--');
+    const named = separator === -1 ? argv : argv.slice(0, separator);
+    if (named.length > 0 && !named.some((stage) => BOOTSTRAP_STAGES.includes(stage))) {
       console.log('compile first ("npm run compile")');
       return 1;
     }
-    console.log('== compile ==');
-    compiled = stageRunners.compile();
-    console.log(`compile: ${compiled ? 'passed' : 'FAILED'}`);
-    if (!compiled) {
-      return 1;
+    for (const stage of ['clean', 'compile']) {
+      console.log(`== ${stage} ==`);
+      const ok = await stageRunners[stage]();
+      console.log(`${stage}: ${ok ? 'passed' : 'FAILED'}`);
+      if (!ok) {
+        return 1;
+      }
     }
+    bootstrapped = true;
   }
 
   const { parseArguments } = loadResults();
@@ -223,9 +462,10 @@ function main(argv) {
   }
 
   let compileFailed = false;
+  let bundleFailed = false;
   let failed = false;
   for (const stage of parsed.stages) {
-    if (stage === 'compile' && compiled !== null) {
+    if (bootstrapped && (stage === 'clean' || stage === 'compile')) {
       continue;
     }
     console.log(`== ${stage} ==`);
@@ -234,12 +474,20 @@ function main(argv) {
       failed = true;
       continue;
     }
-    const ok = stage === 'host' ? runHost(parsed.host) : stageRunners[stage]();
+    if (stage === 'host' && bundleFailed) {
+      console.log('host: not run (bundle failed)');
+      failed = true;
+      continue;
+    }
+    const ok = stage === 'host' ? runHost(parsed.host) : await stageRunners[stage]();
     console.log(`${stage}: ${ok ? 'passed' : 'FAILED'}`);
     if (!ok) {
       failed = true;
       if (stage === 'compile') {
         compileFailed = true;
+      }
+      if (stage === 'bundle') {
+        bundleFailed = true;
       }
     }
   }
@@ -247,7 +495,9 @@ function main(argv) {
 }
 
 if (require.main === module) {
-  process.exitCode = main(process.argv.slice(2));
+  main(process.argv.slice(2)).then((code) => {
+    process.exitCode = code;
+  });
 }
 
 module.exports = { main };

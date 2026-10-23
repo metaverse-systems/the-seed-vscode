@@ -130,12 +130,13 @@ _Coming soon_
 Prerequisites: run `npm ci`, which installs the tool at the version in `devDependencies` from the public registry and builds its native component (the tests use that copy unless `THE_SEED_TEST_TOOL` names another installation, see Working with the tool below); on Linux, install `xvfb`: the runner always starts the editor under `xvfb-run -a` with X11 forced, even on a desktop session, so no window appears. Set `THE_SEED_TEST_VISIBLE=1` to use the real display instead.
 
 ```sh
-npm test                 # compile, typecheck, lint, then the host suite
-npm run compile          # one stage
+npm test                 # clean, compile, typecheck, lint, bundle, then the host suite
+npm run compile          # clean, then compile into out/
 npm run typecheck        # sidebar type-check
 npm run lint             # fails on any warning, .ts and .tsx
-npm test -- host         # host suite only (needs compile)
-npm run build            # compile, type-check and sidebar bundle
+npm test -- host         # host suite only (needs compile and bundle)
+npm run bundle           # host bundle (dist/extension.js) and sidebar bundle (dist/webview)
+npm run build            # clean, compile, type-check, host and sidebar bundles
 ```
 
 Use `npm test` rather than `npx vscode-test`: the runner supplies a scratch home, checks the results file, validates the known-gap list and reports totals. Every suite runs in scratch state, and the real `~/the-seed` is checked unchanged afterwards (`REAL HOME CHANGED:` fails the run).
@@ -160,8 +161,12 @@ The editor version is pinned in `.vscode-test.mjs` and must equal `VSCODE_VERSIO
 No line-level ESLint disables are used.
 
 ## 🛠️ Development & Debugging
-- Run `npm run compile` to bundle the extension.
-- Use `vsce package` to package it for publishing.
+- Run `npm run watch` while developing ("Run Extension" starts it): it rebuilds `dist/extension.js` with source maps on every change. It does not build the sidebar: run `npm run build:webview` (writes `dist/webview`) once, and again after changing `src/webview/`. Run `npm run build` for a full build.
+- Run `npm run package` to package it for publishing; it needs nothing installed globally (see Packaging below).
+
+### Packaging
+
+After `npm ci`, `npm run package` builds the extension from a clean output directory and produces `the-seed-vscode-<version>.vsix` in the extension root. It fails on any packaging warning or error, a runtime dependency (libraries are bundled or development dependencies), an editor range (`engines.vscode`) that differs from the tested editor version in `.vscode-test.mjs`, or a file list that differs from `EXPECTED_PACKAGE_FILES` in `src/test/harness/packageContents.ts`. Install the package with `code --install-extension the-seed-vscode-<version>.vsix`.
 
 ### Working with the tool
 
@@ -173,7 +178,7 @@ To run the extension against a local checkout of the tool:
 - To run the tests against a checkout (or the global installation), set `THE_SEED_TEST_TOOL` to its package directory, for example `THE_SEED_TEST_TOOL=$(realpath ../the-seed) npm test`. The default is the `devDependencies` copy in `node_modules`.
 
 ## 📄 License
-MIT License © [Metaverse Systems](https://github.com/metaverse-systems)
+[MIT License](LICENSE) © [Metaverse Systems](https://github.com/metaverse-systems)
 
 ---
 

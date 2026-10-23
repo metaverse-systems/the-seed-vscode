@@ -1,20 +1,12 @@
-.vscode/**
-.vscode-test/**
-src/**
-!out/webview/**
-.gitignore
-.yarnrc
-vsc-extension-quickstart.md
-**/tsconfig.json
-**/tsconfig.webview.json
-**/vite.config.webview.mts
-**/eslint.config.mjs
-**/*.map
-**/*.ts
-**/*.tsx
-**/.vscode-test.*
-tools/**
-scripts/**
-test-results/**
-.github/**
-.gitattributes
+# Allow-list: everything is excluded, then each shipped file is included.
+# Keep in step with EXPECTED_PACKAGE_FILES in src/test/harness/packageContents.ts.
+**
+!package.json
+!README.md
+!CHANGELOG.md
+!LICENSE
+!media/the-seed-icon.svg
+!media/icon.png
+!dist/extension.js
+!dist/webview/assets/index.js
+!dist/webview/assets/index.css

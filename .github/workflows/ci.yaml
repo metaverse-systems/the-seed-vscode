@@ -206,6 +206,11 @@ jobs:
             echo "::error::.vscode-test.mjs does not name editor version $VSCODE_VERSION"
             exit 1
           fi
+          engines="$(node -p "require('./package.json').engines.vscode")"
+          if [ "$engines" != "^$VSCODE_VERSION" ]; then
+            echo "::error::package.json engines.vscode is $engines, expected ^$VSCODE_VERSION"
+            exit 1
+          fi
 
       - name: Compile
         id: compile
@@ -222,14 +227,14 @@ jobs:
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
         run: npm run lint
 
-      - name: Bundle sidebar
+      - name: Bundle
         id: bundle
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
-        run: npm run build:webview
+        run: npm run bundle
 
       - name: Host suite
         id: host
-        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && steps.compile.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && steps.compile.outcome == 'success' && steps.bundle.outcome == 'success' }}
         env:
           REPEAT: ${{ inputs.repeat || '1' }}
         run: |
@@ -243,6 +248,21 @@ jobs:
           export THE_SEED_TEST_TOOL="$(npm root -g)/@metaverse-systems/the-seed"
           npm test -- host -- --repeat "$REPEAT" 2>&1 | tee test-results/host.log
 
+      - name: Package
+        id: package
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        run: |
+          mkdir -p test-results
+          npm run package 2>&1 | tee test-results/package.log
+
+      - name: Upload package
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: the-seed-vscode-vsix
+          path: the-seed-vscode-*.vsix
+          if-no-files-found: error
+
       - name: Summary
         if: always()
         env:
@@ -251,6 +271,7 @@ jobs:
           LINT_OUTCOME: ${{ steps.lint.outcome }}
           BUNDLE_OUTCOME: ${{ steps.bundle.outcome }}
           HOST_OUTCOME: ${{ steps.host.outcome }}
+          PACKAGE_OUTCOME: ${{ steps.package.outcome }}
         run: |
           {
             echo "## Check results (${{ matrix.os }})"
@@ -260,9 +281,17 @@ jobs:
             echo "| Compile | ${COMPILE_OUTCOME:-skipped} |"
             echo "| Type check sidebar | ${TYPECHECK_OUTCOME:-skipped} |"
             echo "| Style check | ${LINT_OUTCOME:-skipped} |"
-            echo "| Bundle sidebar | ${BUNDLE_OUTCOME:-skipped} |"
+            echo "| Bundle | ${BUNDLE_OUTCOME:-skipped} |"
             echo "| Host suite | ${HOST_OUTCOME:-skipped} |"
+            echo "| Package | ${PACKAGE_OUTCOME:-skipped} |"
           } >> "$GITHUB_STEP_SUMMARY"
+          if [ -f test-results/package.log ]; then
+            { grep -E '^(PACKAGE [A-Z]+|BUNDLE [A-Z]+):' test-results/package.log || true; } | while IFS= read -r line; do
+              echo "::error::$line"
+              echo "- $line" >> "$GITHUB_STEP_SUMMARY"
+            done
+            { grep -E '^Package:' test-results/package.log || true; } >> "$GITHUB_STEP_SUMMARY"
+          fi
           if [ -f test-results/host.log ]; then
             { grep -E '^(FAILED|SILENT SKIP|PLATFORM SKIP ON LINUX|LEFTOVER|REAL HOME CHANGED|RESULTS MISSING|MALFORMED KNOWN GAP|STALE KNOWN GAP):' test-results/host.log || true; } | while IFS= read -r line; do
               echo "::error::$line"
@@ -334,6 +363,11 @@ jobs:
         run: |
           if ! grep -q "version: '$VSCODE_VERSION'" .vscode-test.mjs; then
             echo "::error::.vscode-test.mjs does not name editor version $VSCODE_VERSION"
+            exit 1
+          fi
+          engines="$(node -p "require('./package.json').engines.vscode")"
+          if [ "$engines" != "^$VSCODE_VERSION" ]; then
+            echo "::error::package.json engines.vscode is $engines, expected ^$VSCODE_VERSION"
             exit 1
           fi
 
@@ -536,16 +570,16 @@ jobs:
           cd "$HOME/work/the-seed-vscode"
           npm run lint
 
-      - name: Bundle sidebar
+      - name: Bundle
         id: bundle
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
         run: |
           cd "$HOME/work/the-seed-vscode"
-          npm run build:webview
+          npm run bundle
 
       - name: Host suite
         id: host
-        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && steps.compile.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && steps.compile.outcome == 'success' && steps.bundle.outcome == 'success' }}
         run: |
           . "$HOME/ci-env.sh"
           cd "$HOME/work/the-seed-vscode"
@@ -584,7 +618,7 @@ jobs:
             echo "| Compile | ${COMPILE_OUTCOME:-skipped} |"
             echo "| Type check sidebar | ${TYPECHECK_OUTCOME:-skipped} |"
             echo "| Style check | ${LINT_OUTCOME:-skipped} |"
-            echo "| Bundle sidebar | ${BUNDLE_OUTCOME:-skipped} |"
+            echo "| Bundle | ${BUNDLE_OUTCOME:-skipped} |"
             echo "| Host suite | ${HOST_OUTCOME:-skipped} |"
           } >> "$GITHUB_STEP_SUMMARY"
           if [ -f test-results/host.log ]; then

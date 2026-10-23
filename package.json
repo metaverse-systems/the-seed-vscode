@@ -1,17 +1,37 @@
 {
   "name": "the-seed-vscode",
-  "displayName": "the-seed-vscode",
+  "displayName": "The Seed",
   "publisher": "metaverse-systems",
-  "description": "",
+  "description": "Create, build, sign and package the-seed projects from the editor.",
   "version": "0.3.0",
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/metaverse-systems/the-seed-vscode.git"
+  },
+  "bugs": {
+    "url": "https://github.com/metaverse-systems/the-seed-vscode/issues"
+  },
+  "homepage": "https://github.com/metaverse-systems/the-seed-vscode#readme",
   "engines": {
-    "vscode": "^1.97.0"
+    "vscode": "^1.143.0"
   },
   "categories": [
+    "Programming Languages",
     "Other"
   ],
+  "keywords": [
+    "the-seed",
+    "ecs",
+    "game engine",
+    "c++",
+    "autotools",
+    "mingw",
+    "resource pak"
+  ],
   "activationEvents": [],
-  "main": "./out/extension.js",
+  "main": "./dist/extension.js",
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -173,40 +193,40 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run build",
-    "compile": "node scripts/run-checks.js compile",
+    "compile": "node scripts/run-checks.js clean compile",
     "typecheck": "node scripts/run-checks.js typecheck",
     "build:webview": "vite build --config vite.config.webview.mts",
-    "build": "node scripts/run-checks.js compile typecheck && npm run build:webview",
-    "watch": "tsc -watch -p ./",
+    "build": "node scripts/run-checks.js clean compile typecheck bundle",
+    "bundle": "node scripts/run-checks.js bundle",
+    "package": "node scripts/run-checks.js package",
+    "watch": "node scripts/run-checks.js watch",
     "lint": "node scripts/run-checks.js lint",
     "lint-fix": "node ./node_modules/eslint/bin/eslint.js src --fix",
     "test": "node scripts/run-checks.js"
   },
   "devDependencies": {
     "@metaverse-systems/the-seed": "2.0.0",
-    "@types/fs-extra": "^11.0.4",
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@types/sinon": "^21.0.0",
-    "@types/vscode": "^1.97.0",
+    "@types/vscode": "1.140.0",
     "@types/vscode-webview": "^1.57.5",
     "@typescript-eslint/eslint-plugin": "^8.22.0",
     "@typescript-eslint/parser": "^8.22.0",
     "@vitejs/plugin-react": "^5.1.4",
+    "@vscode-elements/elements": "^2.5.0",
+    "@vscode-elements/react-elements": "^2.4.0",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
+    "@vscode/vsce": "4.0.0",
+    "esbuild": "0.28.2",
     "eslint": "^9.19.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
     "sinon": "^21.0.1",
     "typescript": "^5.7.3",
     "vite": "^7.3.1"
-  },
-  "dependencies": {
-    "@vscode-elements/elements": "^2.5.0",
-    "@vscode-elements/react-elements": "^2.4.0",
-    "fs-extra": "^11.3.3",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4"
   }
 }

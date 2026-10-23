@@ -52,7 +52,10 @@ export default defineConfig({
 	mocha: {
 		ui: 'tdd',
 		timeout: 10000,
-		require: [path.join(root, 'out', 'test', 'harness', 'globalSetup.js')],
+		require: [
+			path.join(root, 'out', 'test', 'harness', 'useBundle.js'),
+			path.join(root, 'out', 'test', 'harness', 'globalSetup.js'),
+		],
 		reporter: path.join(root, 'out', 'test', 'harness', 'reporter.js'),
 	},
 });

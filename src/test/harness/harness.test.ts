@@ -32,9 +32,10 @@ function makeResults(platform: string, cases: CaseResult[]): HostResults {
 }
 
 suite('Harness: parseArguments', () => {
-  const allStages = ['compile', 'typecheck', 'lint', 'host'];
+  const allStages = ['clean', 'compile', 'typecheck', 'lint', 'bundle', 'host'];
+  const everyStage = 'clean, compile, typecheck, lint, bundle, host, package, watch';
 
-  test('no arguments selects all four stages in order', () => {
+  test('no arguments selects the default stages in order', () => {
     const parsed = parseArguments([]);
     assert.strictEqual(parsed.ok, true);
     if (parsed.ok) {
@@ -72,7 +73,7 @@ suite('Harness: parseArguments', () => {
     if (!parsed.ok) {
       assert.strictEqual(
         parsed.error,
-        'unknown stage: bogus (stages: compile, typecheck, lint, host)'
+        `unknown stage: bogus (stages: ${everyStage})`
       );
     }
   });
@@ -83,8 +84,48 @@ suite('Harness: parseArguments', () => {
     if (!parsed.ok) {
       assert.strictEqual(
         parsed.error,
-        'unknown stage: nope (stages: compile, typecheck, lint, host)'
+        `unknown stage: nope (stages: ${everyStage})`
       );
+    }
+  });
+
+  test('the stage names clean, bundle, package and watch are accepted', () => {
+    for (const name of ['clean', 'bundle', 'package', 'watch']) {
+      const parsed = parseArguments([name]);
+      assert.strictEqual(parsed.ok, true, name);
+      if (parsed.ok) {
+        assert.deepStrictEqual(parsed.stages, [name]);
+      }
+    }
+  });
+
+  test('every stage named together runs in the table order whatever the argument order', () => {
+    const parsed = parseArguments(['watch', 'package', 'host', 'bundle', 'lint', 'typecheck', 'compile', 'clean']);
+    assert.strictEqual(parsed.ok, true);
+    if (parsed.ok) {
+      assert.deepStrictEqual(parsed.stages, [
+        'clean', 'compile', 'typecheck', 'lint', 'bundle', 'host', 'package', 'watch',
+      ]);
+    }
+  });
+
+  test('the default stages never include package or watch', () => {
+    const parsed = parseArguments([]);
+    assert.strictEqual(parsed.ok, true);
+    if (parsed.ok) {
+      assert.deepStrictEqual(parsed.stages, ['clean', 'compile', 'typecheck', 'lint', 'bundle', 'host']);
+      assert.ok(!parsed.stages.includes('package'));
+      assert.ok(!parsed.stages.includes('watch'));
+    }
+  });
+
+  test('an unknown stage lists every stage in the error', () => {
+    const parsed = parseArguments(['packages']);
+    assert.strictEqual(parsed.ok, false);
+    if (!parsed.ok) {
+      for (const name of ['clean', 'compile', 'typecheck', 'lint', 'bundle', 'host', 'package', 'watch']) {
+        assert.ok(parsed.error.includes(name), name);
+      }
     }
   });
 

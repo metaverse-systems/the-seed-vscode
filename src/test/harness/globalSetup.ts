@@ -1,5 +1,6 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { bundlePath } from './useBundle';
 import { activeToolService } from '../../tool/toolService';
 
 const SETTINGS_SECTION = 'the-seed';
@@ -7,7 +8,8 @@ const TOOL_PATH = 'toolPath';
 
 /**
  * Mocha global setup: points the test editor at the tool named by THE_SEED_TEST_TOOL, activates the
- * extension once, before any case, and checks that the tool is usable. Any problem stops the run.
+ * extension once, before any case, checks that the editor activated the bundle the tests run against
+ * and that the tool is usable. Any problem stops the run.
  */
 export async function mochaGlobalSetup(): Promise<void> {
   const tool = process.env.THE_SEED_TEST_TOOL;
@@ -29,6 +31,13 @@ export async function mochaGlobalSetup(): Promise<void> {
   }
   if (!extension.isActive) {
     throw new Error(`extension ${id} did not become active`);
+  }
+  let activated = path.resolve(extension.extensionPath, (extension.packageJSON as { main: string }).main);
+  if (!activated.endsWith('.js')) {
+    activated += '.js';
+  }
+  if (activated !== bundlePath) {
+    throw new Error(`the editor activated ${activated}, not the bundle the tests use`);
   }
   const status = await activeToolService().whenChecked();
   if (status.state !== 'usable') {
