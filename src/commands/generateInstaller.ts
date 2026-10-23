@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
-import Config from '@metaverse-systems/the-seed/Config';
-import Installer from '@metaverse-systems/the-seed/Installer';
 import type { TheSeedViewProvider } from '../panels/TheSeedViewProvider';
 import type { InstallerStatusPayload } from '../types/messages';
+import type { ToolApi } from '../tool/toolApi';
+import type { ToolHandler } from './wrapCommand';
 
 /**
  * Creates the generateInstaller command handler.
@@ -11,8 +11,8 @@ import type { InstallerStatusPayload } from '../types/messages';
 export function generateInstallerCommand(
   outputChannel: vscode.OutputChannel,
   viewProvider: TheSeedViewProvider
-): (oc: vscode.OutputChannel) => Promise<void> {
-  return async () => {
+): ToolHandler {
+  return async (_oc, tool) => {
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!workspaceFolders || workspaceFolders.length === 0) {
       vscode.window.showErrorMessage('No workspace folder open. Open a project folder first.');
@@ -67,9 +67,9 @@ export function generateInstallerCommand(
           cancellable: false,
         },
         async () => {
-          const config = new Config();
+          const config = new tool.Config();
           config.loadConfig();
-          const installer = new Installer(config);
+          const installer = new tool.Installer(config);
           success = (await installer.run(projectDir)).ok;
         }
       );

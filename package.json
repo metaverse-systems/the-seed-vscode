@@ -44,6 +44,10 @@
     },
     "commands": [
       {
+        "command": "the-seed.checkTool",
+        "title": "The Seed: Check Tool"
+      },
+      {
         "command": "the-seed.createResourcePak",
         "title": "The Seed: Create ResourcePak"
       },

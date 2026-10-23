@@ -1,8 +1,8 @@
 import * as assert from 'assert';
-import { NativeComponentMissingError, nativeComponentMessage } from '@metaverse-systems/the-seed/NativeComponent';
 import type { IntegrityResult, PackageResult, VerifyResult } from '@metaverse-systems/the-seed/types';
 import { describeVerification } from '../../signing/verificationMessage';
 import { packageNotification } from '../../build/packageOutcome';
+import { testTool } from '../helpers/tool';
 
 // The text each command shows when the tool's native component is missing must be the tool's own
 // message in full, so the editor says the same thing as the command line. Plain values only: nothing
@@ -36,16 +36,16 @@ const buildFailureModule = (): BuildFailureModule => require('../../build/buildF
 
 suite('native component message in the editor', () => {
   const timestamp = '2026-01-02T03:04:05.000Z';
-  const missing = (): NativeComponentMissingError => new NativeComponentMissingError();
+  const missing = (): Error => new (testTool().NativeComponentMissingError)();
 
   test('the message is one line, so its first line is the whole message', () => {
-    const message = nativeComponentMessage();
+    const message = testTool().nativeComponentMessage();
     assert.strictEqual(missing().message, message);
     assert.strictEqual(message.split('\n')[0], message);
   });
 
   test('a verification that could not be checked carries the message in full', () => {
-    const message = nativeComponentMessage();
+    const message = testTool().nativeComponentMessage();
     const notChecked: IntegrityResult = { state: 'not-checked', reason: message, checked: [] };
     const result: VerifyResult = {
       filePath: '/work/prog.exe',
@@ -64,7 +64,7 @@ suite('native component message in the editor', () => {
   });
 
   test('a refused packaging run notifies with the message in full', () => {
-    const message = nativeComponentMessage();
+    const message = testTool().nativeComponentMessage();
     const result: PackageResult = {
       success: false,
       message,
@@ -81,14 +81,14 @@ suite('native component message in the editor', () => {
   });
 
   test('a signing failure is logged and notified with the message in full', () => {
-    const message = nativeComponentMessage();
+    const message = testTool().nativeComponentMessage();
     const shown = signFailureModule().describeSignFailure(missing(), timestamp);
     assert.strictEqual(shown.logLine, `[${timestamp}] Signing failed: ${message}`);
     assert.strictEqual(shown.notification, message);
   });
 
   test('a build rejection is a failed build with the message in full', () => {
-    const message = nativeComponentMessage();
+    const message = testTool().nativeComponentMessage();
     const shown = buildFailureModule().describeBuildRejection(missing(), 'windows (release)', timestamp);
     assert.deepStrictEqual(shown.status, {
       state: 'failed',
@@ -101,7 +101,7 @@ suite('native component message in the editor', () => {
   });
 
   test('a recursive build rejection is a failed build with the message in full', () => {
-    const message = nativeComponentMessage();
+    const message = testTool().nativeComponentMessage();
     const shown = buildFailureModule().describeBuildRejection(missing(), 'windows (recursive)', timestamp);
     assert.strictEqual(shown.status.state, 'failed');
     assert.strictEqual(shown.status.target, 'windows (recursive)');
@@ -117,7 +117,7 @@ suite('native component message in the editor', () => {
   });
 
   test('a failed install phase shows the message in full', () => {
-    const message = nativeComponentMessage();
+    const message = testTool().nativeComponentMessage();
     const text = buildFailureModule().describeFailedStep('sign', message);
     assert.strictEqual(text, 'Build failed at sign: ' + message);
   });

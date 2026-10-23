@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import Config from '@metaverse-systems/the-seed/Config';
+import { testTool } from './tool';
 
 /**
  * Makes vscode.workspace.workspaceFolders report the given folders (none for
@@ -35,7 +35,7 @@ export function makeScratchDir(label: string): string {
 /** Points the configured prefix at a fresh empty directory and returns it. */
 export function useScratchPrefix(): string {
   const prefix = makeScratchDir('prefix');
-  const config = new Config();
+  const config = new (testTool().Config)();
   config.loadConfig();
   config.config.prefix = prefix;
   config.saveConfig();

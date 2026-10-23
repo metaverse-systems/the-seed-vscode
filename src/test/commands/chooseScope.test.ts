@@ -7,11 +7,13 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
-import Signing from '@metaverse-systems/the-seed/Signing';
 import { writeScopes } from '../helpers/scratchHome';
 import { useScratchState } from '../helpers/scratchState';
+import type Signing from '@metaverse-systems/the-seed/Signing';
+import type { ToolApi } from '../../tool/toolApi';
+import { testTool } from '../helpers/tool';
 
-type ChooseScope = (signing: Signing, purpose: string) => Promise<string | undefined>;
+type ChooseScope = (signing: Signing, purpose: string, tool: ToolApi) => Promise<string | undefined>;
 
 function loadChooseScope(): ChooseScope {
   const mod = require('../../signing/chooseScope') as { chooseScope: ChooseScope };
@@ -27,7 +29,7 @@ suite('chooseScope', () => {
     const pick = sinon.stub(vscode.window, 'showQuickPick').resolves(undefined);
     const exec = sinon.stub(vscode.commands, 'executeCommand').resolves(undefined);
 
-    const result = await loadChooseScope()(new Signing(), 'sign files');
+    const result = await loadChooseScope()(new (testTool().Signing)(), 'sign files', testTool());
 
     assert.strictEqual(result, undefined);
     assert.ok(error.calledOnce);
@@ -42,7 +44,7 @@ suite('chooseScope', () => {
     sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
     const exec = sinon.stub(vscode.commands, 'executeCommand').resolves(undefined);
 
-    const result = await loadChooseScope()(new Signing(), 'sign files');
+    const result = await loadChooseScope()(new (testTool().Signing)(), 'sign files', testTool());
 
     assert.strictEqual(result, undefined);
     assert.ok(exec.notCalled);
@@ -53,7 +55,7 @@ suite('chooseScope', () => {
     const pick = sinon.stub(vscode.window, 'showQuickPick').resolves(undefined);
     const error = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
 
-    const result = await loadChooseScope()(new Signing(), 'sign files');
+    const result = await loadChooseScope()(new (testTool().Signing)(), 'sign files', testTool());
 
     assert.strictEqual(result, '@only');
     assert.ok(pick.notCalled);
@@ -64,7 +66,7 @@ suite('chooseScope', () => {
     writeScopes({ '@a': 'A', '@b': 'B' });
     const pick = sinon.stub(vscode.window, 'showQuickPick').resolves('@b' as never);
 
-    const result = await loadChooseScope()(new Signing(), 'sign files');
+    const result = await loadChooseScope()(new (testTool().Signing)(), 'sign files', testTool());
 
     assert.strictEqual(result, '@b');
     assert.ok(pick.calledOnce);
@@ -79,7 +81,7 @@ suite('chooseScope', () => {
     sinon.stub(vscode.window, 'showQuickPick').resolves(undefined);
     const exec = sinon.stub(vscode.commands, 'executeCommand').resolves(undefined);
 
-    const result = await loadChooseScope()(new Signing(), 'sign files');
+    const result = await loadChooseScope()(new (testTool().Signing)(), 'sign files', testTool());
 
     assert.strictEqual(result, undefined);
     assert.ok(exec.notCalled);

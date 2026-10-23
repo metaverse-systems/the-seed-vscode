@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { handleMessage } from './messageHandler';
+import type { ToolService } from '../tool/toolService';
 import type { ExtensionToWebviewMessage, BuildStatusPayload, DependencyStatusPayload, InstallProgressPayload, PackageStatusPayload, InstallerStatusPayload, SigningStatusPayload, RecursiveBuildProgressPayload, RecursiveBuildCompletePayload } from '../types/messages';
 
 export class TheSeedViewProvider implements vscode.WebviewViewProvider {
@@ -16,7 +17,10 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider {
   private _currentRecursiveBuildProgress: RecursiveBuildProgressPayload | null = null;
   private _currentRecursiveBuildComplete: RecursiveBuildCompletePayload | null = null;
 
-  constructor(private readonly _extensionUri: vscode.Uri) {}
+  constructor(
+    private readonly _extensionUri: vscode.Uri,
+    private readonly _service: ToolService
+  ) {}
 
   public resolveWebviewView(
     webviewView: vscode.WebviewView,
@@ -41,7 +45,7 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider {
       }
       const response = await handleMessage(message, (pushMsg) => {
         webviewView.webview.postMessage(pushMsg);
-      });
+      }, this._service);
       if (response) {
         webviewView.webview.postMessage(response);
 
@@ -157,7 +161,7 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider {
       return;
     }
     try {
-      const response = await handleMessage({ command: 'getConfig', requestId: '__visibility__' });
+      const response = await handleMessage({ command: 'getConfig', requestId: '__visibility__' }, undefined, this._service);
       if (response) {
         this._view.webview.postMessage(response);
       }

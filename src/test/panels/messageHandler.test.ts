@@ -16,16 +16,20 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
-import { handleMessage } from '../../panels/messageHandler';
-import Config from '@metaverse-systems/the-seed/Config';
-import Template from '@metaverse-systems/the-seed/Template';
-import ResourcePak from '@metaverse-systems/the-seed/ResourcePak';
-import { validateScopeName } from '@metaverse-systems/the-seed/Scopes';
+import { handleMessage as handleWithService } from '../../panels/messageHandler';
+import type Config from '@metaverse-systems/the-seed/Config';
+import { activeToolService } from '../../tool/toolService';
 import { createCertFor, writeScopes } from '../helpers/scratchHome';
 import { ScratchState, useScratchState } from '../helpers/scratchState';
+import { testTool } from '../helpers/tool';
 
-type Message = Parameters<typeof handleMessage>[0];
-type Push = NonNullable<Parameters<typeof handleMessage>[1]>;
+type Message = Parameters<typeof handleWithService>[0];
+type Push = NonNullable<Parameters<typeof handleWithService>[1]>;
+
+/** handleMessage as the extension calls it: with the service of the running extension. */
+function handleMessage(message: Message, push?: Push): ReturnType<typeof handleWithService> {
+  return handleWithService(message, push, activeToolService());
+}
 interface LooseResponse {
   type: string;
   payload: { message: string; hint?: string; projectPath: string; templateType: string; openFolder: boolean; packageDir: string };
@@ -49,7 +53,7 @@ function stubChooser(folder: string): sinon.SinonStub {
 }
 
 function loadConfig(): Config {
-  const config = new Config();
+  const config = new (testTool().Config)();
   config.loadConfig();
   return config;
 }
@@ -378,7 +382,7 @@ suite('messageHandler', () => {
       const response = await create('component', '3d.thing');
 
       assert.strictEqual(response?.type, 'error');
-      const template = new Template(loadConfig());
+      const template = new (testTool().Template)(loadConfig());
       template.type = 'component';
       const expected = refusal(() => template.createPackage(SCOPE, '3d.thing', chosen));
       assert.strictEqual(response!.payload.message, expected.message);
@@ -394,7 +398,7 @@ suite('messageHandler', () => {
       const response = await create('program', 'widget', '@anon');
 
       assert.strictEqual(response?.type, 'error');
-      const template = new Template(loadConfig());
+      const template = new (testTool().Template)(loadConfig());
       template.type = 'program';
       const expected = refusal(() => template.createPackage('@anon', 'widget', chosen));
       assert.ok(expected.hint, 'the tool gives a hint for a missing author name');
@@ -507,7 +511,7 @@ suite('messageHandler', () => {
       });
 
       assert.strictEqual(response?.type, 'error');
-      const expected = refusal(() => new ResourcePak(loadConfig()).createPackage(SCOPE, 'assets', workspace));
+      const expected = refusal(() => new (testTool().ResourcePak)(loadConfig()).createPackage(SCOPE, 'assets', workspace));
       assert.strictEqual(response!.payload.message, expected.message);
       assert.strictEqual(response!.payload.hint, expected.hint);
       assert.strictEqual(fs.readFileSync(path.join(workspace, 'assets', 'mine.txt'), 'utf-8'), 'mine');
@@ -524,7 +528,7 @@ suite('messageHandler', () => {
       });
 
       assert.strictEqual(response?.type, 'error');
-      const expected = refusal(() => new ResourcePak(loadConfig()).createPackage(SCOPE, '3d.thing', chosen));
+      const expected = refusal(() => new (testTool().ResourcePak)(loadConfig()).createPackage(SCOPE, '3d.thing', chosen));
       assert.strictEqual(response!.payload.message, expected.message);
       assert.strictEqual(response!.payload.hint, expected.hint);
       assert.deepStrictEqual(fs.readdirSync(chosen), []);
@@ -536,7 +540,7 @@ suite('messageHandler', () => {
 
       setup(() => {
         const workspace = scratch('workspace');
-        pak = new ResourcePak(loadConfig()).createPackage(SCOPE, 'assets', workspace);
+        pak = new (testTool().ResourcePak)(loadConfig()).createPackage(SCOPE, 'assets', workspace);
         sources = scratch('sources');
         state.setWorkspaceFolders([pak]);
       });
@@ -578,7 +582,7 @@ suite('messageHandler', () => {
           data: { resourceName: 'tex', filePath: source('other.png', 'other') },
         });
 
-        const expected = refusal(() => new ResourcePak(loadConfig()).addResource('tex', 'tex.png', pak));
+        const expected = refusal(() => new (testTool().ResourcePak)(loadConfig()).addResource('tex', 'tex.png', pak));
         assert.strictEqual(response?.type, 'error');
         assert.strictEqual(response!.payload.message, expected.message);
         assert.strictEqual(response!.payload.hint, expected.hint);
@@ -674,9 +678,9 @@ suite('messageHandler scope validation and signing status', () => {
   for (const name of ['', 'a b', 'a/b']) {
     test(`addScope with ${JSON.stringify(name)} responds with the validation reason and changes nothing`, async () => {
       writeScopes({ '@kept': 'Kept' });
-      const configPath = new Config().configPath;
+      const configPath = new (testTool().Config)().configPath;
       const before = fs.readFileSync(configPath, 'utf8');
-      const reason = validateScopeName(name.startsWith('@') ? name : `@${name}`);
+      const reason = testTool().validateScopeName(name.startsWith('@') ? name : `@${name}`);
       assert.ok(reason, 'the name is invalid');
 
       const response = await handleMessage({

@@ -66,7 +66,7 @@ export type ExtensionToWebviewMessage =
   | { type: 'scopeDeleted'; requestId: string; payload: ConfigPayload }
   | { type: 'templateCreated'; requestId: string; payload: TemplateCreatedPayload }
   | { type: 'templateExists'; requestId: string; payload: { projectPath: string } }
-  | { type: 'error'; requestId?: string; payload: { message: string; hint?: string } }
+  | { type: 'error'; requestId?: string; payload: { message: string; hint?: string; code?: 'toolUnavailable' } }
   | { type: 'buildStatus'; payload: BuildStatusPayload }
   | { type: 'buildStarted'; requestId: string }
   | { type: 'buildCancelled'; requestId: string }

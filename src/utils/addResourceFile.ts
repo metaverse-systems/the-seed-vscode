@@ -1,8 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import ResourcePak from '@metaverse-systems/the-seed/ResourcePak';
-import { ProjectError } from '@metaverse-systems/the-seed/ProjectError';
-import { replaceResourceHint } from '@metaverse-systems/the-seed/Hints';
+import type ResourcePak from '@metaverse-systems/the-seed/ResourcePak';
+import type { ToolApi } from '../tool/toolApi';
 
 export interface AddedResource {
   name: string;
@@ -21,19 +20,20 @@ export function addResourceFile(
   rp: ResourcePak,
   packageDir: string,
   resourceName: string,
-  sourceFile: string
+  sourceFile: string,
+  tool: ToolApi
 ): AddedResource {
   const project = rp.readProject(packageDir);
 
   if (resourceName === '') {
-    throw new ProjectError('not-pak-project', 'The resource name cannot be empty.');
+    throw new tool.ProjectError('not-pak-project', 'The resource name cannot be empty.');
   }
   const existing = project.resources.find((resource) => resource.name === resourceName);
   if (existing) {
-    throw new ProjectError(
+    throw new tool.ProjectError(
       'duplicate-resource',
       `Resource "${resourceName}" already exists in ${project.name}; it refers to ${existing.filename}.`,
-      replaceResourceHint()
+      tool.replaceResourceHint()
     );
   }
 
@@ -41,10 +41,10 @@ export function addResourceFile(
   try {
     sourceStats = fs.statSync(sourceFile);
   } catch {
-    throw new ProjectError('resource-file-missing', `File not found: ${sourceFile}`);
+    throw new tool.ProjectError('resource-file-missing', `File not found: ${sourceFile}`);
   }
   if (!sourceStats.isFile()) {
-    throw new ProjectError('resource-file-missing', `${sourceFile} is not a file.`);
+    throw new tool.ProjectError('resource-file-missing', `${sourceFile} is not a file.`);
   }
 
   const dir = path.resolve(packageDir);
@@ -54,7 +54,7 @@ export function addResourceFile(
   if (path.resolve(sourceFile) !== destination) {
     if (fs.existsSync(destination)) {
       if (!fs.readFileSync(destination).equals(fs.readFileSync(sourceFile))) {
-        throw new ProjectError(
+        throw new tool.ProjectError(
           'target-exists',
           `${destination} already exists in the project and is a different file; rename the file you are adding.`
         );

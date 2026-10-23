@@ -3,13 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { makeScratchDir } from '../helpers/workspaceStub';
 import { discoveryFailure } from '../../build/recursiveOutcome';
-import {
-  ConflictingProjectError,
-  CyclicDependencyError,
-  DiscoveryCancelledError,
-  ProjectManifestError,
-  walkDependencies,
-} from '@metaverse-systems/the-seed/DependencyWalker';
+import { testTool } from '../helpers/tool';
 
 // Choices made where the contract leaves a detail open (the implementation matches these):
 // - `discoveryFailure` returns the object with exactly the keys `status`, `complete` and `message`,
@@ -20,7 +14,7 @@ suite('recursiveOutcome', () => {
   const timestamp = '2026-01-02T03:04:05.000Z';
 
   function expectFailure(error: Error, target: 'native' | 'windows'): void {
-    const outcome = discoveryFailure(error, target, timestamp);
+    const outcome = discoveryFailure(error, target, timestamp, testTool());
     assert.ok(outcome, 'a discovery error gives an outcome');
     assert.deepStrictEqual(outcome.status, {
       state: 'failed',
@@ -33,30 +27,30 @@ suite('recursiveOutcome', () => {
   }
 
   test('a cycle gives the failed status with the tool message', () => {
-    const error = new CyclicDependencyError(['@t/a', '@t/b'], ['/x/a', '/x/b']);
+    const error = new (testTool().CyclicDependencyError)(['@t/a', '@t/b'], ['/x/a', '/x/b']);
     assert.ok(error.message.includes('@t/a'));
     expectFailure(error, 'native');
   });
 
   test('a conflicting project gives the failed status for the windows target', () => {
-    expectFailure(new ConflictingProjectError('@t/a', '/x/one', '/x/two'), 'windows');
+    expectFailure(new (testTool().ConflictingProjectError)('@t/a', '/x/one', '/x/two'), 'windows');
   });
 
   test('an unreadable manifest gives the failed status', () => {
-    expectFailure(new ProjectManifestError('/x/package.json', 'no such file or directory'), 'native');
+    expectFailure(new (testTool().ProjectManifestError)('/x/package.json', 'no such file or directory'), 'native');
   });
 
   test('a plain Error gives null', () => {
-    assert.strictEqual(discoveryFailure(new Error('boom'), 'native', timestamp), null);
+    assert.strictEqual(discoveryFailure(new Error('boom'), 'native', timestamp, testTool()), null);
   });
 
   test('a cancelled discovery gives null', () => {
-    assert.strictEqual(discoveryFailure(new DiscoveryCancelledError(), 'native', timestamp), null);
+    assert.strictEqual(discoveryFailure(new (testTool().DiscoveryCancelledError)(), 'native', timestamp, testTool()), null);
   });
 
   test('a non-error value gives null', () => {
-    assert.strictEqual(discoveryFailure('text', 'native', timestamp), null);
-    assert.strictEqual(discoveryFailure(undefined, 'windows', timestamp), null);
+    assert.strictEqual(discoveryFailure('text', 'native', timestamp, testTool()), null);
+    assert.strictEqual(discoveryFailure(undefined, 'windows', timestamp, testTool()), null);
   });
 
   suite('with the linked tool', () => {
@@ -105,14 +99,14 @@ suite('recursiveOutcome', () => {
 
       let caught: unknown;
       try {
-        await walkDependencies(a);
+        await testTool().walkDependencies(a);
       } catch (error) {
         caught = error;
       } finally {
         fs.promises.readFile = previous;
       }
 
-      const outcome = discoveryFailure(caught, 'native', timestamp);
+      const outcome = discoveryFailure(caught, 'native', timestamp, testTool());
       assert.ok(outcome, `the rejection is a discovery error: ${String(caught)}`);
       assert.ok(outcome.message.includes('Dependency cycle'), outcome.message);
       assert.strictEqual(outcome.status.state, 'failed');

@@ -13,11 +13,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
-import Signing from '@metaverse-systems/the-seed/Signing';
 import { signFile } from '../../commands/signFile';
 import { createCertFor, fixturePath, writeScopes } from '../helpers/scratchHome';
 import { useScratchState } from '../helpers/scratchState';
 import { requires } from '../harness/platform';
+import { testTool } from '../helpers/tool';
 
 function digest(file: string): string {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
@@ -42,9 +42,9 @@ suite('signFile command', () => {
     writeScopes({ '@only': 'Only Author' });
     await createCertFor('@only');
     const pick = sinon.stub(vscode.window, 'showQuickPick').resolves(undefined);
-    const spy = sinon.spy(Signing.prototype, 'signFile');
+    const spy = sinon.spy(testTool().Signing.prototype, 'signFile');
 
-    await signFile(channel, vscode.Uri.file(program));
+    await signFile(channel, testTool(), vscode.Uri.file(program));
 
     assert.ok(pick.notCalled);
     assert.ok(spy.calledOnce);
@@ -57,9 +57,9 @@ suite('signFile command', () => {
     await createCertFor('@a');
     await createCertFor('@b');
     const pick = sinon.stub(vscode.window, 'showQuickPick').resolves('@b' as never);
-    const spy = sinon.spy(Signing.prototype, 'signFile');
+    const spy = sinon.spy(testTool().Signing.prototype, 'signFile');
 
-    await signFile(channel, vscode.Uri.file(program));
+    await signFile(channel, testTool(), vscode.Uri.file(program));
 
     assert.ok(pick.calledOnce);
     assert.ok(spy.calledOnce);
@@ -71,9 +71,9 @@ suite('signFile command', () => {
     await createCertFor('@a');
     await createCertFor('@b');
     sinon.stub(vscode.window, 'showQuickPick').resolves(undefined);
-    const spy = sinon.spy(Signing.prototype, 'signFile');
+    const spy = sinon.spy(testTool().Signing.prototype, 'signFile');
 
-    await signFile(channel, vscode.Uri.file(program));
+    await signFile(channel, testTool(), vscode.Uri.file(program));
 
     assert.ok(spy.notCalled);
     assert.strictEqual(digest(program), original);
@@ -85,9 +85,9 @@ suite('signFile command', () => {
     sinon.stub(vscode.window, 'showQuickPick').resolves('@b' as never);
     const error = sinon.stub(vscode.window, 'showErrorMessage').resolves('Create Certificate' as never);
     const exec = sinon.stub(vscode.commands, 'executeCommand').resolves(undefined);
-    const spy = sinon.spy(Signing.prototype, 'signFile');
+    const spy = sinon.spy(testTool().Signing.prototype, 'signFile');
 
-    await signFile(channel, vscode.Uri.file(program));
+    await signFile(channel, testTool(), vscode.Uri.file(program));
 
     assert.ok(error.calledOnce);
     assert.strictEqual(error.firstCall.args[0], 'No signing certificate for scope @b.');

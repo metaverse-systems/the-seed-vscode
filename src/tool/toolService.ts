@@ -118,6 +118,11 @@ export class ToolService implements vscode.Disposable {
     return attempt(() => this.deps.notifier.showRefusal(status));
   }
 
+  /** Shows the notice for `status` whether or not it was shown before (the user asked for it). */
+  showNotice(status: ToolStatus): Promise<void> {
+    return attempt(() => this.deps.notifier.showNotice(status));
+  }
+
   check(reason: CheckReason): Promise<ToolStatus> {
     const running = this.flight;
     if (running) {

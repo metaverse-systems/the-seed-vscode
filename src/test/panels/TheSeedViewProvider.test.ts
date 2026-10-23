@@ -2,6 +2,7 @@ import * as assert from 'assert';
 import * as sinon from 'sinon';
 import { TheSeedViewProvider } from '../../panels/TheSeedViewProvider';
 import * as vscode from 'vscode';
+import { activeToolService } from '../../tool/toolService';
 
 suite('TheSeedViewProvider', () => {
   let provider: TheSeedViewProvider;
@@ -9,7 +10,7 @@ suite('TheSeedViewProvider', () => {
 
   setup(() => {
     extensionUri = vscode.Uri.file('/test/extension');
-    provider = new TheSeedViewProvider(extensionUri);
+    provider = new TheSeedViewProvider(extensionUri, activeToolService());
   });
 
   test('should have the correct view type', () => {

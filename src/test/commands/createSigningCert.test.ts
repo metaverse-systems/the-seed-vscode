@@ -9,11 +9,10 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
-import Config from '@metaverse-systems/the-seed/Config';
-import Signing from '@metaverse-systems/the-seed/Signing';
 import { createSigningCert } from '../../commands/createSigningCert';
 import { createCertFor, writeScopes } from '../helpers/scratchHome';
 import { useScratchState } from '../helpers/scratchState';
+import { testTool } from '../helpers/tool';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -31,9 +30,9 @@ suite('createSigningCert command', () => {
     sinon.stub(vscode.window, 'showQuickPick').resolves('@b' as never);
     sinon.stub(vscode.window, 'showInputBox').resolves('30');
 
-    await createSigningCert(channel);
+    await createSigningCert(channel, testTool());
 
-    const signing = new Signing();
+    const signing = new (testTool().Signing)();
     assert.strictEqual(signing.hasCert('@a'), false);
     assert.strictEqual(signing.hasCert('@b'), true);
     const info = signing.getCertInfo('@b');
@@ -44,15 +43,15 @@ suite('createSigningCert command', () => {
 
   test('no top-level name is needed', async () => {
     writeScopes({ '@only': 'Only Author' });
-    const config = new Config();
+    const config = new (testTool().Config)();
     assert.ok(!config.config.name, 'the scratch configuration has no name');
     const error = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
     sinon.stub(vscode.window, 'showInputBox').resolves('365');
 
-    await createSigningCert(channel);
+    await createSigningCert(channel, testTool());
 
     assert.ok(error.notCalled, 'no message about a missing name');
-    assert.strictEqual(new Signing().hasCert('@only'), true);
+    assert.strictEqual(new (testTool().Signing)().hasCert('@only'), true);
   });
 
   test('overwriting an existing certificate asks first', async () => {
@@ -62,10 +61,10 @@ suite('createSigningCert command', () => {
     const warning = vscode.window.showWarningMessage as sinon.SinonStub;
     warning.resolves('Cancel');
 
-    await createSigningCert(channel);
+    await createSigningCert(channel, testTool());
 
     assert.ok(warning.calledOnce);
-    assert.strictEqual(new Signing().getCertInfo('@only')?.fingerprint, before);
+    assert.strictEqual(new (testTool().Signing)().getCertInfo('@only')?.fingerprint, before);
   });
 
   test('scope without an author name: Edit Scope is offered and runs', async () => {
@@ -74,20 +73,20 @@ suite('createSigningCert command', () => {
     sinon.stub(vscode.window, 'showInputBox').resolves('365');
     const exec = sinon.stub(vscode.commands, 'executeCommand').resolves(undefined);
 
-    await createSigningCert(channel);
+    await createSigningCert(channel, testTool());
 
     assert.ok(error.calledOnce);
     assert.strictEqual(error.firstCall.args[0], 'Scope @nameless has no author name.');
     assert.strictEqual(error.firstCall.args[1], 'Edit Scope');
     assert.ok(exec.calledOnceWithExactly('the-seed.editScope'));
-    assert.strictEqual(new Signing().hasCert('@nameless'), false);
+    assert.strictEqual(new (testTool().Signing)().hasCert('@nameless'), false);
   });
 
   test('the validity input rejects 0, abc and 3651 and accepts 365', async () => {
     writeScopes({ '@only': 'Only Author' });
     const input = sinon.stub(vscode.window, 'showInputBox').resolves(undefined);
 
-    await createSigningCert(channel);
+    await createSigningCert(channel, testTool());
 
     assert.ok(input.calledOnce);
     const options = input.firstCall.args[0] as vscode.InputBoxOptions;
@@ -98,6 +97,6 @@ suite('createSigningCert command', () => {
       assert.strictEqual(validate!(bad), message, `"${bad}" should be rejected`);
     }
     assert.ok(!validate!('365'), '"365" should be accepted');
-    assert.strictEqual(new Signing().hasCert('@only'), false, 'dismissing the input creates nothing');
+    assert.strictEqual(new (testTool().Signing)().hasCert('@only'), false, 'dismissing the input creates nothing');
   });
 });

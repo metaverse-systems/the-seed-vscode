@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
-import Config from '@metaverse-systems/the-seed/Config';
-import { checkLibEcs, checkLibTheSeed, getInstallSteps } from '@metaverse-systems/the-seed/Dependencies';
 import { runBuildSteps } from '../build/buildRunner';
 import { acquireOperationLock, releaseOperationLock, getOperationLock } from '../operationLock';
 import { execSync } from 'child_process';
+import type { ToolApi } from '../tool/toolApi';
+import type { ToolHandler } from './wrapCommand';
 
 /**
  * Check Dependencies command handler.
@@ -11,10 +11,10 @@ import { execSync } from 'child_process';
  */
 export function checkDependenciesCommand(
   outputChannel: vscode.OutputChannel
-): (oc: vscode.OutputChannel) => Promise<void> {
-  return async () => {
+): ToolHandler {
+  return async (_oc, tool) => {
     // Validate config exists (prefix configured)
-    const config = new Config();
+    const config = new tool.Config();
     config.loadConfig();
 
     if (!config.config.prefix || config.config.prefix === '') {
@@ -48,8 +48,8 @@ export function checkDependenciesCommand(
     }
 
     // Check libraries synchronously
-    const ecsInstalled = checkLibEcs(config, target.label);
-    const seedInstalled = checkLibTheSeed(config, target.label);
+    const ecsInstalled = tool.checkLibEcs(config, target.label);
+    const seedInstalled = tool.checkLibTheSeed(config, target.label);
 
     const ecsStatus = ecsInstalled ? '✓' : '✗';
     const seedStatus = seedInstalled ? '✓' : '✗';
@@ -67,10 +67,10 @@ export function checkDependenciesCommand(
 export function installDependenciesCommand(
   outputChannel: vscode.OutputChannel,
   viewProvider?: { postMessage: (msg: any) => void }
-): (oc: vscode.OutputChannel) => Promise<void> {
-  return async () => {
+): ToolHandler {
+  return async (_oc, tool) => {
     // Validate config exists
-    const config = new Config();
+    const config = new tool.Config();
     config.loadConfig();
 
     if (!config.config.prefix || config.config.prefix === '') {
@@ -114,7 +114,7 @@ export function installDependenciesCommand(
     }
 
     // Check which libraries are missing
-    const steps = getInstallSteps(config, target.label);
+    const steps = tool.getInstallSteps(config, target.label);
     if (steps.length === 0) {
       vscode.window.showInformationMessage(
         `All dependencies are already installed for ${target.label}.`
