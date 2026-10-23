@@ -7,73 +7,9 @@ import * as vscode from 'vscode';
 import { activeToolService } from '../../tool/toolService';
 import { useScratchState } from '../helpers/scratchState';
 import { withToolSetting } from '../helpers/tool';
-import { getOperationLock } from '../../operationLock';
-
-interface Posted {
-  type: string;
-  requestId?: string;
-  payload?: Record<string, unknown>;
-}
-
-interface FakeView {
-  view: vscode.WebviewView;
-  posted: Posted[];
-  receive(message: object): Promise<void>;
-  setVisible(visible: boolean): void;
-}
-
-/** A webview view that records what is posted to it and lets a case send messages and change visibility. */
-function fakeView(provider: TheSeedViewProvider): FakeView {
-  const posted: Posted[] = [];
-  let received: (message: object) => Promise<void> = async () => undefined;
-  let visibility: () => void = () => undefined;
-  const webview = {
-    options: {},
-    html: '',
-    cspSource: 'test',
-    asWebviewUri: (uri: vscode.Uri) => uri,
-    postMessage: async (message: Posted) => {
-      posted.push(message);
-      return true;
-    },
-    onDidReceiveMessage: (callback: (message: object) => Promise<void>) => {
-      received = callback;
-      return { dispose: () => undefined };
-    },
-  };
-  const view = {
-    webview,
-    visible: true,
-    onDidChangeVisibility: (callback: () => void) => {
-      visibility = callback;
-      return { dispose: () => undefined };
-    },
-  };
-  provider.resolveWebviewView(
-    view as unknown as vscode.WebviewView,
-    {} as vscode.WebviewViewResolveContext,
-    { isCancellationRequested: false, onCancellationRequested: sinon.stub() },
-  );
-  return {
-    view: view as unknown as vscode.WebviewView,
-    posted,
-    receive: (message) => received(message),
-    setVisible: (visible) => {
-      view.visible = visible;
-      visibility();
-    },
-  };
-}
-
-async function until(condition: () => boolean, what: string): Promise<void> {
-  const deadline = Date.now() + 5000;
-  while (!condition()) {
-    if (Date.now() > deadline) {
-      throw new Error(`timed out waiting for ${what}`);
-    }
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-}
+import { acquireOperationLock, getOperationLock } from '../../operationLock';
+import { fakeView, until } from '../helpers/fakeView';
+import type { FakeView, Posted } from '../helpers/fakeView';
 
 suite('TheSeedViewProvider', () => {
   let provider: TheSeedViewProvider;
@@ -210,6 +146,28 @@ suite('TheSeedViewProvider', () => {
       assert.strictEqual(answer.type, 'buildStarted');
       assert.notStrictEqual(answer.payload?.message, 'A build is already in progress.');
     });
+
+    for (const [command, target] of [['startBuild', 'native'], ['startRecursiveBuild', 'native']] as const) {
+      test(`${command} through the sidebar while a build holds the lock answers buildStarted and shows the palette's warning once`, async () => {
+        const held = acquireOperationLock('build');
+        assert.ok(held.success, 'the case holds the build lock');
+        const pick = sinon.stub(vscode.window, 'showQuickPick').resolves(undefined);
+        const warning = sinon.stub(vscode.window, 'showWarningMessage').resolves(undefined);
+        const fake = fakeView(provider);
+
+        await fake.receive({ command, requestId: 'held-1', data: { target } });
+
+        const answer = fake.posted.find((message) => message.requestId === 'held-1');
+        assert.ok(answer, 'the request was answered');
+        assert.strictEqual(answer.type, 'buildStarted', `the answer is not an error reply: ${JSON.stringify(answer.payload)}`);
+        await until(() => warning.callCount > 0, "the fired command's warning");
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        assert.deepStrictEqual(warning.getCalls().map((call) => call.args[0]), ['A build is already in progress.']);
+        assert.ok(pick.notCalled, 'nothing is asked while the lock is held');
+        assert.strictEqual(getOperationLock().type, 'build', 'the holder is unchanged');
+        assert.strictEqual(getOperationLock().abortController, held.abortController, 'the holder is the same build');
+      });
+    }
   });
 
   suite('creating a project from the sidebar', function () {

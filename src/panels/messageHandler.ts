@@ -23,7 +23,7 @@ import type {
   SigningScopeStatus,
 } from '../types/messages';
 import { toToolStatusPayload } from '../tool/toolStatus';
-import { getActiveBuild, cancelActiveBuild } from '../commands/buildNative';
+import { cancelActiveBuild } from '../commands/buildNative';
 import { cancelActiveRecursiveBuild } from '../commands/buildNativeRecursive';
 import { runBuildSteps } from '../build/buildRunner';
 import { acquireOperationLock, releaseOperationLock, getOperationLock } from '../operationLock';
@@ -330,15 +330,8 @@ export async function handleMessage(
       }
 
       case 'startBuild': {
-        // Check if a build is already running
-        if (getActiveBuild()) {
-          return {
-            type: 'error',
-            requestId: message.requestId,
-            payload: { message: 'A build is already in progress.' },
-          };
-        }
-
+        // The command refuses a start while any operation holds the lock, with the same warning as from
+        // the palette, so the sidebar always runs it and acknowledges the request.
         // The actual build execution is triggered via VS Code commands from the webview
         // This handler acknowledges the request; the command handler does the work
         const target = message.data.target;
@@ -367,15 +360,8 @@ export async function handleMessage(
       }
 
       case 'startRecursiveBuild': {
-        // Check if a build is already running
-        if (getActiveBuild()) {
-          return {
-            type: 'error',
-            requestId: message.requestId,
-            payload: { message: 'A build is already in progress.' },
-          };
-        }
-
+        // The command refuses a start while any operation holds the lock, with the same warning as from
+        // the palette, so the sidebar always runs it and acknowledges the request.
         const recursiveTarget = message.data.target;
         const recursiveCommandMap: Record<string, string> = {
           'native': 'the-seed.buildNativeRecursive',

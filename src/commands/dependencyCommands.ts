@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { runBuildSteps } from '../build/buildRunner';
-import { acquireOperationLock, releaseOperationLock, getOperationLock } from '../operationLock';
+import { acquireOperationLock, releaseOperationLock, getOperationLock, lockRefusal } from '../operationLock';
 import { execSync } from 'child_process';
 import type { ToolApi } from '../tool/toolApi';
 import type { ToolHandler } from './wrapCommand';
@@ -90,13 +90,10 @@ export function installDependenciesCommand(
       return;
     }
 
-    // Check operation lock (mutual exclusion with builds)
+    // Check operation lock (mutual exclusion with the other long operations)
     const currentLock = getOperationLock();
-    if (currentLock.active) {
-      const opType = currentLock.type === 'build' ? 'build' : 'install';
-      vscode.window.showWarningMessage(
-        `Cannot install dependencies while a ${opType} operation is in progress.`
-      );
+    if (currentLock.active && currentLock.type) {
+      vscode.window.showWarningMessage(lockRefusal('install', currentLock.type));
       return;
     }
 
@@ -125,10 +122,7 @@ export function installDependenciesCommand(
     // Acquire operation lock
     const lockResult = acquireOperationLock('install');
     if (!lockResult.success) {
-      const opType = lockResult.heldBy === 'build' ? 'build' : 'install';
-      vscode.window.showWarningMessage(
-        `Cannot install dependencies while a ${opType} operation is in progress.`
-      );
+      vscode.window.showWarningMessage(lockRefusal('install', lockResult.heldBy ?? 'install'));
       return;
     }
 

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { acquireOperationLock, releaseOperationLock } from '../operationLock';
+import { acquireOperationLock, releaseOperationLock, lockRefusal } from '../operationLock';
 import type { TheSeedViewProvider } from '../panels/TheSeedViewProvider';
 import type { PackageStatusPayload } from '../types/messages';
 import { packageStatusFrom, packageNotification } from '../build/packageOutcome';
@@ -35,15 +35,10 @@ export function packageProjectCommand(
       return;
     }
 
-    // Acquire operation lock ('package') — mutual exclusion with build/install
+    // Acquire operation lock ('package') — mutual exclusion with the other long operations
     const lockResult = acquireOperationLock('package');
     if (!lockResult.success) {
-      const msg = lockResult.heldBy === 'build'
-        ? 'Cannot package while a build operation is in progress.'
-        : lockResult.heldBy === 'install'
-          ? 'Cannot package while an install operation is in progress.'
-          : 'A package operation is already in progress.';
-      vscode.window.showWarningMessage(msg);
+      vscode.window.showWarningMessage(lockRefusal('package', lockResult.heldBy ?? 'package'));
       return;
     }
 
