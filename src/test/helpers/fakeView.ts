@@ -13,6 +13,12 @@ export interface FakeView {
   posted: Posted[];
   receive(message: object): Promise<void>;
   setVisible(visible: boolean): void;
+  /**
+   * Closes and reopens the sidebar as the editor does: hidden, shown, then the
+   * page's `ready`. Resolves to what was posted from the moment `ready` was sent
+   * until the provider had finished handling it.
+   */
+  reopen(): Promise<Posted[]>;
 }
 
 /** A webview view that records what is posted to it and lets a case send messages and change visibility. */
@@ -47,13 +53,21 @@ export function fakeView(provider: TheSeedViewProvider): FakeView {
     {} as vscode.WebviewViewResolveContext,
     { isCancellationRequested: false, onCancellationRequested: sinon.stub() },
   );
+  const setVisible = (visible: boolean): void => {
+    view.visible = visible;
+    visibility();
+  };
   return {
     view: view as unknown as vscode.WebviewView,
     posted,
     receive: (message) => received(message),
-    setVisible: (visible) => {
-      view.visible = visible;
-      visibility();
+    setVisible,
+    reopen: async () => {
+      setVisible(false);
+      setVisible(true);
+      const start = posted.length;
+      await received({ command: 'ready' });
+      return posted.slice(start);
     },
   };
 }

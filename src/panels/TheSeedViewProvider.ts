@@ -78,6 +78,10 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider, vscode.D
           void openCreatedProject(response.payload.packageDir);
         }
       }
+      // A page that has just loaded catches up on what is running, whichever place started it.
+      if (message.command === 'ready') {
+        this._replayTrackedState();
+      }
     });
 
     webviewView.onDidChangeVisibility(() => {
@@ -86,39 +90,44 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider, vscode.D
         if (this._service.status.state === 'usable') {
           void this._refreshConfig();
         }
-        // Push current build state so the webview catches up
-        if (this._currentBuildStatus) {
-          this.postMessage({ type: 'buildStatus', payload: this._currentBuildStatus });
-        }
-        // Push current dependency status so the webview catches up
-        if (this._currentDependencyStatus) {
-          this.postMessage({ type: 'dependencyStatus', payload: this._currentDependencyStatus });
-        }
-        // Push current install progress if install is running
-        if (this._currentInstallProgress) {
-          this.postMessage({ type: 'installDependenciesProgress', payload: this._currentInstallProgress });
-        }
-        // Push current package status so the webview catches up
-        if (this._currentPackageStatus) {
-          this.postMessage({ type: 'packageStatus', payload: this._currentPackageStatus });
-        }
-        // Push current installer status so the webview catches up
-        if (this._currentInstallerStatus) {
-          this.postMessage({ type: 'installerStatus', payload: this._currentInstallerStatus });
-        }
-        // Push current signing status so the webview catches up
-        if (this._currentSigningStatus) {
-          this.postMessage({ type: 'signingStatus', payload: this._currentSigningStatus });
-        }
-        // Push current recursive build progress so the webview catches up
-        if (this._currentRecursiveBuildProgress) {
-          this.postMessage({ type: 'recursiveBuildProgress', payload: this._currentRecursiveBuildProgress });
-        }
-        if (this._currentRecursiveBuildComplete) {
-          this.postMessage({ type: 'recursiveBuildComplete', payload: this._currentRecursiveBuildComplete });
-        }
+        this._replayTrackedState();
       }
     });
+  }
+
+  /** Posts every tracked state so a page that has just loaded or been shown catches up. */
+  private _replayTrackedState(): void {
+    // Push current build state so the webview catches up
+    if (this._currentBuildStatus) {
+      this.postMessage({ type: 'buildStatus', payload: this._currentBuildStatus });
+    }
+    // Push current dependency status so the webview catches up
+    if (this._currentDependencyStatus) {
+      this.postMessage({ type: 'dependencyStatus', payload: this._currentDependencyStatus });
+    }
+    // Push current install progress if install is running
+    if (this._currentInstallProgress) {
+      this.postMessage({ type: 'installDependenciesProgress', payload: this._currentInstallProgress });
+    }
+    // Push current package status so the webview catches up
+    if (this._currentPackageStatus) {
+      this.postMessage({ type: 'packageStatus', payload: this._currentPackageStatus });
+    }
+    // Push current installer status so the webview catches up
+    if (this._currentInstallerStatus) {
+      this.postMessage({ type: 'installerStatus', payload: this._currentInstallerStatus });
+    }
+    // Push current signing status so the webview catches up
+    if (this._currentSigningStatus) {
+      this.postMessage({ type: 'signingStatus', payload: this._currentSigningStatus });
+    }
+    // Push current recursive build progress so the webview catches up
+    if (this._currentRecursiveBuildProgress) {
+      this.postMessage({ type: 'recursiveBuildProgress', payload: this._currentRecursiveBuildProgress });
+    }
+    if (this._currentRecursiveBuildComplete) {
+      this.postMessage({ type: 'recursiveBuildComplete', payload: this._currentRecursiveBuildComplete });
+    }
   }
 
   /**
@@ -208,6 +217,18 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider, vscode.D
 </body>
 </html>`;
   }
+}
+
+let active: TheSeedViewProvider | undefined;
+
+/** Makes `provider` the one the rest of the extension and its tests reach through `activeViewProvider`. */
+export function setActiveViewProvider(provider: TheSeedViewProvider | undefined): void {
+  active = provider;
+}
+
+/** The view provider `activate` registered, while the extension is active. */
+export function activeViewProvider(): TheSeedViewProvider | undefined {
+  return active;
 }
 
 function getNonce(): string {

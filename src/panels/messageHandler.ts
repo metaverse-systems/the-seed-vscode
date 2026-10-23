@@ -17,7 +17,6 @@ import type {
   AddResourceData,
   ResourcePakFormData,
   DependencyStatusPayload,
-  InstallProgressPayload,
   PackageStatusPayload,
   SigningStatusPayload,
   SigningScopeStatus,
@@ -25,8 +24,7 @@ import type {
 import { toToolStatusPayload } from '../tool/toolStatus';
 import { cancelActiveBuild } from '../commands/buildNative';
 import { cancelActiveRecursiveBuild } from '../commands/buildNativeRecursive';
-import { runBuildSteps } from '../build/buildRunner';
-import { acquireOperationLock, releaseOperationLock, getOperationLock } from '../operationLock';
+import { getOperationLock } from '../operationLock';
 import type Config from '@metaverse-systems/the-seed/Config';
 import type { ToolApi } from '../tool/toolApi';
 import type { ToolService } from '../tool/toolService';
@@ -53,7 +51,6 @@ export function getCurrentBuildStatus(): BuildStatusPayload {
 
 // Dependency status tracking for getDependencyStatus / late-joining
 let currentDependencyStatus: DependencyStatusPayload | null = null;
-let currentInstallProgress: InstallProgressPayload | null = null;
 
 export function updateDependencyStatus(status: DependencyStatusPayload): void {
   currentDependencyStatus = status;
@@ -61,14 +58,6 @@ export function updateDependencyStatus(status: DependencyStatusPayload): void {
 
 export function getCurrentDependencyStatus(): DependencyStatusPayload | null {
   return currentDependencyStatus;
-}
-
-export function updateInstallProgress(progress: InstallProgressPayload | null): void {
-  currentInstallProgress = progress;
-}
-
-export function getCurrentInstallProgress(): InstallProgressPayload | null {
-  return currentInstallProgress;
 }
 
 // Package status tracking
@@ -630,157 +619,8 @@ export async function handleMessage(
       }
 
       case 'installDependencies': {
-        const config = new tool.Config();
-        config.loadConfig();
-
-        if (!config.config.prefix || config.config.prefix === '') {
-          return {
-            type: 'error',
-            requestId: message.requestId,
-            payload: { message: 'No prefix configured. Configure a project first.' },
-          };
-        }
-
-        // Check operation lock
-        const currentLock = getOperationLock();
-        if (currentLock.active) {
-          const opType = currentLock.type === 'build' ? 'build' : 'install';
-          return {
-            type: 'error',
-            requestId: message.requestId,
-            payload: { message: `Cannot install: a ${opType} operation is in progress.` },
-          };
-        }
-
-        const target = message.data.target;
-
-        // Check which libraries are missing
-        const steps = tool.getInstallSteps(config, target);
-        if (steps.length === 0) {
-          return {
-            type: 'error',
-            requestId: message.requestId,
-            payload: { message: `All dependencies are already installed for ${target}.` },
-          };
-        }
-
-        // Acquire lock
-        const lockResult = acquireOperationLock('install');
-        if (!lockResult.success) {
-          return {
-            type: 'error',
-            requestId: message.requestId,
-            payload: { message: `Cannot install: a ${lockResult.heldBy} operation is in progress.` },
-          };
-        }
-
-        const abortController = lockResult.abortController!;
-
-        // Acknowledge start
-        if (pushMessage) {
-          pushMessage({
-            type: 'installDependenciesStarted',
-            requestId: message.requestId,
-          });
-        }
-
-        // Run install asynchronously
-        (async () => {
-          try {
-            const result = await runBuildSteps(steps, {
-              cwd: config.config.prefix,
-              onStdout: () => {},
-              onStderr: () => {},
-              onStepStart: (step, index, total) => {
-                const progressPayload: InstallProgressPayload = {
-                  state: 'running',
-                  target,
-                  currentLibrary: step.label.split(' ')[1] || step.label,
-                  currentStep: step.label,
-                  stepIndex: index + 1,
-                  totalSteps: total,
-                  timestamp: new Date().toISOString(),
-                };
-                currentInstallProgress = progressPayload;
-                if (pushMessage) {
-                  pushMessage({
-                    type: 'installDependenciesProgress',
-                    payload: progressPayload,
-                  });
-                }
-              },
-              signal: abortController.signal,
-            });
-
-            if (!result.success) {
-              if (result.cancelledAtStep !== undefined) {
-                const cancelPayload: InstallProgressPayload = {
-                  state: 'cancelled',
-                  target,
-                  timestamp: new Date().toISOString(),
-                };
-                currentInstallProgress = null;
-                if (pushMessage) {
-                  pushMessage({
-                    type: 'installDependenciesProgress',
-                    payload: cancelPayload,
-                  });
-                }
-              } else {
-                const failPayload: InstallProgressPayload = {
-                  state: 'failed',
-                  target,
-                  errorMessage: 'Installation step failed with non-zero exit code',
-                  timestamp: new Date().toISOString(),
-                };
-                currentInstallProgress = null;
-                if (pushMessage) {
-                  pushMessage({
-                    type: 'installDependenciesProgress',
-                    payload: failPayload,
-                  });
-                }
-              }
-            } else {
-              const completePayload: InstallProgressPayload = {
-                state: 'completed',
-                target,
-                timestamp: new Date().toISOString(),
-              };
-              currentInstallProgress = null;
-              if (pushMessage) {
-                pushMessage({
-                  type: 'installDependenciesProgress',
-                  payload: completePayload,
-                });
-              }
-            }
-
-            // Auto-refresh dependency status
-            const ecsInstalled = tool.checkLibEcs(config, target);
-            const seedInstalled = tool.checkLibTheSeed(config, target);
-            const refreshStatus: DependencyStatusPayload = {
-              target,
-              libraries: [
-                { name: 'libecs-cpp', installed: ecsInstalled },
-                { name: 'libthe-seed', installed: seedInstalled },
-              ],
-              checking: false,
-              timestamp: new Date().toISOString(),
-            };
-            currentDependencyStatus = refreshStatus;
-            if (pushMessage) {
-              pushMessage({
-                type: 'dependencyStatus',
-                payload: refreshStatus,
-              });
-            }
-          } finally {
-            releaseOperationLock();
-          }
-        })();
-
-        // Return null since we handle async responses via pushMessage
+        // The sidebar runs the command itself, which reports through the view provider.
+        void vscode.commands.executeCommand('the-seed.installDependencies', message.data.target);
         return null;
       }
 

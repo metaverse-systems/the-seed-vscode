@@ -20,7 +20,7 @@ import { chooseScope } from "./signing/chooseScope";
 import { createSigningCert } from "./commands/createSigningCert";
 import { signFile } from "./commands/signFile";
 import { verifySignature } from "./commands/verifySignature";
-import { TheSeedViewProvider } from "./panels/TheSeedViewProvider";
+import { TheSeedViewProvider, setActiveViewProvider } from "./panels/TheSeedViewProvider";
 import { chooseCreationFolder, choosePakProject, openCreatedProject, describeError, isToolRefusal } from "./utils/projectFolder";
 import { addResourceFile } from "./utils/addResourceFile";
 import * as path from "path";
@@ -40,7 +40,8 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Register the Webview panel provider for the activity bar
   const viewProvider = new TheSeedViewProvider(context.extensionUri, toolService);
-  context.subscriptions.push(viewProvider);
+  setActiveViewProvider(viewProvider);
+  context.subscriptions.push(viewProvider, { dispose: () => setActiveViewProvider(undefined) });
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
       TheSeedViewProvider.viewType,

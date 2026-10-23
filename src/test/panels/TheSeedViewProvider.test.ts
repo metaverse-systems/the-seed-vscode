@@ -2,11 +2,13 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as sinon from 'sinon';
-import { TheSeedViewProvider } from '../../panels/TheSeedViewProvider';
+import { TheSeedViewProvider, activeViewProvider } from '../../panels/TheSeedViewProvider';
 import * as vscode from 'vscode';
 import { activeToolService } from '../../tool/toolService';
 import { useScratchState } from '../helpers/scratchState';
-import { withToolSetting } from '../helpers/tool';
+import { testTool, withToolSetting } from '../helpers/tool';
+import { requires } from '../harness/platform';
+import { useFakeGit } from '../helpers/fakeGit';
 import { acquireOperationLock, getOperationLock } from '../../operationLock';
 import { fakeView, until } from '../helpers/fakeView';
 import type { FakeView, Posted } from '../helpers/fakeView';
@@ -379,5 +381,131 @@ suite('TheSeedViewProvider', () => {
         );
       });
     });
+  });
+
+  suite('replay when the sidebar is reopened', function () {
+    this.timeout(60000);
+    useScratchState({ workspaceFolders: 1 });
+
+    teardown(() => {
+      (provider as unknown as { dispose?: () => void }).dispose?.();
+    });
+
+    /** The extension's own provider, resolved on a fake view whose page has loaded. */
+    async function openSidebar(): Promise<FakeView> {
+      const extensionProvider = activeViewProvider();
+      assert.ok(extensionProvider, "the extension's view provider exists");
+      const fake = fakeView(extensionProvider);
+      await fake.receive({ command: 'ready' });
+      return fake;
+    }
+
+    const ofType = (messages: Posted[], type: string, state?: string): Posted[] =>
+      messages.filter((message) => message.type === type && (state === undefined || message.payload?.state === state));
+
+    suite('dependency installation', () => {
+      requires('posix-toolchain');
+      const git = useFakeGit();
+
+      setup(() => {
+        sinon.stub(vscode.window, 'showQuickPick').resolves({ label: 'native' } as vscode.QuickPickItem);
+        sinon.stub(vscode.window, 'showInformationMessage').resolves(undefined);
+        sinon.stub(vscode.window, 'showWarningMessage').resolves(undefined);
+        sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+      });
+
+      const starts: { from: string; start: (fake: FakeView) => Promise<{ done: Thenable<unknown> | null }> }[] = [
+        {
+          from: 'the sidebar',
+          start: async (fake) => {
+            await fake.receive({ command: 'installDependencies', requestId: 'install-1', data: { target: 'native' } });
+            return { done: null };
+          },
+        },
+        {
+          from: 'the palette',
+          start: async () => ({ done: vscode.commands.executeCommand('the-seed.installDependencies', 'native') }),
+        },
+      ];
+
+      for (const { from, start } of starts) {
+        test(`an installation started from ${from} is replayed as running after ready, and not once it has ended`, async () => {
+          git.slow(30);
+          const fake = await openSidebar();
+
+          const { done } = await start(fake);
+          try {
+            await until(() => ofType(fake.posted, 'installDependenciesProgress', 'running').length > 0, 'the installation to post its running state');
+
+            const replayed = await fake.reopen();
+
+            const progress = ofType(replayed, 'installDependenciesProgress', 'running');
+            assert.ok(progress.length > 0, `the running installation is replayed after ready; posted after ready: ${JSON.stringify(replayed.map((message) => message.type))}`);
+            assert.strictEqual(progress[0].payload?.target, 'native');
+          } finally {
+            await fake.receive({ command: 'cancelInstallDependencies', requestId: 'cancel-1' });
+            await until(() => !getOperationLock().active, 'the installation to end');
+            await done;
+          }
+
+          const again = await fake.reopen();
+          assert.deepStrictEqual(ofType(again, 'installDependenciesProgress'), [], 'no install progress is replayed once the run has ended');
+        });
+      }
+    });
+
+    type Pending = { run: sinon.SinonStub; finish: () => void };
+
+    const palette: { name: string; commandId: string; type: string; begin: () => Pending }[] = [
+      {
+        name: 'packaging run',
+        commandId: 'the-seed.packageProject',
+        type: 'packageStatus',
+        begin: () => {
+          let finish: () => void = () => undefined;
+          const run = sinon.stub(testTool().Package.prototype, 'run').callsFake(() => new Promise((resolve) => {
+            finish = () => resolve({ success: false, message: 'stubbed packaging run', outputDir: '', projects: [], files: [], signatures: 0, fileCount: 0, notPackaged: [] });
+          }) as never);
+          return { run, finish: () => finish() };
+        },
+      },
+      {
+        name: 'installer run',
+        commandId: 'the-seed.generateWindowsInstaller',
+        type: 'installerStatus',
+        begin: () => {
+          let finish: () => void = () => undefined;
+          const run = sinon.stub(testTool().Installer.prototype, 'run').callsFake(() => new Promise((resolve) => {
+            finish = () => resolve({ ok: false, status: 1, message: 'stubbed installer run' });
+          }) as never);
+          return { run, finish: () => finish() };
+        },
+      },
+    ];
+
+    for (const { name, commandId, type, begin } of palette) {
+      test(`a palette ${name} is replayed as running after ready, and not once it has ended`, async () => {
+        sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+        sinon.stub(vscode.window, 'showWarningMessage').resolves(undefined);
+        sinon.stub(vscode.window, 'showInformationMessage').resolves(undefined);
+        const pending = begin();
+        const fake = await openSidebar();
+
+        const running = vscode.commands.executeCommand(commandId);
+        try {
+          await until(() => pending.run.called, `the ${name} to start`);
+
+          const replayed = await fake.reopen();
+
+          assert.ok(ofType(replayed, type, 'running').length > 0, `the running ${name} is replayed after ready; posted after ready: ${JSON.stringify(replayed.map((message) => message.type))}`);
+        } finally {
+          pending.finish();
+          await running;
+        }
+
+        const again = await fake.reopen();
+        assert.deepStrictEqual(ofType(again, type), [], `no ${type} is replayed once the run has ended`);
+      });
+    }
   });
 });

@@ -220,8 +220,10 @@ export const App: React.FC = () => {
           }
           break;
         case 'installDependenciesStarted':
+          // A run has started, from here or the command palette; the last run's progress no longer applies.
           setIsInstalling(true);
           setInstallError(null);
+          setInstallProgress(null);
           break;
         case 'installDependenciesCancelled':
           setIsInstalling(false);
@@ -229,7 +231,9 @@ export const App: React.FC = () => {
           break;
         case 'installDependenciesProgress':
           setInstallProgress(message.payload);
-          if (message.payload.state === 'completed') {
+          if (message.payload.state === 'running') {
+            setIsInstalling(true);
+          } else if (message.payload.state === 'completed') {
             setIsInstalling(false);
             setInstallError(null);
           } else if (message.payload.state === 'failed') {
@@ -441,10 +445,9 @@ export const App: React.FC = () => {
     });
   };
 
+  // The command reports the run's start, steps and outcome; until then nothing is shown running.
   const handleInstallDependencies = (target: 'native' | 'windows') => {
-    setIsInstalling(true);
     setInstallError(null);
-    setInstallProgress(null);
     vscode.postMessage({
       command: 'installDependencies',
       requestId: crypto.randomUUID(),
