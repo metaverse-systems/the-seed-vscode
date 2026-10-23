@@ -46,6 +46,33 @@ export async function chooseProjectFolder(): Promise<string | undefined> {
   return askForFolder('Create Here');
 }
 
+/** Where a new project goes and whether the window switches to it afterwards. */
+export interface CreationFolder {
+  /** Where the new project is created: the first workspace folder, else the folder the user chose. */
+  folder: string;
+  /** True exactly when the window had zero workspace folders when the creation was asked for. */
+  openAfterCreate: boolean;
+}
+
+/**
+ * The folder a new project is created in and whether to open it afterwards. The new project is opened
+ * only when no folder was open, so an open workspace (one folder or several) is never replaced.
+ * Resolves to undefined when the folder chooser is dismissed; nothing should be created then.
+ */
+export async function chooseCreationFolder(): Promise<CreationFolder | undefined> {
+  const openAfterCreate = (vscode.workspace.workspaceFolders?.length ?? 0) === 0;
+  const folder = await chooseProjectFolder();
+  if (!folder) {
+    return undefined;
+  }
+  return { folder, openAfterCreate };
+}
+
+/** Switches the window to a newly created project. */
+export function openCreatedProject(projectDir: string): Thenable<unknown> {
+  return vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(projectDir));
+}
+
 /**
  * The resource pak project to work on: the one in the first workspace folder, else a folder the user chooses
  * and the tool accepts as a resource pak project. Resolves to undefined when the user cancels or the chosen

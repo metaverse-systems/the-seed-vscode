@@ -1,5 +1,6 @@
 import * as assert from 'assert';
 import * as fs from 'fs';
+import * as path from 'path';
 import * as sinon from 'sinon';
 import { TheSeedViewProvider } from '../../panels/TheSeedViewProvider';
 import * as vscode from 'vscode';
@@ -208,6 +209,106 @@ suite('TheSeedViewProvider', () => {
       assert.ok(answer, 'the request was answered');
       assert.strictEqual(answer.type, 'buildStarted');
       assert.notStrictEqual(answer.payload?.message, 'A build is already in progress.');
+    });
+  });
+
+  suite('creating a project from the sidebar', function () {
+    this.timeout(60000);
+    const SCOPE = '@acme';
+    const NAME = 'widget';
+    const state = useScratchState({ scopes: { [SCOPE]: 'Ada Lovelace' }, workspaceFolders: 1 });
+    let opened: unknown[][];
+
+    setup(() => {
+      opened = [];
+      const original = vscode.commands.executeCommand.bind(vscode.commands);
+      sinon.stub(vscode.commands, 'executeCommand').callsFake(((command: string, ...args: unknown[]) => {
+        if (command === 'vscode.openFolder') {
+          opened.push(args);
+          return Promise.resolve(undefined);
+        }
+        return original(command, ...args);
+      }) as typeof vscode.commands.executeCommand);
+    });
+
+    teardown(() => {
+      (provider as unknown as { dispose?: () => void }).dispose?.();
+      sinon.restore();
+    });
+
+    function openedPaths(): string[] {
+      return opened.map((args) => (args[0] as vscode.Uri).fsPath);
+    }
+
+    test('createResourcePak with a folder open answers openFolder false, creates the pak inside it and opens nothing', async () => {
+      const workspace = state.workspaceFolders[0];
+      const dialog = sinon.stub(vscode.window, 'showOpenDialog').resolves(undefined);
+      const fake = fakeView(provider);
+
+      await fake.receive({ command: 'createResourcePak', requestId: 'pak-1', data: { scopeName: SCOPE, pakName: NAME } });
+
+      const answer = fake.posted.find((message) => message.requestId === 'pak-1');
+      assert.ok(answer, 'the request was answered');
+      assert.strictEqual(answer.type, 'resourcePakCreated');
+      assert.strictEqual(answer.payload?.openFolder, false);
+      assert.strictEqual(answer.payload?.packageDir, path.join(workspace, NAME));
+      assert.ok(fs.existsSync(path.join(workspace, NAME)), 'the pak is created inside the open folder');
+      assert.ok(dialog.notCalled, 'no folder is asked for while a folder is open');
+      assert.deepStrictEqual(opened, [], 'the open folder is not replaced');
+    });
+
+    test('createResourcePak with no folder open opens the new pak once', async () => {
+      const chosen = state.dir('chosen');
+      state.setWorkspaceFolders([]);
+      sinon.stub(vscode.window, 'showOpenDialog').resolves([vscode.Uri.file(chosen)]);
+      const fake = fakeView(provider);
+
+      await fake.receive({ command: 'createResourcePak', requestId: 'pak-2', data: { scopeName: SCOPE, pakName: NAME } });
+
+      const answer = fake.posted.find((message) => message.requestId === 'pak-2');
+      assert.ok(answer, 'the request was answered');
+      assert.strictEqual(answer.type, 'resourcePakCreated');
+      assert.strictEqual(answer.payload?.openFolder, true);
+      assert.deepStrictEqual(openedPaths(), [path.join(chosen, NAME)]);
+    });
+
+    test('createTemplate with a folder open opens nothing', async () => {
+      const workspace = state.workspaceFolders[0];
+      const dialog = sinon.stub(vscode.window, 'showOpenDialog').resolves(undefined);
+      const fake = fakeView(provider);
+
+      await fake.receive({
+        command: 'createTemplate',
+        requestId: 'template-1',
+        data: { templateType: 'component', scopeName: SCOPE, templateName: NAME },
+      });
+
+      const answer = fake.posted.find((message) => message.requestId === 'template-1');
+      assert.ok(answer, 'the request was answered');
+      assert.strictEqual(answer.type, 'templateCreated');
+      assert.strictEqual(answer.payload?.openFolder, false);
+      assert.ok(fs.existsSync(path.join(workspace, NAME)), 'the project is created inside the open folder');
+      assert.ok(dialog.notCalled, 'no folder is asked for while a folder is open');
+      assert.deepStrictEqual(opened, [], 'the open folder is not replaced');
+    });
+
+    test('createTemplate with no folder open opens the new project once', async () => {
+      const chosen = state.dir('chosen');
+      state.setWorkspaceFolders([]);
+      sinon.stub(vscode.window, 'showOpenDialog').resolves([vscode.Uri.file(chosen)]);
+      const fake = fakeView(provider);
+
+      await fake.receive({
+        command: 'createTemplate',
+        requestId: 'template-2',
+        data: { templateType: 'component', scopeName: SCOPE, templateName: NAME },
+      });
+
+      const answer = fake.posted.find((message) => message.requestId === 'template-2');
+      assert.ok(answer, 'the request was answered');
+      assert.strictEqual(answer.type, 'templateCreated');
+      assert.strictEqual(answer.payload?.openFolder, true);
+      assert.deepStrictEqual(openedPaths(), [path.join(chosen, NAME)]);
     });
   });
 

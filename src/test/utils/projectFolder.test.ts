@@ -6,7 +6,10 @@
 //   error's message and, when it has one, its hint;
 // - a workspace folder that is not a pak project does not stop the chooser
 //   asking for a folder;
-// - the open-folder dialog is stubbed to resolve an array holding one Uri.
+// - the open-folder dialog is stubbed to resolve an array holding one Uri;
+// - opening a created project is observed through a stub of
+//   vscode.commands.executeCommand that records "vscode.openFolder" without
+//   running it and forwards every other command.
 // The suite runs in the extension host because it imports vscode.
 import * as assert from 'assert';
 import * as fs from 'fs';
@@ -20,6 +23,8 @@ import { testTool } from '../helpers/tool';
 interface ProjectFolder {
   chooseProjectFolder(): Promise<string | undefined>;
   choosePakProject(tool: ToolApi): Promise<string | undefined>;
+  chooseCreationFolder(): Promise<{ folder: string; openAfterCreate: boolean } | undefined>;
+  openCreatedProject(projectDir: string): Thenable<unknown>;
 }
 
 function load(): ProjectFolder {
@@ -78,6 +83,66 @@ suite('projectFolder', () => {
       state.setWorkspaceFolders([]);
       sinon.stub(vscode.window, 'showOpenDialog').resolves([]);
       assert.strictEqual(await load().chooseProjectFolder(), undefined);
+    });
+  });
+
+  suite('chooseCreationFolder', () => {
+    test('one open folder: that folder, not opened afterwards, no dialog', async () => {
+      const only = scratch('only');
+      state.setWorkspaceFolders([only]);
+      const dialog = sinon.stub(vscode.window, 'showOpenDialog').resolves(undefined);
+
+      assert.deepStrictEqual(await load().chooseCreationFolder(), { folder: only, openAfterCreate: false });
+      assert.ok(dialog.notCalled);
+    });
+
+    test('two open folders: the first, not opened afterwards, no dialog', async () => {
+      const first = scratch('first');
+      const second = scratch('second');
+      state.setWorkspaceFolders([first, second]);
+      const dialog = sinon.stub(vscode.window, 'showOpenDialog').resolves(undefined);
+
+      assert.deepStrictEqual(await load().chooseCreationFolder(), { folder: first, openAfterCreate: false });
+      assert.ok(dialog.notCalled);
+    });
+
+    test('no open folder: the chosen folder, opened afterwards', async () => {
+      const chosen = scratch('chosen');
+      state.setWorkspaceFolders([]);
+      const dialog = sinon.stub(vscode.window, 'showOpenDialog').resolves([vscode.Uri.file(chosen)]);
+
+      assert.deepStrictEqual(await load().chooseCreationFolder(), { folder: chosen, openAfterCreate: true });
+      assert.ok(dialog.calledOnce);
+      assert.deepStrictEqual(dialog.firstCall.args[0], DIALOG_OPTIONS);
+    });
+
+    test('no open folder and the chooser dismissed: undefined', async () => {
+      state.setWorkspaceFolders([]);
+      sinon.stub(vscode.window, 'showOpenDialog').resolves(undefined);
+
+      assert.strictEqual(await load().chooseCreationFolder(), undefined);
+    });
+  });
+
+  suite('openCreatedProject', () => {
+    test('opens the project directory as the window\'s folder', async () => {
+      const project = scratch('project');
+      const opened: unknown[][] = [];
+      const original = vscode.commands.executeCommand.bind(vscode.commands);
+      sinon.stub(vscode.commands, 'executeCommand').callsFake(((command: string, ...args: unknown[]) => {
+        if (command === 'vscode.openFolder') {
+          opened.push(args);
+          return Promise.resolve(undefined);
+        }
+        return original(command, ...args);
+      }) as typeof vscode.commands.executeCommand);
+
+      await load().openCreatedProject(project);
+
+      assert.strictEqual(opened.length, 1, 'vscode.openFolder is executed once');
+      const target = opened[0][0];
+      assert.ok(target instanceof vscode.Uri, 'the folder is passed as a Uri');
+      assert.strictEqual(target.toString(), vscode.Uri.file(project).toString());
     });
   });
 

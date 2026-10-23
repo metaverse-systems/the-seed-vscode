@@ -8,6 +8,9 @@
 // - resource paks are checked through both extension paths: the palette
 //   command "the-seed.createResourcePak" (same stubs) and the panel's
 //   createResourcePak message (no workspace, folder chooser stubbed);
+// - with a folder open, the palette resource pak and component commands are
+//   also run through the command registry to show the new project is created
+//   inside that folder and the folder is not replaced;
 // - the date is fixed by faking only Date, so the extension's creation and the
 //   reference call agree on the year; the reference call also passes it
 //   explicitly, as the command line does with the current date;
@@ -155,6 +158,34 @@ suite('scaffoldTemplate', () => {
     assert.ok(fs.existsSync(path.join(chosen, NAME)), 'pak project must be created in the chosen folder');
     assertSameTree(path.join(chosen, NAME), path.join(reference, NAME));
     assert.deepStrictEqual(fs.readdirSync(state.prefix!), [], 'nothing may be written under the prefix');
+  });
+
+  test('resource pak through the registry with a folder open is created inside it and not opened', async () => {
+    const workspace = scratch('workspace');
+    state.setWorkspaceFolders([workspace]);
+    stubPrompts(SCOPE, NAME);
+    const dialog = stubChooser(scratch('unused'));
+
+    await vscode.commands.executeCommand('the-seed.createResourcePak');
+
+    assert.ok(fs.existsSync(path.join(workspace, NAME)), 'pak project must be created in the open folder');
+    assert.ok(dialog.notCalled, 'no folder is asked for while a folder is open');
+    assert.deepStrictEqual(fs.readdirSync(state.prefix!), [], 'nothing may be written under the prefix');
+    assert.strictEqual(opened.length, 0, 'the open folder is not replaced');
+  });
+
+  test('component through the registry with a folder open is created inside it and not opened', async () => {
+    const workspace = scratch('workspace');
+    state.setWorkspaceFolders([workspace]);
+    stubPrompts(SCOPE, NAME);
+    const dialog = stubChooser(scratch('unused'));
+
+    await vscode.commands.executeCommand('the-seed.createComponentTemplate');
+
+    assert.ok(fs.existsSync(path.join(workspace, NAME)), 'component must be created in the open folder');
+    assert.ok(dialog.notCalled, 'no folder is asked for while a folder is open');
+    assert.deepStrictEqual(fs.readdirSync(state.prefix!), [], 'nothing may be written under the prefix');
+    assert.strictEqual(opened.length, 0, 'the open folder is not replaced');
   });
 
   test('resource pak through the panel equals the tool\'s', async () => {
