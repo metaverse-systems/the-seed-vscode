@@ -131,7 +131,7 @@ Prerequisites: run `npm ci`, which installs the tool at the version in `devDepen
 
 ```sh
 npm test                 # clean, compile, typecheck, lint, bundle, then the host suite
-npm run compile          # one stage
+npm run compile          # clean, then compile into out/
 npm run typecheck        # sidebar type-check
 npm run lint             # fails on any warning, .ts and .tsx
 npm test -- host         # host suite only (needs compile and bundle)
@@ -161,7 +161,7 @@ The editor version is pinned in `.vscode-test.mjs` and must equal `VSCODE_VERSIO
 No line-level ESLint disables are used.
 
 ## 🛠️ Development & Debugging
-- Run `npm run watch` while developing ("Run Extension" starts it): it rebuilds `dist/extension.js` with source maps on every change. Run `npm run build` for a full build.
+- Run `npm run watch` while developing ("Run Extension" starts it): it rebuilds `dist/extension.js` with source maps on every change. It does not build the sidebar: run `npm run build:webview` (writes `dist/webview`) once, and again after changing `src/webview/`. Run `npm run build` for a full build.
 - Run `npm run package` to package it for publishing; it needs nothing installed globally (see Packaging below).
 
 ### Packaging
