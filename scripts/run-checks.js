@@ -9,7 +9,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { spawnSync } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 
 const root = path.resolve(__dirname, '..');
 const resultsFile = path.join(root, 'test-results', 'host.json');
@@ -321,11 +321,98 @@ async function watch() {
   return true;
 }
 
-function notAvailable(stage) {
-  return () => {
-    console.log(`${stage}: not available yet`);
+// Runs the package tool with stdin closed, echoing both streams as they
+// arrive; resolves to its exit status and everything it printed.
+function runPackager() {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [resolveEntry('@vscode', 'vsce', 'vsce'), 'package'], {
+      cwd: root,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const chunks = [];
+    child.stdout.on('data', (chunk) => {
+      process.stdout.write(chunk);
+      chunks.push(chunk);
+    });
+    child.stderr.on('data', (chunk) => {
+      process.stderr.write(chunk);
+      chunks.push(chunk);
+    });
+    child.on('error', (error) => {
+      chunks.push(Buffer.from(`${error.message}\n`));
+    });
+    child.on('close', (code, signal) => {
+      resolve({ exitCode: code === null ? (signal ? 1 : 0) : code, output: Buffer.concat(chunks).toString('utf8') });
+    });
+  });
+}
+
+// Builds the package from a clean build (the package tool runs
+// "vscode:prepublish") and fails on any package tool warning or error, a
+// runtime dependency, an editor range other than the tested version, or a
+// file list other than the expected one. The package is left in the root.
+async function packageExtension() {
+  for (const name of fs.readdirSync(root)) {
+    if (name.endsWith('.vsix')) {
+      fs.rmSync(path.join(root, name), { force: true });
+    }
+  }
+  const packager = await runPackager();
+
+  const checksPath = path.join(root, 'out', 'test', 'harness', 'packageContents.js');
+  if (!fs.existsSync(checksPath)) {
+    console.log('PACKAGE ERROR: the build did not complete');
     return false;
+  }
+  const checks = require(checksPath);
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+  const testConfigText = fs.readFileSync(path.join(root, '.vscode-test.mjs'), 'utf8');
+  const facts = checks.manifestFacts(manifest, testConfigText);
+  const scanned = checks.scanPackagerOutput(packager.output);
+
+  const file = `${manifest.name}-${manifest.version}.vsix`;
+  const packagePath = path.join(root, file);
+  const produced = fs.existsSync(packagePath);
+  let entries = [];
+  let bytes = 0;
+  const readErrors = [];
+  if (produced) {
+    const zip = fs.readFileSync(packagePath);
+    bytes = zip.length;
+    try {
+      entries = checks.readZipEntryNames(zip);
+    } catch (error) {
+      readErrors.push(`${file} could not be read: ${error.message}`);
+    }
+  }
+  const compared = produced && readErrors.length === 0
+    ? checks.compareFileList(checks.EXPECTED_PACKAGE_FILES, entries)
+    : { missing: [], extra: [] };
+
+  const report = {
+    file,
+    produced,
+    exitCode: packager.exitCode,
+    warnings: scanned.warnings,
+    errors: [...scanned.errors, ...readErrors],
+    dependencies: facts.dependencies,
+    engineFloor: facts.engineFloor,
+    testedVersion: facts.testedVersion,
+    engineRange: facts.engineRange,
+    missing: compared.missing,
+    extra: compared.extra,
+    entries: entries.length,
+    bytes,
   };
+  const outcome = checks.packageReportLines(report);
+  for (const line of outcome.failures) {
+    console.log(line);
+  }
+  if (!outcome.passed) {
+    return false;
+  }
+  console.log(`Package: ${file} (${entries.length} files, ${Math.round(bytes / 1024)} KB)`);
+  return true;
 }
 
 const stageRunners = {
@@ -334,7 +421,7 @@ const stageRunners = {
   typecheck: () => run(resolveEntry('typescript', 'bin', 'tsc'), ['--noEmit', '-p', 'tsconfig.webview.json']),
   lint: () => run(resolveEntry('eslint', 'bin', 'eslint.js'), ['--max-warnings', '0', 'src']),
   bundle,
-  package: notAvailable('package'),
+  package: packageExtension,
   watch,
 };
 
