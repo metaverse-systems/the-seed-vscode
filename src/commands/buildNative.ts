@@ -1,10 +1,10 @@
 import * as vscode from 'vscode';
 import { runProjectBuild } from '../build/projectBuild';
 import { describeBuildRejection, describeFailedStep } from '../build/buildFailure';
-import { detectBuildableProject } from '../build/projectDetector';
+import { startBuild } from '../build/buildStart';
 import type { TheSeedViewProvider } from '../panels/TheSeedViewProvider';
 import type { BuildStatusPayload } from '../types/messages';
-import { acquireOperationLock, releaseOperationLock, getOperationLock } from '../operationLock';
+import { releaseOperationLock, getOperationLock } from '../operationLock';
 import type { ToolApi } from '../tool/toolApi';
 import type { ToolHandler } from './wrapCommand';
 
@@ -68,108 +68,36 @@ async function executeBuild(
   viewProvider: TheSeedViewProvider,
   tool: ToolApi
 ): Promise<void> {
-  // Prompt for build mode before acquiring lock
-  const buildModeItems: vscode.QuickPickItem[] = [
-    { label: 'Debug', description: 'Standard build with debug symbols' },
-    { label: 'Release', description: 'Strip and sign the installed programs and libraries' },
-  ];
-  const selectedMode = await vscode.window.showQuickPick(buildModeItems, {
-    placeHolder: 'Select build mode',
+  const start = await startBuild({
+    releaseDescription: 'Strip and sign the installed programs and libraries',
+    projectPlaceHolder: 'Select a project to build',
   });
-  if (!selectedMode) {
-    return; // User dismissed — cancel build
-  }
-  const release = selectedMode.label === 'Release';
-
-  // Shared operation lock (mutual exclusion with install)
-  const lockResult = acquireOperationLock('build');
-  if (!lockResult.success) {
-    const msg = lockResult.heldBy === 'install'
-      ? 'Cannot build while an install operation is in progress.'
-      : 'A build is already in progress.';
-    vscode.window.showWarningMessage(msg);
+  if (!start) {
     return;
   }
-  const activeBuild = lockResult.abortController!;
-
-  // Detect buildable project
-  const activeEditor = vscode.window.activeTextEditor;
-  let projectPath: string | undefined;
-
-  if (activeEditor) {
-    const workspaceFolders = vscode.workspace.workspaceFolders;
-    const workspaceRoot = workspaceFolders?.[0]?.uri.fsPath;
-    if (workspaceRoot) {
-      const project = detectBuildableProject(activeEditor.document.uri.fsPath, workspaceRoot);
-      if (project) {
-        projectPath = project.path;
-      }
-    }
-  }
-
-  if (!projectPath) {
-    // QuickPick fallback: try to find buildable projects in workspace
-    const workspaceFolders = vscode.workspace.workspaceFolders;
-    if (workspaceFolders) {
-      const uris = await vscode.workspace.findFiles('**/package.json', '**/node_modules/**', 50);
-      const buildableProjects: { label: string; path: string }[] = [];
-
-      for (const uri of uris) {
-        try {
-          const content = (await vscode.workspace.fs.readFile(uri)).toString();
-          const pkg = JSON.parse(content);
-          if (pkg.scripts?.build && typeof pkg.scripts.build === 'string' && pkg.scripts.build.includes('the-seed')) {
-            const dir = vscode.Uri.joinPath(uri, '..').fsPath;
-            buildableProjects.push({
-              label: pkg.name || dir,
-              path: dir,
-            });
-          }
-        } catch {
-          // Skip malformed packages
-        }
-      }
-
-      if (buildableProjects.length === 1) {
-        projectPath = buildableProjects[0].path;
-      } else if (buildableProjects.length > 1) {
-        const picked = await vscode.window.showQuickPick(
-          buildableProjects.map(p => ({ label: p.label, detail: p.path })),
-          { placeHolder: 'Select a project to build' }
-        );
-        if (picked) {
-          projectPath = picked.detail;
-        }
-      }
-    }
-  }
-
-  if (!projectPath) {
-    vscode.window.showErrorMessage('No buildable project found. Open a file in a The Seed project.');
-    return;
-  }
-
-  // Load config and get build steps
-  const config = new tool.Config();
-  config.loadConfig();
-  const build = new tool.Build(config);
-
-  const buildType = fullReconfigure ? target : 'incremental';
-  const buildLabel = release ? `${buildType} (release)` : buildType;
-
-  // Show output channel
-  outputChannel.show(true);
-  const timestamp = new Date().toISOString();
-  outputChannel.appendLine(`\n${'═'.repeat(60)}`);
-  outputChannel.appendLine(`Build ${buildLabel} started at ${timestamp}`);
-  outputChannel.appendLine(`Project: ${projectPath}`);
-  outputChannel.appendLine(`${'═'.repeat(60)}\n`);
-
-  const broadcastStatus = (payload: BuildStatusPayload) => {
-    viewProvider.postMessage({ type: 'buildStatus', payload });
-  };
+  const { release, projectPath, abortController: activeBuild } = start;
 
   try {
+    // Load config and get build steps
+    const config = new tool.Config();
+    config.loadConfig();
+    const build = new tool.Build(config);
+
+    const buildType = fullReconfigure ? target : 'incremental';
+    const buildLabel = release ? `${buildType} (release)` : buildType;
+
+    // Show output channel
+    outputChannel.show(true);
+    const timestamp = new Date().toISOString();
+    outputChannel.appendLine(`\n${'═'.repeat(60)}`);
+    outputChannel.appendLine(`Build ${buildLabel} started at ${timestamp}`);
+    outputChannel.appendLine(`Project: ${projectPath}`);
+    outputChannel.appendLine(`${'═'.repeat(60)}\n`);
+
+    const broadcastStatus = (payload: BuildStatusPayload) => {
+      viewProvider.postMessage({ type: 'buildStatus', payload });
+    };
+
     await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
@@ -189,7 +117,7 @@ async function executeBuild(
             result = await runProjectBuild(
               build,
               {
-                projectDir: projectPath!,
+                projectDir: projectPath,
                 target: fullReconfigure ? (target as 'native' | 'windows') : undefined,
                 release,
                 configDir: config.configDir,

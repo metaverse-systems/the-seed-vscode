@@ -6,6 +6,7 @@ import * as vscode from 'vscode';
 import { activeToolService } from '../../tool/toolService';
 import { useScratchState } from '../helpers/scratchState';
 import { withToolSetting } from '../helpers/tool';
+import { getOperationLock } from '../../operationLock';
 
 interface Posted {
   type: string;
@@ -177,6 +178,37 @@ suite('TheSeedViewProvider', () => {
       rootPath.includes('dist') && rootPath.includes('webview'),
       'localResourceRoots should include the webview build directory'
     );
+  });
+
+  suite('build commands that do not start', function () {
+    this.timeout(60000);
+    useScratchState({ workspaceFolders: 1 });
+
+    teardown(() => {
+      (provider as unknown as { dispose?: () => void }).dispose?.();
+      sinon.restore();
+    });
+
+    test('startBuild through the sidebar after a build ended with no project answers buildStarted', async () => {
+      const pick = sinon.stub(vscode.window, 'showQuickPick');
+      pick.onFirstCall().resolves({ label: 'Debug' } as vscode.QuickPickItem);
+      pick.resolves(undefined);
+      sinon.stub(vscode.workspace, 'findFiles').resolves([]);
+      sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+      sinon.stub(vscode.window, 'showWarningMessage').resolves(undefined);
+      await vscode.commands.executeCommand('the-seed.buildNative');
+      assert.strictEqual(getOperationLock().active, false, 'the lock is free after the build that did not start');
+      const fake = fakeView(provider);
+      const asked = pick.callCount;
+
+      await fake.receive({ command: 'startBuild', requestId: 'build-1', data: { target: 'native' } });
+      await until(() => pick.callCount > asked, 'the fired command to ask for the build mode');
+
+      const answer = fake.posted.find((message) => message.requestId === 'build-1');
+      assert.ok(answer, 'the request was answered');
+      assert.strictEqual(answer.type, 'buildStarted');
+      assert.notStrictEqual(answer.payload?.message, 'A build is already in progress.');
+    });
   });
 
   suite('tool status', function () {
