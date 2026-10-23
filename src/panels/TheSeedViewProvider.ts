@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { handleMessage } from './messageHandler';
 import type { ToolService } from '../tool/toolService';
 import { toToolStatusPayload } from '../tool/toolStatus';
+import { openCreatedProject } from '../utils/projectFolder';
 import type { ExtensionToWebviewMessage, BuildStatusPayload, DependencyStatusPayload, InstallProgressPayload, PackageStatusPayload, InstallerStatusPayload, SigningStatusPayload, RecursiveBuildProgressPayload, RecursiveBuildCompletePayload } from '../types/messages';
 
 export class TheSeedViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
@@ -61,23 +62,20 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider, vscode.D
       if (response) {
         webviewView.webview.postMessage(response);
 
-        // If template was created and openFolder flag is set, open the new folder
+        // A created project is opened only when no folder was open when it was asked for.
         if (
           response.type === 'templateCreated' &&
           response.payload.openFolder &&
           response.payload.projectPath
         ) {
-          const folderUri = vscode.Uri.file(response.payload.projectPath);
-          vscode.commands.executeCommand('vscode.openFolder', folderUri);
+          void openCreatedProject(response.payload.projectPath);
         }
-
-        // After creating a ResourcePak, open its directory as the workspace
         if (
           response.type === 'resourcePakCreated' &&
+          response.payload.openFolder &&
           response.payload.packageDir
         ) {
-          const folderUri = vscode.Uri.file(response.payload.packageDir);
-          vscode.commands.executeCommand('vscode.openFolder', folderUri);
+          void openCreatedProject(response.payload.packageDir);
         }
       }
     });

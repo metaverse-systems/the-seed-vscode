@@ -1,10 +1,83 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { chooseScope } from '../signing/chooseScope';
 import { describeSignFailure } from '../signing/signFailure';
 import type { ToolApi } from '../tool/toolApi';
+import { commandTargets, NO_FILE_SELECTED } from './commandTargets';
 
-export async function signFile(outputChannel: vscode.OutputChannel, tool: ToolApi, uri?: vscode.Uri): Promise<void> {
+type Signing = InstanceType<ToolApi['Signing']>;
+type SignResult = Awaited<ReturnType<Signing['signFile']>>;
+
+/** Writes the output lines for one signed file. */
+function logSigned(outputChannel: vscode.OutputChannel, result: SignResult): void {
+  const timestamp = new Date().toISOString();
+  if (result.signatureType === 'embedded') {
+    outputChannel.appendLine(`[${timestamp}] Signed (embedded): ${result.filePath}`);
+  } else {
+    outputChannel.appendLine(`[${timestamp}] Signed (detached): ${result.filePath} → ${result.signaturePath}`);
+  }
+  for (const warning of result.warnings) {
+    outputChannel.appendLine(`  Warning: ${warning}`);
+  }
+}
+
+/** Signs one file and shows the outcome in notifications, as for a single chosen or open file. */
+async function signOne(outputChannel: vscode.OutputChannel, signing: Signing, targetPath: string, scope: string): Promise<void> {
+  try {
+    const result = await signing.signFile(targetPath, { scope });
+    const fileName = targetPath.split('/').pop() || targetPath;
+    logSigned(outputChannel, result);
+
+    if (result.signatureType === 'embedded') {
+      vscode.window.showInformationMessage(`Embedded signature applied to ${fileName}`);
+    } else {
+      const sigName = result.signaturePath?.split('/').pop() || result.signaturePath;
+      vscode.window.showInformationMessage(`Detached signature saved to ${sigName}`);
+    }
+
+    for (const warning of result.warnings) {
+      vscode.window.showWarningMessage(warning);
+    }
+  } catch (err: unknown) {
+    const failure = describeSignFailure(err, new Date().toISOString());
+    outputChannel.appendLine(failure.logLine);
+    vscode.window.showErrorMessage(failure.notification);
+  }
+}
+
+/**
+ * Sign the file the command was started on, every file of the explorer selection, or the active editor's
+ * file. Only binaries are signed; the scope is chosen and its certificate checked once for all of them.
+ * One file shows its outcome in notifications; several files write each outcome to the output channel,
+ * carry on after a failure, and end with one summary notification.
+ */
+export async function signFile(outputChannel: vscode.OutputChannel, tool: ToolApi, ...args: unknown[]): Promise<void> {
+  const targets = commandTargets(args);
+  if (!targets) {
+    vscode.window.showErrorMessage(NO_FILE_SELECTED);
+    return;
+  }
+
   const signing = new tool.Signing();
+
+  const binaries: string[] = [];
+  const skipped: string[] = [];
+  for (const target of targets) {
+    if (await signing.isBinaryFile(target)) {
+      binaries.push(target);
+    } else {
+      skipped.push(path.basename(target));
+    }
+  }
+
+  if (binaries.length === 0) {
+    if (skipped.length === 1) {
+      vscode.window.showWarningMessage(`Only binary files can be signed: ${skipped[0]}.`);
+    } else {
+      vscode.window.showWarningMessage(`Only binary files can be signed; skipped: ${skipped.join(', ')}.`);
+    }
+    return;
+  }
 
   const scope = await chooseScope(signing, 'sign files', tool);
   if (!scope) {
@@ -22,53 +95,35 @@ export async function signFile(outputChannel: vscode.OutputChannel, tool: ToolAp
     return;
   }
 
-  // Determine target file
-  let targetPath: string | undefined;
+  if (targets.length === 1) {
+    await signOne(outputChannel, signing, binaries[0], scope);
+    return;
+  }
 
-  if (uri) {
-    targetPath = uri.fsPath;
+  let signed = 0;
+  let failed = 0;
+  for (const target of binaries) {
+    try {
+      logSigned(outputChannel, await signing.signFile(target, { scope }));
+      signed++;
+    } catch (err: unknown) {
+      outputChannel.appendLine(describeSignFailure(err, new Date().toISOString()).logLine);
+      failed++;
+    }
+  }
+
+  if (skipped.length > 0) {
+    vscode.window.showWarningMessage(`Only binary files can be signed; skipped: ${skipped.join(', ')}.`);
+  }
+
+  if (signed === targets.length) {
+    vscode.window.showInformationMessage(`Signed ${signed} files.`);
+    return;
+  }
+  const summary = `Signed ${signed} of ${targets.length} files: ${skipped.length} skipped, ${failed} failed. See the output for details.`;
+  if (failed > 0) {
+    vscode.window.showErrorMessage(summary);
   } else {
-    const activeEditor = vscode.window.activeTextEditor;
-    if (activeEditor) {
-      targetPath = activeEditor.document.uri.fsPath;
-    }
-  }
-
-  if (!targetPath) {
-    vscode.window.showErrorMessage('No file selected. Open a file or use the context menu.');
-    return;
-  }
-
-  // Check if file is binary
-  const isBin = await signing.isBinaryFile(targetPath);
-  if (!isBin) {
-    vscode.window.showWarningMessage('Only binary files can be signed.');
-    return;
-  }
-
-  try {
-    const result = await signing.signFile(targetPath, { scope });
-    const fileName = targetPath.split('/').pop() || targetPath;
-
-    const timestamp = new Date().toISOString();
-
-    if (result.signatureType === 'embedded') {
-      outputChannel.appendLine(`[${timestamp}] Signed (embedded): ${result.filePath}`);
-      vscode.window.showInformationMessage(`Embedded signature applied to ${fileName}`);
-    } else {
-      const sigName = result.signaturePath?.split('/').pop() || result.signaturePath;
-      outputChannel.appendLine(`[${timestamp}] Signed (detached): ${result.filePath} → ${result.signaturePath}`);
-      vscode.window.showInformationMessage(`Detached signature saved to ${sigName}`);
-    }
-
-    // Display any warnings
-    for (const warning of result.warnings) {
-      outputChannel.appendLine(`  Warning: ${warning}`);
-      vscode.window.showWarningMessage(warning);
-    }
-  } catch (err: unknown) {
-    const failure = describeSignFailure(err, new Date().toISOString());
-    outputChannel.appendLine(failure.logLine);
-    vscode.window.showErrorMessage(failure.notification);
+    vscode.window.showWarningMessage(summary);
   }
 }

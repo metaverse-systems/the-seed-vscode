@@ -1,11 +1,11 @@
 import * as vscode from 'vscode';
 import type { BuildableProject, BuildStep } from '@metaverse-systems/the-seed/types';
-import { detectBuildableProject } from '../build/projectDetector';
+import { startBuild } from '../build/buildStart';
 import type { TheSeedViewProvider } from '../panels/TheSeedViewProvider';
 import type { BuildStatusPayload, RecursiveBuildProgressPayload, RecursiveBuildCompletePayload } from '../types/messages';
 import { discoveryFailure } from '../build/recursiveOutcome';
 import { describeBuildRejection } from '../build/buildFailure';
-import { acquireOperationLock, releaseOperationLock, getOperationLock } from '../operationLock';
+import { releaseOperationLock, getOperationLock } from '../operationLock';
 import type { ToolApi } from '../tool/toolApi';
 import type { ToolHandler } from './wrapCommand';
 
@@ -56,110 +56,37 @@ async function executeRecursiveBuild(
   viewProvider: TheSeedViewProvider,
   tool: ToolApi
 ): Promise<void> {
-  // Prompt for build mode before acquiring lock
-  const buildModeItems: vscode.QuickPickItem[] = [
-    { label: 'Debug', description: 'Standard build with debug symbols' },
-    { label: 'Release', description: 'Strip debug symbols for production' },
-  ];
-  const selectedMode = await vscode.window.showQuickPick(buildModeItems, {
-    placeHolder: 'Select build mode',
+  const start = await startBuild({
+    releaseDescription: 'Strip debug symbols for production',
+    projectPlaceHolder: 'Select a project to build recursively',
   });
-  if (!selectedMode) {
-    return; // User dismissed — cancel build
-  }
-  const release = selectedMode.label === 'Release';
-
-  // Acquire operation lock (mutual exclusion with other builds and install)
-  const lockResult = acquireOperationLock('build');
-  if (!lockResult.success) {
-    const msg = lockResult.heldBy === 'install'
-      ? 'Cannot build while an install operation is in progress.'
-      : 'A build is already in progress.';
-    vscode.window.showWarningMessage(msg);
+  if (!start) {
     return;
   }
-  const abortController = lockResult.abortController!;
-
-  // Detect buildable project
-  const activeEditor = vscode.window.activeTextEditor;
-  let projectPath: string | undefined;
-
-  if (activeEditor) {
-    const workspaceFolders = vscode.workspace.workspaceFolders;
-    const workspaceRoot = workspaceFolders?.[0]?.uri.fsPath;
-    if (workspaceRoot) {
-      const project = detectBuildableProject(activeEditor.document.uri.fsPath, workspaceRoot);
-      if (project) {
-        projectPath = project.path;
-      }
-    }
-  }
-
-  if (!projectPath) {
-    // QuickPick fallback
-    const workspaceFolders = vscode.workspace.workspaceFolders;
-    if (workspaceFolders) {
-      const uris = await vscode.workspace.findFiles('**/package.json', '**/node_modules/**', 50);
-      const buildableProjects: { label: string; path: string }[] = [];
-
-      for (const uri of uris) {
-        try {
-          const content = (await vscode.workspace.fs.readFile(uri)).toString();
-          const pkg = JSON.parse(content);
-          if (pkg.scripts?.build && typeof pkg.scripts.build === 'string' && pkg.scripts.build.includes('the-seed')) {
-            const dir = vscode.Uri.joinPath(uri, '..').fsPath;
-            buildableProjects.push({
-              label: pkg.name || dir,
-              path: dir,
-            });
-          }
-        } catch {
-          // Skip malformed packages
-        }
-      }
-
-      if (buildableProjects.length === 1) {
-        projectPath = buildableProjects[0].path;
-      } else if (buildableProjects.length > 1) {
-        const picked = await vscode.window.showQuickPick(
-          buildableProjects.map(p => ({ label: p.label, detail: p.path })),
-          { placeHolder: 'Select a project to build recursively' }
-        );
-        if (picked) {
-          projectPath = picked.detail;
-        }
-      }
-    }
-  }
-
-  if (!projectPath) {
-    vscode.window.showErrorMessage('No buildable project found. Open a file in a The Seed project.');
-    releaseOperationLock();
-    return;
-  }
-
-  // Show output channel
-  const buildLabel = release ? `${target} (release)` : target;
-  outputChannel.show(true);
-  const timestamp = new Date().toISOString();
-  outputChannel.appendLine(`\n${'═'.repeat(60)}`);
-  outputChannel.appendLine(`Recursive build ${buildLabel} started at ${timestamp}`);
-  outputChannel.appendLine(`Project: ${projectPath}`);
-  outputChannel.appendLine(`${'═'.repeat(60)}\n`);
-
-  const broadcastBuildStatus = (payload: BuildStatusPayload) => {
-    viewProvider.postMessage({ type: 'buildStatus', payload });
-  };
-
-  const broadcastRecursiveProgress = (payload: RecursiveBuildProgressPayload) => {
-    viewProvider.postMessage({ type: 'recursiveBuildProgress', payload });
-  };
-
-  const broadcastRecursiveComplete = (payload: RecursiveBuildCompletePayload) => {
-    viewProvider.postMessage({ type: 'recursiveBuildComplete', payload });
-  };
+  const { release, projectPath, abortController } = start;
 
   try {
+    // Show output channel
+    const buildLabel = release ? `${target} (release)` : target;
+    outputChannel.show(true);
+    const timestamp = new Date().toISOString();
+    outputChannel.appendLine(`\n${'═'.repeat(60)}`);
+    outputChannel.appendLine(`Recursive build ${buildLabel} started at ${timestamp}`);
+    outputChannel.appendLine(`Project: ${projectPath}`);
+    outputChannel.appendLine(`${'═'.repeat(60)}\n`);
+
+    const broadcastBuildStatus = (payload: BuildStatusPayload) => {
+      viewProvider.postMessage({ type: 'buildStatus', payload });
+    };
+
+    const broadcastRecursiveProgress = (payload: RecursiveBuildProgressPayload) => {
+      viewProvider.postMessage({ type: 'recursiveBuildProgress', payload });
+    };
+
+    const broadcastRecursiveComplete = (payload: RecursiveBuildCompletePayload) => {
+      viewProvider.postMessage({ type: 'recursiveBuildComplete', payload });
+    };
+
     await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
@@ -191,7 +118,7 @@ async function executeRecursiveBuild(
               config,
               target,
               fullReconfigure: true,
-              projectDir: projectPath!,
+              projectDir: projectPath,
               signal: abortController.signal,
               release,
               callbacks: {

@@ -21,7 +21,7 @@ import { createSigningCert } from "./commands/createSigningCert";
 import { signFile } from "./commands/signFile";
 import { verifySignature } from "./commands/verifySignature";
 import { TheSeedViewProvider } from "./panels/TheSeedViewProvider";
-import { chooseProjectFolder, choosePakProject, describeError, isToolRefusal } from "./utils/projectFolder";
+import { chooseCreationFolder, choosePakProject, openCreatedProject, describeError, isToolRefusal } from "./utils/projectFolder";
 import { addResourceFile } from "./utils/addResourceFile";
 import * as path from "path";
 import { createToolService, setActiveToolService } from "./tool/toolService";
@@ -62,16 +62,15 @@ export function activate(context: vscode.ExtensionContext) {
         return;
       }
 
-      const hasWorkspace = (vscode.workspace.workspaceFolders?.length ?? 0) > 0;
-      const folder = await chooseProjectFolder();
-      if (!folder) {
+      const creation = await chooseCreationFolder();
+      if (!creation) {
         return;
       }
-      const packageDir = rp.createPackage(answers.scopeName, answers.pakName, folder);
+      const packageDir = rp.createPackage(answers.scopeName, answers.pakName, creation.folder);
       oc.appendLine(`[INFO] ResourcePak '${answers.pakName}' created at ${packageDir}`);
       vscode.window.showInformationMessage(`ResourcePak '${answers.pakName}' created at ${packageDir}`);
-      if (!hasWorkspace) {
-        vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(packageDir));
+      if (creation.openAfterCreate) {
+        void openCreatedProject(packageDir);
       }
     }, outputChannel, toolService)
   );
@@ -310,17 +309,12 @@ export function activate(context: vscode.ExtensionContext) {
 
   const signFileDisposable = vscode.commands.registerCommand(
     "the-seed.signFile",
-    wrapCommand(async (oc, tool) => {
-      // Get URI from context menu if available
-      await signFile(oc, tool);
-    }, outputChannel, toolService)
+    wrapCommand(signFile, outputChannel, toolService)
   );
 
   const verifySignatureDisposable = vscode.commands.registerCommand(
     "the-seed.verifySignature",
-    wrapCommand(async (oc, tool) => {
-      await verifySignature(oc, tool);
-    }, outputChannel, toolService)
+    wrapCommand(verifySignature, outputChannel, toolService)
   );
 
   const signingCertInfoDisposable = vscode.commands.registerCommand(

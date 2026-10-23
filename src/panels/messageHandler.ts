@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { detectResourcePak } from '../utils/detectResourcePak';
-import { chooseProjectFolder, describeError } from '../utils/projectFolder';
+import { chooseCreationFolder, describeError } from '../utils/projectFolder';
 import { addResourceFile } from '../utils/addResourceFile';
 import type {
   WebviewToExtensionMessage,
@@ -296,11 +296,11 @@ export async function handleMessage(
         config.loadConfig();
         const { templateType, scopeName, templateName } = message.data;
 
-        const hasWorkspace = (vscode.workspace.workspaceFolders?.length ?? 0) > 0;
-        const folder = await chooseProjectFolder();
-        if (!folder) {
+        const creation = await chooseCreationFolder();
+        if (!creation) {
           return noFolderChosen(message.requestId);
         }
+        const folder = creation.folder;
 
         const template = new tool.Template(config);
         template.type = templateType;
@@ -324,7 +324,7 @@ export async function handleMessage(
           payload: {
             projectPath,
             templateType,
-            openFolder: !hasWorkspace, // Open folder if no workspace was open
+            openFolder: creation.openAfterCreate,
           } as TemplateCreatedPayload,
         };
       }
@@ -433,11 +433,11 @@ export async function handleMessage(
         const rp = new tool.ResourcePak(config);
         const { scopeName, pakName } = message.data;
         const scope = scopeName.startsWith('@') ? scopeName : `@${scopeName}`;
-        const hasWorkspace = (vscode.workspace.workspaceFolders?.length ?? 0) > 0;
-        const folder = await chooseProjectFolder();
-        if (!folder) {
+        const creation = await chooseCreationFolder();
+        if (!creation) {
           return noFolderChosen(message.requestId);
         }
+        const folder = creation.folder;
         const packageDir = rp.createPackage(scope, pakName, folder);
         return {
           type: 'resourcePakCreated',
@@ -446,7 +446,7 @@ export async function handleMessage(
             scope,
             pakName,
             packageDir,
-            openFolder: !hasWorkspace,
+            openFolder: creation.openAfterCreate,
           },
         };
       }

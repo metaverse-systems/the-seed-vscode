@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { askQuestions } from '../askQuestions';
-import { chooseProjectFolder, describeError } from '../utils/projectFolder';
+import { chooseCreationFolder, describeError, openCreatedProject } from '../utils/projectFolder';
 import type { ToolApi } from '../tool/toolApi';
 
 export async function scaffoldTemplate(
@@ -32,15 +32,14 @@ export async function scaffoldTemplate(
     return;
   }
 
-  const hasWorkspace = (vscode.workspace.workspaceFolders?.length ?? 0) > 0;
-  const folder = await chooseProjectFolder();
-  if (!folder) {
+  const creation = await chooseCreationFolder();
+  if (!creation) {
     return;
   }
 
   let projectPath: string;
   try {
-    projectPath = template.createPackage(scopeName, templateName, folder);
+    projectPath = template.createPackage(scopeName, templateName, creation.folder);
   } catch (error) {
     if (error instanceof tool.ProjectError) {
       outputChannel.appendLine(`[ERROR] ${describeError(error)}`);
@@ -58,9 +57,7 @@ export async function scaffoldTemplate(
     `${label} '${templateName}' created at ${projectPath}`
   );
 
-  // If no workspace was open, open the new folder
-  if (!hasWorkspace) {
-    const folderUri = vscode.Uri.file(projectPath);
-    vscode.commands.executeCommand('vscode.openFolder', folderUri);
+  if (creation.openAfterCreate) {
+    void openCreatedProject(projectPath);
   }
 }
