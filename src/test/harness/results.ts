@@ -1,8 +1,11 @@
 import * as path from 'path';
 import type { KnownGap } from './knownGaps';
 
-export const STAGES = ['compile', 'typecheck', 'lint', 'host'] as const;
+export const STAGES = ['clean', 'compile', 'typecheck', 'lint', 'bundle', 'host', 'package', 'watch'] as const;
 export type Stage = typeof STAGES[number];
+
+/** The stages run when none is named: every stage except `package` and `watch`. */
+export const DEFAULT_STAGES: readonly Stage[] = STAGES.filter((stage) => stage !== 'package' && stage !== 'watch');
 
 export interface HostOptions {
   only: string | undefined;
@@ -29,7 +32,7 @@ export function parseArguments(argv: readonly string[]): ParsedArguments {
     }
   }
   const stages = stageArgs.length === 0
-    ? [...STAGES]
+    ? [...DEFAULT_STAGES]
     : STAGES.filter((stage) => stageArgs.includes(stage));
 
   const host: HostOptions = { only: undefined, reverse: false, repeat: 1 };

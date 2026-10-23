@@ -173,10 +173,11 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run build",
-    "compile": "node scripts/run-checks.js compile",
+    "compile": "node scripts/run-checks.js clean compile",
     "typecheck": "node scripts/run-checks.js typecheck",
     "build:webview": "vite build --config vite.config.webview.mts",
-    "build": "node scripts/run-checks.js compile typecheck && npm run build:webview",
+    "build": "node scripts/run-checks.js clean compile typecheck bundle",
+    "bundle": "node scripts/run-checks.js bundle",
     "watch": "tsc -watch -p ./",
     "lint": "node scripts/run-checks.js lint",
     "lint-fix": "node ./node_modules/eslint/bin/eslint.js src --fix",

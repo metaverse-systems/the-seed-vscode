@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 'use strict';
 
-// Single entry point for the extension's checks: compile, typecheck, lint and
-// the host suite. Plain CommonJS, Node built-ins only, no shell.
+// Single entry point for the extension's build and checks: clean, compile,
+// typecheck, lint, bundle and the host suite, plus the package and watch
+// stages. Plain CommonJS, Node built-ins only, no shell.
 
 const crypto = require('crypto');
 const fs = require('fs');
@@ -190,29 +191,63 @@ function runHost(hostOptions) {
   return true;
 }
 
+// Removes the build outputs. Never touches node_modules/, .vscode-test/,
+// test-results/ or packages in the root.
+function clean() {
+  for (const name of ['out', 'dist']) {
+    fs.rmSync(path.join(root, name), { recursive: true, force: true });
+  }
+  return true;
+}
+
+function bundle() {
+  return run(resolveEntry('vite', 'bin', 'vite.js'), ['build', '--config', 'vite.config.webview.mts']);
+}
+
+function notAvailable(stage) {
+  return () => {
+    console.log(`${stage}: not available yet`);
+    return false;
+  };
+}
+
 const stageRunners = {
+  clean,
   compile: () => run(resolveEntry('typescript', 'bin', 'tsc'), ['-p', './']),
   typecheck: () => run(resolveEntry('typescript', 'bin', 'tsc'), ['--noEmit', '-p', 'tsconfig.webview.json']),
   lint: () => run(resolveEntry('eslint', 'bin', 'eslint.js'), ['--max-warnings', '0', 'src']),
+  bundle,
+  package: notAvailable('package'),
+  watch: notAvailable('watch'),
 };
 
+// The stages that may start from a fresh checkout: they bootstrap the
+// compiled argument parser. Naming no stage at all does too.
+const BOOTSTRAP_STAGES = ['compile', 'package', 'watch'];
+
 function main(argv) {
-  // The argument parser lives in the compiled output. On a fresh checkout the
-  // compile stage runs first (it is the only stage that can) and the rest of
-  // the arguments are parsed afterwards.
-  let compiled = null;
+  // The argument parser lives in the compiled output. On a fresh checkout
+  // clean and compile run first, when no stage or a stage that can start from
+  // nothing is named, and the arguments are parsed afterwards; the named clean
+  // and compile stages are then skipped, since they have just run.
+  let bootstrapped = false;
   const parserPath = path.join(root, 'out', 'test', 'harness', 'results.js');
   if (!fs.existsSync(parserPath)) {
-    if (argv.length > 0 && !argv.includes('compile')) {
+    const separator = argv.indexOf('--');
+    const named = separator === -1 ? argv : argv.slice(0, separator);
+    if (named.length > 0 && !named.some((stage) => BOOTSTRAP_STAGES.includes(stage))) {
       console.log('compile first ("npm run compile")');
       return 1;
     }
-    console.log('== compile ==');
-    compiled = stageRunners.compile();
-    console.log(`compile: ${compiled ? 'passed' : 'FAILED'}`);
-    if (!compiled) {
-      return 1;
+    for (const stage of ['clean', 'compile']) {
+      console.log(`== ${stage} ==`);
+      const ok = stageRunners[stage]();
+      console.log(`${stage}: ${ok ? 'passed' : 'FAILED'}`);
+      if (!ok) {
+        return 1;
+      }
     }
+    bootstrapped = true;
   }
 
   const { parseArguments } = loadResults();
@@ -225,7 +260,7 @@ function main(argv) {
   let compileFailed = false;
   let failed = false;
   for (const stage of parsed.stages) {
-    if (stage === 'compile' && compiled !== null) {
+    if (bootstrapped && (stage === 'clean' || stage === 'compile')) {
       continue;
     }
     console.log(`== ${stage} ==`);
