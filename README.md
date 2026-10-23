@@ -121,6 +121,7 @@ _Coming soon_
 | `The Seed: Install Dependencies` | Clone and build missing dependencies for a target |
 | `The Seed: Package Projects` | Package project binaries and dependencies into `dist/` |
 | `The Seed: Generate Windows Installer` | Generate a Windows `.msi` installer from `dist/` files |
+| `The Seed: Check Tool` | Recheck the installed the-seed tool and show which installation is used |
 
 **Installer prerequisites**: `sudo apt install msitools` (provides `wixl`)
 
