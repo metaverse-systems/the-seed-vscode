@@ -173,7 +173,7 @@ To run the extension against a local checkout of the tool:
 - To run the tests against a checkout (or the global installation), set `THE_SEED_TEST_TOOL` to its package directory, for example `THE_SEED_TEST_TOOL=$(realpath ../the-seed) npm test`. The default is the `devDependencies` copy in `node_modules`.
 
 ## 📄 License
-MIT License © [Metaverse Systems](https://github.com/metaverse-systems)
+[MIT License](LICENSE) © [Metaverse Systems](https://github.com/metaverse-systems)
 
 ---
 

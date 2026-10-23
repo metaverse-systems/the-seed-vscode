@@ -222,6 +222,47 @@ suite('Package contents: checkManifest', () => {
   });
 });
 
+suite('Package contents: the real manifest', () => {
+  const root = path.resolve(__dirname, '..', '..', '..');
+
+  function readManifest(): Record<string, unknown> {
+    return JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')) as Record<string, unknown>;
+  }
+
+  function nonEmptyString(value: unknown): boolean {
+    return typeof value === 'string' && value.trim() !== '';
+  }
+
+  function urlOf(value: unknown): unknown {
+    return typeof value === 'object' && value !== null ? (value as Record<string, unknown>).url : undefined;
+  }
+
+  test('the real manifest passes checkManifest', () => {
+    const testConfig = fs.readFileSync(path.join(root, '.vscode-test.mjs'), 'utf8');
+    assert.deepStrictEqual(checkManifest(readManifest(), testConfig), []);
+  });
+
+  test('the real manifest carries every identity field, and its icon and licence files exist', () => {
+    const manifest = readManifest();
+    assert.strictEqual(manifest.publisher, 'metaverse-systems');
+    assert.strictEqual(manifest.displayName, 'The Seed');
+    assert.ok(nonEmptyString(manifest.description), 'description must not be empty');
+    assert.strictEqual(manifest.license, 'MIT');
+    assert.ok(nonEmptyString(manifest.icon), 'icon must be set');
+    assert.ok(nonEmptyString(urlOf(manifest.repository)), 'repository.url must be set');
+    assert.ok(nonEmptyString(urlOf(manifest.bugs)), 'bugs.url must be set');
+    assert.ok(nonEmptyString(manifest.homepage), 'homepage must be set');
+    assert.ok(Array.isArray(manifest.categories) && manifest.categories.length > 0, 'categories must be a list');
+    assert.notDeepStrictEqual(manifest.categories, ['Other']);
+    assert.ok(
+      Array.isArray(manifest.keywords) && manifest.keywords.length > 0 && manifest.keywords.every(nonEmptyString),
+      'keywords must be a non-empty list of words'
+    );
+    assert.ok(fs.statSync(path.join(root, manifest.icon as string)).isFile(), `${manifest.icon} must exist`);
+    assert.ok(fs.statSync(path.join(root, 'LICENSE')).isFile(), 'LICENSE must exist');
+  });
+});
+
 suite('Package contents: packageReportLines', () => {
   function passingReport(): PackageReport {
     return {

@@ -1,14 +1,34 @@
 {
   "name": "the-seed-vscode",
-  "displayName": "the-seed-vscode",
+  "displayName": "The Seed",
   "publisher": "metaverse-systems",
-  "description": "",
+  "description": "Create, build, sign and package the-seed projects from the editor.",
   "version": "0.3.0",
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/metaverse-systems/the-seed-vscode.git"
+  },
+  "bugs": {
+    "url": "https://github.com/metaverse-systems/the-seed-vscode/issues"
+  },
+  "homepage": "https://github.com/metaverse-systems/the-seed-vscode#readme",
   "engines": {
-    "vscode": "^1.97.0"
+    "vscode": "^1.143.0"
   },
   "categories": [
+    "Programming Languages",
     "Other"
+  ],
+  "keywords": [
+    "the-seed",
+    "ecs",
+    "game engine",
+    "c++",
+    "autotools",
+    "mingw",
+    "resource pak"
   ],
   "activationEvents": [],
   "main": "./dist/extension.js",
@@ -190,7 +210,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@types/sinon": "^21.0.0",
-    "@types/vscode": "^1.97.0",
+    "@types/vscode": "1.140.0",
     "@types/vscode-webview": "^1.57.5",
     "@typescript-eslint/eslint-plugin": "^8.22.0",
     "@typescript-eslint/parser": "^8.22.0",
