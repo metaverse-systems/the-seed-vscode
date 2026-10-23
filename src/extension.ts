@@ -1,5 +1,4 @@
 import * as vscode from "vscode";
-import { askQuestions } from "./askQuestions";
 import { createOutputChannel } from "./outputChannel";
 import { wrapCommand } from "./commands/wrapCommand";
 import { configureProject } from "./commands/configureProject";
@@ -16,14 +15,16 @@ import { buildNativeRecursiveCommand, buildWindowsRecursiveCommand } from "./com
 import { checkDependenciesCommand, installDependenciesCommand } from "./commands/dependencyCommands";
 import { packageProjectCommand } from "./commands/packageProject";
 import { generateInstallerCommand } from "./commands/generateInstaller";
-import { chooseScope } from "./signing/chooseScope";
+import { createResourcePak } from "./commands/createResourcePak";
+import { addResource } from "./commands/addResource";
+import { buildResourcePak } from "./commands/buildResourcePak";
 import { createSigningCert } from "./commands/createSigningCert";
+import { importSigningCert } from "./commands/importSigningCert";
+import { signingCertInfo } from "./commands/signingCertInfo";
+import { exportSigningCert } from "./commands/exportSigningCert";
 import { signFile } from "./commands/signFile";
 import { verifySignature } from "./commands/verifySignature";
 import { TheSeedViewProvider, setActiveViewProvider } from "./panels/TheSeedViewProvider";
-import { chooseCreationFolder, choosePakProject, openCreatedProject, describeError, isToolRefusal } from "./utils/projectFolder";
-import { addResourceFile } from "./utils/addResourceFile";
-import * as path from "path";
 import { createToolService, setActiveToolService } from "./tool/toolService";
 
 export function activate(context: vscode.ExtensionContext) {
@@ -49,31 +50,10 @@ export function activate(context: vscode.ExtensionContext) {
     )
   );
 
-  // Existing command: Create ResourcePak
+  // Create ResourcePak command
   const createResourcePakDisposable = vscode.commands.registerCommand(
     "the-seed.createResourcePak",
-    wrapCommand(async (oc, tool) => {
-      const config = new tool.Config();
-      const rp = new tool.ResourcePak(config);
-
-      const questions = rp.askName();
-      const answers = await askQuestions(questions);
-
-      if (!answers.scopeName || !answers.pakName) {
-        return;
-      }
-
-      const creation = await chooseCreationFolder();
-      if (!creation) {
-        return;
-      }
-      const packageDir = rp.createPackage(answers.scopeName, answers.pakName, creation.folder);
-      oc.appendLine(`[INFO] ResourcePak '${answers.pakName}' created at ${packageDir}`);
-      vscode.window.showInformationMessage(`ResourcePak '${answers.pakName}' created at ${packageDir}`);
-      if (creation.openAfterCreate) {
-        void openCreatedProject(packageDir);
-      }
-    }, outputChannel, toolService)
+    wrapCommand(createResourcePak, outputChannel, toolService)
   );
 
   // New commands
@@ -150,85 +130,13 @@ export function activate(context: vscode.ExtensionContext) {
   // Add Resource command (palette)
   const addResourceDisposable = vscode.commands.registerCommand(
     "the-seed.addResource",
-    wrapCommand(async (oc, tool) => {
-      const config = new tool.Config();
-      const rp = new tool.ResourcePak(config);
-
-      const packageDir = await choosePakProject(tool);
-      if (!packageDir) {
-        return;
-      }
-      oc.appendLine(`[INFO] ResourcePak: ${packageDir}`);
-
-      // Open file picker
-      const fileResult = await vscode.window.showOpenDialog({
-        canSelectFiles: true,
-        canSelectMany: false,
-        openLabel: "Select Resource File",
-      });
-      if (!fileResult || fileResult.length === 0) {
-        return;
-      }
-      const selectedFile = fileResult[0].fsPath;
-
-      // Prompt for resource name
-      const resourceName = await vscode.window.showInputBox({
-        prompt: "Enter a name for this resource",
-        placeHolder: "my-resource",
-        validateInput: (value) => (value === "" ? "Name is required" : null),
-      });
-      if (!resourceName) {
-        return;
-      }
-
-      try {
-        addResourceFile(rp, packageDir, resourceName, selectedFile, tool);
-      } catch (error) {
-        if (isToolRefusal(error)) {
-          oc.appendLine(`[ERROR] ${describeError(error)}`);
-          vscode.window.showErrorMessage(describeError(error));
-          return;
-        }
-        throw error;
-      }
-      vscode.window.showInformationMessage(
-        `Resource '${resourceName}' added to ResourcePak`
-      );
-    }, outputChannel, toolService)
+    wrapCommand(addResource, outputChannel, toolService)
   );
 
   // Build ResourcePak command (palette)
   const buildResourcePakDisposable = vscode.commands.registerCommand(
     "the-seed.buildResourcePak",
-    wrapCommand(async (oc, tool) => {
-      const config = new tool.Config();
-      const rp = new tool.ResourcePak(config);
-
-      const packageDir = await choosePakProject(tool);
-      if (!packageDir) {
-        return;
-      }
-      oc.appendLine(`[INFO] ResourcePak: ${packageDir}`);
-
-      try {
-        rp.build(packageDir);
-      } catch (error) {
-        if (isToolRefusal(error)) {
-          oc.appendLine(`[ERROR] ${describeError(error)}`);
-          vscode.window.showErrorMessage(describeError(error));
-          return;
-        }
-        throw error;
-      }
-
-      const pkgData = rp.readProject(packageDir);
-      const [, name] = pkgData.name.split("/");
-      const pakFilePath = path.join(packageDir, name + ".pak");
-
-      vscode.window.showInformationMessage(
-        `ResourcePak built successfully: ${pakFilePath}`
-      );
-    }, outputChannel, toolService)
+    wrapCommand(buildResourcePak, outputChannel, toolService)
   );
 
   // Check Dependencies command
@@ -263,49 +171,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   const importSigningCertDisposable = vscode.commands.registerCommand(
     "the-seed.importSigningCert",
-    wrapCommand(async (oc, tool) => {
-      const signing = new tool.Signing();
-      const scope = await chooseScope(signing, 'import the certificate', tool);
-      if (!scope) {
-        return;
-      }
-      const certResult = await vscode.window.showOpenDialog({
-        canSelectFiles: true,
-        canSelectMany: false,
-        openLabel: "Select Certificate File",
-        filters: { 'PEM Files': ['pem', 'crt'] },
-      });
-      if (!certResult || certResult.length === 0) {return;}
-
-      // Show file picker for private key
-      const keyResult = await vscode.window.showOpenDialog({
-        canSelectFiles: true,
-        canSelectMany: false,
-        openLabel: "Select Private Key File",
-        filters: { 'Key Files': ['pem', 'key'] },
-      });
-      if (!keyResult || keyResult.length === 0) {return;}
-
-      // Check for existing cert
-      if (signing.hasCert(scope)) {
-        const overwrite = await vscode.window.showWarningMessage(
-          'A signing certificate already exists. Overwrite?',
-          'Overwrite',
-          'Cancel'
-        );
-        if (overwrite !== 'Overwrite') {return;}
-      }
-
-      try {
-        const certInfo = await signing.importCert(certResult[0].fsPath, keyResult[0].fsPath, scope);
-        vscode.window.showInformationMessage(
-          `Certificate imported. Subject: ${signing._formatSubject(certInfo.subject)} | Fingerprint: ${certInfo.fingerprint}`
-        );
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err);
-        vscode.window.showErrorMessage(`Import failed: ${message}`);
-      }
-    }, outputChannel, toolService)
+    wrapCommand(importSigningCert, outputChannel, toolService)
   );
 
   const signFileDisposable = vscode.commands.registerCommand(
@@ -320,59 +186,12 @@ export function activate(context: vscode.ExtensionContext) {
 
   const signingCertInfoDisposable = vscode.commands.registerCommand(
     "the-seed.signingCertInfo",
-    wrapCommand(async (oc, tool) => {
-      const signing = new tool.Signing();
-      const scope = await chooseScope(signing, 'show the certificate', tool);
-      if (!scope) {
-        return;
-      }
-      const certInfo = signing.getCertInfo(scope);
-
-      if (!certInfo) {
-        const action = await vscode.window.showInformationMessage(
-          'No signing certificate found.',
-          'Create',
-          'Import'
-        );
-        if (action === 'Create') {
-          await vscode.commands.executeCommand('the-seed.createSigningCert');
-        } else if (action === 'Import') {
-          await vscode.commands.executeCommand('the-seed.importSigningCert');
-        }
-        return;
-      }
-
-      const subject = signing._formatSubject(certInfo.subject);
-      const status = certInfo.isExpired ? 'Expired' : 'Active';
-      vscode.window.showInformationMessage(
-        `Certificate: ${subject} | Issuer: ${certInfo.issuer} | Status: ${status} | Fingerprint: ${certInfo.fingerprint}`
-      );
-    }, outputChannel, toolService)
+    wrapCommand(signingCertInfo, outputChannel, toolService)
   );
 
   const exportSigningCertDisposable = vscode.commands.registerCommand(
     "the-seed.exportSigningCert",
-    wrapCommand(async (oc, tool) => {
-      const signing = new tool.Signing();
-      const scope = await chooseScope(signing, 'export the certificate', tool);
-      if (!scope) {
-        return;
-      }
-
-      if (!signing.hasCert(scope)) {
-        vscode.window.showErrorMessage(`No signing certificate for scope ${scope}.`);
-        return;
-      }
-
-      const saveUri = await vscode.window.showSaveDialog({
-        defaultUri: vscode.Uri.file('signing-cert.pem'),
-        filters: { 'PEM Files': ['pem'] },
-      });
-      if (!saveUri) {return;}
-
-      await signing.exportCert(saveUri.fsPath, scope);
-      vscode.window.showInformationMessage(`Certificate exported to ${saveUri.fsPath}`);
-    }, outputChannel, toolService)
+    wrapCommand(exportSigningCert, outputChannel, toolService)
   );
 
   // Check Tool command: reports the installation in use; it works whether or not the tool is usable.
