@@ -123,7 +123,7 @@ function buildDetails(result: VerifyResult, formatSubject: (subject: CertSubject
 
 /**
  * Describe a verification result for the user. `formatSubject` renders a certificate subject
- * (Signing._formatSubject in the command).
+ * (Signing.formatSubject in the command).
  */
 export function describeVerification(
   result: VerifyResult,

@@ -13,9 +13,20 @@ import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import { createCertFor, writeScopes } from '../helpers/scratchHome';
 import { useScratchState } from '../helpers/scratchState';
-import { testTool } from '../helpers/tool';
+import { withoutInternalMembers } from '../helpers/stubTool';
+import { testTool, useToolApi } from '../helpers/tool';
 
 const SCOPE = '@only';
+const EMAIL = 'only@example.com';
+/** The subject as the commands show it for the scope's certificate made with EMAIL. */
+const SUBJECT_TEXT = `CN=Only Author, EMAIL=${EMAIL}, O=${SCOPE}`;
+
+/** Gives the scope's author an email, so that certificates made for it carry all three subject fields. */
+function giveScopeEmail(): void {
+  const config = new (testTool().Config)();
+  config.config.scopes[SCOPE].author.email = EMAIL;
+  config.saveConfig();
+}
 
 suite('Signing Certificate Commands', () => {
   const state = useScratchState({ scopes: { [SCOPE]: 'Only Author' } });
@@ -93,9 +104,11 @@ suite('Signing Certificate Commands', () => {
       assert.strictEqual(info.callCount + warning.callCount + error.callCount, 0);
     });
 
-    test('a successful import shows the subject and fingerprint', async () => {
+    test('a successful import shows the subject and fingerprint, through the tool\'s public formatSubject', async () => {
+      giveScopeEmail();
       const files = await certificateFiles();
       stubDialogs(files.cert, files.key);
+      await useToolApi(withoutInternalMembers(testTool()));
 
       await vscode.commands.executeCommand('the-seed.importSigningCert');
 
@@ -104,7 +117,7 @@ suite('Signing Certificate Commands', () => {
       assert.strictEqual(stored.fingerprint, files.fingerprint);
       assert.ok(warning.notCalled, 'no overwrite question without a certificate');
       assert.deepStrictEqual(messages(info), [
-        `Certificate imported. Subject: ${signing()._formatSubject(stored.subject)} | Fingerprint: ${files.fingerprint}`,
+        `Certificate imported. Subject: ${SUBJECT_TEXT} | Fingerprint: ${files.fingerprint}`,
       ]);
       assert.ok(error.notCalled);
     });
@@ -194,15 +207,17 @@ suite('Signing Certificate Commands', () => {
       });
     }
 
-    test('with a certificate, the subject, issuer, status and fingerprint are shown', async () => {
+    test('with a certificate, the subject, issuer, status and fingerprint are shown, through the tool\'s public formatSubject', async () => {
+      giveScopeEmail();
       const fingerprint = await createCertFor(SCOPE);
       const stored = signing().getCertInfo(SCOPE);
       assert.ok(stored);
+      await useToolApi(withoutInternalMembers(testTool()));
 
       await vscode.commands.executeCommand('the-seed.signingCertInfo');
 
       assert.deepStrictEqual(messages(info), [
-        `Certificate: ${signing()._formatSubject(stored.subject)} | Issuer: ${stored.issuer} | Status: Active | Fingerprint: ${fingerprint}`,
+        `Certificate: ${SUBJECT_TEXT} | Issuer: ${stored.issuer} | Status: Active | Fingerprint: ${fingerprint}`,
       ]);
       assert.deepStrictEqual(executed, ['the-seed.signingCertInfo']);
       assert.ok(error.notCalled);

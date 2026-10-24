@@ -75,6 +75,66 @@ suite('Structure: each operation exists in one place', () => {
   });
 });
 
+/** Names of the extension's own members that start with "_" and are called on something other than `this`. */
+const OWN_UNDERSCORE_NAMES: readonly string[] = [];
+
+/** Each call of a "_" member on something other than `this` in a host source, as "<file>: <receiver>.<name>". */
+function underscoreCalls(): string[] {
+  const call = /(\b\w+|\))\s*\.\s*(_[A-Za-z]\w*)\s*\(/g;
+  const found: string[] = [];
+  for (const source of hostSources()) {
+    for (const match of read(source).matchAll(call)) {
+      if (match[1] !== 'this' && !OWN_UNDERSCORE_NAMES.includes(match[2])) {
+        found.push(`${source}: ${match[1]}.${match[2]}`);
+      }
+    }
+  }
+  return found;
+}
+
+const TOOL_DIST = path.resolve(__dirname, '..', '..', 'node_modules', '@metaverse-systems', 'the-seed', 'dist');
+
+/** Names the installed tool's declarations mark @deprecated or @internal in the comment just before them. */
+function toolNamesNotForUse(): string[] {
+  const names = new Set<string>();
+  const marked = /\/\*\*((?:(?!\*\/)[\s\S])*?@(?:deprecated|internal)\b(?:(?!\*\/)[\s\S])*?)\*\/\s*(?:export\s+)?(?:declare\s+)?(?:function\s+|const\s+|static\s+|readonly\s+)*([A-Za-z_$][\w$]*)/g;
+  for (const file of filesUnder(TOOL_DIST).filter((name) => name.endsWith('.d.ts'))) {
+    for (const match of fs.readFileSync(path.join(TOOL_DIST, file), 'utf-8').matchAll(marked)) {
+      names.add(match[2]);
+    }
+  }
+  return [...names].sort();
+}
+
+suite('Structure: the tool is used through its public surface', () => {
+  test('no host source calls a tool member whose name starts with "_"', () => {
+    assert.deepStrictEqual(underscoreCalls(), [], 'calls of "_" members on tool objects');
+  });
+
+  test('no host source uses a tool member marked @deprecated or @internal', () => {
+    // The deprecated name is spelled in parts so that a search of src/ for it finds nothing, this rule included
+    const deprecatedFormatter = ['_format', 'Subject'].join('');
+    const names = toolNamesNotForUse();
+    assert.ok(names.includes(deprecatedFormatter), `the installed tool's marked names are read (${names.join(', ')})`);
+    const uses: string[] = [];
+    for (const source of hostSources()) {
+      const text = read(source);
+      for (const name of names) {
+        if (new RegExp(`(?<![\\w$])${name.replace(/\$/g, '\\$')}(?![\\w$])`).test(text)) {
+          uses.push(`${source}: ${name}`);
+        }
+      }
+    }
+    assert.deepStrictEqual(uses, [], 'host sources naming a marked tool member');
+  });
+
+  test('askQuestions is typed with the tool\'s PromptQuestion, with no any', () => {
+    const text = read('askQuestions.ts');
+    assert.ok(!/\bany\b/.test(text), 'src/askQuestions.ts contains "any"');
+    assert.ok(/\bPromptQuestion\b/.test(text), 'src/askQuestions.ts does not name PromptQuestion');
+  });
+});
+
 const ROOT = path.resolve(__dirname, '..', '..');
 const OUT = path.join(ROOT, 'out');
 

@@ -14,7 +14,7 @@ async function verifyOne(
   const timestamp = new Date().toISOString();
   try {
     const result = await signing.verifyFile(targetPath);
-    const message = describeVerification(result, (subject) => signing._formatSubject(subject));
+    const message = describeVerification(result, (subject) => signing.formatSubject(subject));
 
     outputChannel.appendLine(`[${timestamp}] Verify ${targetPath}: ${result.status}`);
     for (const line of message.details) {

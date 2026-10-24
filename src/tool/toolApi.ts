@@ -1,6 +1,6 @@
 import type Build from '@metaverse-systems/the-seed/Build';
 import type Config from '@metaverse-systems/the-seed/Config';
-import type { ConfigError } from '@metaverse-systems/the-seed/Config';
+import type { ConfigError, configFilePath } from '@metaverse-systems/the-seed/Config';
 import type { checkLibEcs, checkLibTheSeed, getInstallSteps, runInstallSteps } from '@metaverse-systems/the-seed/Dependencies';
 import type {
   ConflictingProjectError,
@@ -27,6 +27,7 @@ import type Template from '@metaverse-systems/the-seed/Template';
 export interface ToolApi {
   readonly Config: typeof Config;
   readonly ConfigError: typeof ConfigError;
+  readonly configFilePath: typeof configFilePath;
   readonly Scopes: typeof Scopes;
   readonly validateScopeName: typeof validateScopeName;
   readonly Template: typeof Template;
@@ -71,6 +72,7 @@ const row = (subpath: string, exportName: string, member: keyof ToolApi, kind: E
 export const EXPORT_TABLE: readonly ExportRow[] = [
   row('Config', 'default', 'Config', 'class'),
   row('Config', 'ConfigError', 'ConfigError', 'class'),
+  row('Config', 'configFilePath', 'configFilePath', 'function'),
   row('Scopes', 'default', 'Scopes', 'class'),
   row('Scopes', 'validateScopeName', 'validateScopeName', 'function'),
   row('Template', 'default', 'Template', 'class'),

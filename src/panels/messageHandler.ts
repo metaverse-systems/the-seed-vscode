@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import { detectResourcePak } from '../utils/detectResourcePak';
 import { chooseCreationFolder, describeError } from '../utils/projectFolder';
@@ -29,14 +28,6 @@ import type Config from '@metaverse-systems/the-seed/Config';
 import type { ToolApi } from '../tool/toolApi';
 import type { ToolService } from '../tool/toolService';
 import { isToolRefusal } from '../utils/projectFolder';
-
-function getConfigDir(): string {
-  return path.join(os.homedir(), 'the-seed');
-}
-
-function getConfigFilePath(): string {
-  return path.join(getConfigDir(), 'config.json');
-}
 
 // Build status tracking for getBuildStatus queries
 let currentBuildStatus: BuildStatusPayload = { state: 'idle', target: '' };
@@ -171,10 +162,10 @@ export async function handleMessage(
         if (!acquired.ok) {
           return statusMessage;
         }
-        const configFileExists = fs.existsSync(getConfigFilePath());
+        // Decided before Config is constructed, since constructing it writes a default file there
+        const isDefault = !fs.existsSync(acquired.api.configFilePath());
         const config = new acquired.api.Config();
         config.loadConfig();
-        const isDefault = !configFileExists;
         return {
           type: 'configLoaded',
           payload: buildConfigPayload(config, isDefault),
@@ -700,7 +691,7 @@ export async function handleMessage(
           return {
             scope,
             status: certInfo.isExpired ? 'expired' : 'active',
-            subject: signing._formatSubject(certInfo.subject),
+            subject: signing.formatSubject(certInfo.subject),
             issuer: certInfo.issuer,
             fingerprint: certInfo.fingerprint,
             validFrom: certInfo.notBefore.toISOString(),

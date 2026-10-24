@@ -21,7 +21,9 @@ import type Config from '@metaverse-systems/the-seed/Config';
 import { activeToolService } from '../../tool/toolService';
 import { createCertFor, writeScopes } from '../helpers/scratchHome';
 import { ScratchState, useScratchState } from '../helpers/scratchState';
-import { testTool } from '../helpers/tool';
+import { withoutInternalMembers } from '../helpers/stubTool';
+import { testTool, useToolApi } from '../helpers/tool';
+import type { ToolApi } from '../../tool/toolApi';
 
 type Message = Parameters<typeof handleWithService>[0];
 type Push = NonNullable<Parameters<typeof handleWithService>[1]>;
@@ -732,5 +734,74 @@ suite('messageHandler scope validation and signing status', () => {
     assert.strictEqual(withCert!.fingerprint, fingerprint);
     assert.ok(!without!.fingerprint);
     assert.ok(Object.values(without!).includes('no certificate'));
+  });
+
+  test('getSigningStatus shows a certificate\'s subject through the tool\'s public formatSubject', async () => {
+    writeScopes({ '@with': 'With Cert' });
+    const config = new (testTool().Config)();
+    config.config.scopes['@with'].author.email = 'with@example.com';
+    config.saveConfig();
+    await createCertFor('@with');
+    await useToolApi(withoutInternalMembers(testTool()));
+
+    const response = await handleMessage({ command: 'getSigningStatus', requestId: 'status' });
+
+    assert.strictEqual(response?.type, 'signingStatus');
+    const payload = response!.payload as unknown as { scopes: Array<Record<string, unknown>> };
+    assert.deepStrictEqual(payload.scopes.map((entry) => [entry.scope, entry.subject]), [
+      ['@with', 'CN=With Cert, EMAIL=with@example.com, O=@with'],
+    ]);
+  });
+});
+
+suite('messageHandler: whether the configuration is the default one', () => {
+  const scratchState = useScratchState({ scopes: { [SCOPE]: 'Ada Lovelace' } });
+
+  /** The configuration file under the scratch home, which the tool's own location would name. */
+  function homeConfigFile(): string {
+    return path.join(scratchState.home, 'the-seed', 'config.json');
+  }
+
+  /** The loaded tool, with the configuration location it reports and, optionally, its Config replaced. */
+  function toolReporting(location: string, config?: ToolApi['Config']): ToolApi {
+    return Object.assign({}, testTool(), { configFilePath: () => location }, config ? { Config: config } : {});
+  }
+
+  async function readyIsDefault(): Promise<boolean> {
+    const response = await handleMessage({ command: 'ready' });
+    assert.strictEqual(response?.type, 'configLoaded');
+    return (response!.payload as { isDefault: boolean }).isDefault;
+  }
+
+  test('a file at the location the tool reports is not the default, with none under the home', async () => {
+    const reported = path.join(scratchState.dir('reported'), 'config.json');
+    fs.writeFileSync(reported, '{}\n');
+    fs.rmSync(homeConfigFile());
+    await useToolApi(toolReporting(reported));
+
+    assert.strictEqual(await readyIsDefault(), false);
+  });
+
+  test('no file at the location the tool reports is the default, even with one under the home', async () => {
+    assert.ok(fs.existsSync(homeConfigFile()), 'the scratch home has a configuration file');
+    const reported = path.join(scratchState.dir('reported'), 'config.json');
+    await useToolApi(toolReporting(reported));
+
+    assert.strictEqual(await readyIsDefault(), true);
+  });
+
+  test('the location is looked at before Config is constructed, which creates the file there', async () => {
+    const reported = path.join(scratchState.dir('reported'), 'config.json');
+    const RealConfig = testTool().Config;
+    class CreatingConfig extends RealConfig {
+      constructor(configDir?: string) {
+        super(configDir);
+        fs.writeFileSync(reported, '{}\n');
+      }
+    }
+    await useToolApi(toolReporting(reported, CreatingConfig));
+
+    assert.strictEqual(await readyIsDefault(), true);
+    assert.ok(fs.existsSync(reported), 'the Config constructor created the file');
   });
 });
