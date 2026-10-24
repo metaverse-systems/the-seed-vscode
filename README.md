@@ -1,6 +1,23 @@
 # The Seed
 
-The Seed brings the [the-seed](https://github.com/metaverse-systems/the-seed) tool into VS Code. From the editor you configure an installation prefix and scopes, create component, system and program projects and resource paks, install the libraries they need, build them for Linux and Windows, sign and verify files, package a project with its shared libraries and generate a Windows installer. The extension does not bundle the tool: it uses the the-seed tool installed on your machine, and every operation is the tool's own.
+The Seed is a C++20 framework for building programs as an entity component system (ECS): entities are the things in a program, components are the data attached to them, and systems are the code that runs repeatedly on that data. It is made of three parts:
+
+- [libecs-cpp](https://github.com/metaverse-systems/libecs-cpp), the ECS library, which keeps entities, components and systems in containers, updates the systems on a schedule and carries messages between them.
+- [libthe-seed](https://github.com/metaverse-systems/libthe-seed), the engine runtime built on libecs-cpp, which loads component and system plugins, resource paks and scenes, lists the libraries a program needs and signs Windows and Mac programs and Windows installers.
+- [the-seed](https://github.com/metaverse-systems/the-seed), the command-line tool, which creates projects from templates, installs the two libraries, builds projects for Linux and Windows, packages a program with its shared libraries, signs and verifies files and generates Windows installers.
+
+This extension brings the tool into VS Code. From the commands and The Seed's sidebar you configure an installation prefix and scopes, create component, system and program projects and resource paks, install the libraries they need, build them for Linux and Windows, sign and verify files, package a project with its shared libraries and generate a Windows installer. The extension does not bundle the tool: it uses the the-seed tool installed on your machine, and every operation is the tool's own.
+
+It is for C++ developers building ECS programs with The Seed, on Linux, or on Windows through WSL (see [Windows](#windows)).
+
+Key terms:
+
+- **Component**: a project holding a kind of data that entities can carry, built as a shared library that libthe-seed loads as a plugin.
+- **System**: a project holding code that runs on entities with particular components, also built as a shared library loaded as a plugin.
+- **Program project**: a project that builds an executable program, which uses libthe-seed to load components, systems, resource paks and scenes.
+- **Resource pak**: a project that bundles files a program uses into one `.pak` file, which libthe-seed reads.
+- **Scope**: a name such as `@my-project` with its author's name, email and web address. Every project is named `@scope/name`, the licence and author files of a new component, system or program name the scope's author, and signing certificates are kept per scope.
+- **Prefix**: the installation directory, `~/the-seed` by default, that holds the libraries and the built projects for each target (Linux and Windows) and the signing certificates. Projects themselves are created in the folder you choose, not under the prefix.
 
 ## Requirements
 

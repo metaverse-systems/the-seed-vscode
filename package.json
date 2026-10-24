@@ -2,7 +2,7 @@
   "name": "the-seed-vscode",
   "displayName": "The Seed",
   "publisher": "metaverse-systems",
-  "description": "Create, build, sign and package the-seed projects from the editor.",
+  "description": "Create, build, sign and package projects of The Seed, a C++ entity component system framework, from VS Code.",
   "version": "1.0.0",
   "license": "MIT",
   "icon": "media/icon.png",
