@@ -60,6 +60,16 @@ suite('Structure: each operation exists in one place', () => {
     assert.deepStrictEqual(assigning, [], 'host sources that assign a console method');
   });
 
+  test('dependency installation has no step runner of its own', () => {
+    // The install steps are run by the tool's runInstallSteps. The removed names are spelled in
+    // parts so that a search of src/ for them finds nothing, this rule included.
+    const module = ['build', 'Runner'].join('');
+    const runner = ['run', 'Build', 'Steps'].join('');
+    assert.ok(!fs.existsSync(path.join(SRC, 'build', `${module}.ts`)), `src/build/${module}.ts exists`);
+    const users = hostSources().filter((source) => new RegExp(`\\b(?:${runner}|${module})\\b`).test(read(source)));
+    assert.deepStrictEqual(users, [], `host sources that name ${runner} or ${module}`);
+  });
+
   test('no command is written inline in extension.ts', () => {
     assert.ok(!/wrapCommand\(\s*async\b/.test(read('extension.ts')), 'extension.ts contains wrapCommand(async');
   });

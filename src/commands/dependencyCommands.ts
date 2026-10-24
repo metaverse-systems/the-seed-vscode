@@ -1,10 +1,8 @@
 import * as fs from 'fs';
-import * as path from 'path';
+import { StringDecoder } from 'string_decoder';
 import * as vscode from 'vscode';
-import { runBuildSteps } from '../build/buildRunner';
 import { acquireOperationLock, releaseOperationLock, getOperationLock, lockRefusal } from '../operationLock';
 import { execSync } from 'child_process';
-import type { BuildStep } from '@metaverse-systems/the-seed/types';
 import type { ToolApi } from '../tool/toolApi';
 import type { ToolHandler } from './wrapCommand';
 import { updateDependencyStatus } from '../panels/messageHandler';
@@ -63,39 +61,6 @@ export function checkDependenciesCommand(
       `Dependencies (${target.label}): libecs-cpp ${ecsStatus} | libthe-seed ${seedStatus}`
     );
   };
-}
-
-/**
- * Makes the tool's install steps right for a prefix that already holds a library's sources.
- * The tool decides between cloning and updating by looking for the directory relative to the
- * editor's own working directory, not the prefix the steps run in, so a second target would clone
- * into an existing directory. An existing directory is updated instead, and cleaned before it is
- * configured again, so one target's objects are never reused for another.
- */
-export function adaptInstallSteps(steps: BuildStep[], prefix: string): BuildStep[] {
-  const adapted: BuildStep[] = [];
-  const existing = new Set<string>();
-  for (const step of steps) {
-    if (step.program === 'git' && step.args[0] === 'clone' && step.args.length === 3) {
-      const directory = step.args[2];
-      if (fs.existsSync(path.resolve(prefix, directory))) {
-        existing.add(directory);
-        adapted.push({ ...step, program: 'git', args: ['-C', directory, 'pull', '--ff-only'], label: step.label.replace(/^clone /, 'update ') });
-        continue;
-      }
-    }
-    if (step.cwd !== undefined && existing.has(step.cwd) && step.program === './configure') {
-      adapted.push({
-        label: step.label.replace(/ configure$/, ' distclean'),
-        program: 'make',
-        args: ['distclean'],
-        cwd: step.cwd,
-        ignoreExitCode: true,
-      });
-    }
-    adapted.push(step);
-  }
-  return adapted;
 }
 
 type InstallTarget = 'native' | 'windows';
@@ -175,7 +140,7 @@ export function installDependenciesCommand(
     }
 
     // Check which libraries are missing
-    const steps = adaptInstallSteps(tool.getInstallSteps(config, target), config.config.prefix);
+    const steps = tool.getInstallSteps(config, target);
     if (steps.length === 0) {
       vscode.window.showInformationMessage(
         `All dependencies are already installed for ${target}.`
@@ -215,15 +180,20 @@ export function installDependenciesCommand(
           const cancelListener = token.onCancellationRequested(() => {
             abortController.abort();
           });
-          let currentStep = '';
+          // Each stream keeps its own decoder, so a character split across two chunks is written whole
+          const stdout = new StringDecoder('utf8');
+          const stderr = new StringDecoder('utf8');
 
           try {
-            const result = await runBuildSteps(steps, {
-              cwd: config.config.prefix,
-              onStdout: (data) => outputChannel.append(data),
-              onStderr: (data) => outputChannel.append(data),
+            const result = await tool.runInstallSteps(steps, {
+              baseDir: config.config.prefix,
+              output: {
+                stdout: (chunk) => outputChannel.append(stdout.write(chunk)),
+                stderr: (chunk) => outputChannel.append(stderr.write(chunk)),
+              },
+              log: (line) => outputChannel.appendLine(line),
+              signal: abortController.signal,
               onStepStart: (step, index, total) => {
-                currentStep = step.label;
                 const increment = index === 0 ? 0 : Math.round(100 / total);
                 progress.report({
                   message: `[${index + 1}/${total}] ${step.label}...`,
@@ -243,27 +213,28 @@ export function installDependenciesCommand(
                   },
                 });
               },
-              signal: abortController.signal,
             });
+            const rest = stdout.end() + stderr.end();
+            if (rest !== '') {
+              outputChannel.append(rest);
+            }
 
-            if (!result.success) {
-              if (result.cancelledAtStep !== undefined) {
-                vscode.window.showWarningMessage('Dependency installation cancelled.');
-                outputChannel.appendLine('\n── Installation cancelled ──');
-                post({
-                  type: 'installDependenciesProgress',
-                  payload: { state: 'cancelled', target, timestamp: new Date().toISOString() },
-                });
-              } else {
-                const failure = `Dependency installation failed at ${currentStep}. Check output for details.`;
-                vscode.window.showErrorMessage(failure);
-                outputChannel.appendLine(`\n── Installation failed at ${currentStep}: a step exited with a non-zero status ──`);
-                outputChannel.show(true);
-                post({
-                  type: 'installDependenciesProgress',
-                  payload: { state: 'failed', target, errorMessage: failure, timestamp: new Date().toISOString() },
-                });
-              }
+            if (result.status === 'cancelled') {
+              vscode.window.showWarningMessage('Dependency installation cancelled.');
+              outputChannel.appendLine('\n── Installation cancelled ──');
+              post({
+                type: 'installDependenciesProgress',
+                payload: { state: 'cancelled', target, timestamp: new Date().toISOString() },
+              });
+            } else if (result.status === 'failed') {
+              const failure = `Dependency installation failed at ${result.step}. Check output for details.`;
+              vscode.window.showErrorMessage(failure);
+              outputChannel.appendLine(`\n── Installation failed at ${result.step}: ${result.message} ──`);
+              outputChannel.show(true);
+              post({
+                type: 'installDependenciesProgress',
+                payload: { state: 'failed', target, errorMessage: failure, timestamp: new Date().toISOString() },
+              });
             } else {
               progress.report({ increment: 100, message: 'Complete' });
               vscode.window.showInformationMessage('Dependencies installed successfully.');
