@@ -217,7 +217,6 @@
     "@typescript-eslint/parser": "^8.22.0",
     "@vitejs/plugin-react": "^5.1.4",
     "@vscode-elements/elements": "^2.5.0",
-    "@vscode-elements/react-elements": "^2.4.0",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
     "@vscode/vsce": "4.0.0",
