@@ -76,6 +76,10 @@ suite('Sidebar and palette give the same run: dependency installation', function
   /** Runs both starts and asserts that they showed the same thing; returns the palette's recording. */
   async function compare(paletteAsks: boolean): Promise<Recording> {
     const side = await fromSidebar();
+    // The second start must meet the prefix as the first did, without the sources the first left in it
+    for (const name of fs.readdirSync(state.prefix as string)) {
+      fs.rmSync(path.join(state.prefix as string, name), { recursive: true, force: true });
+    }
     const palette = await fromPalette();
     assert.deepStrictEqual(side.replies, [], 'the sidebar gets no direct reply of its own (no error reply)');
     assert.strictEqual(side.picks, 0, 'the sidebar start asks nothing');

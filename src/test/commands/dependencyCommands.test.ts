@@ -2,6 +2,8 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
+import * as path from 'path';
+import { adaptInstallSteps } from '../../commands/dependencyCommands';
 import { getOperationLock, acquireOperationLock } from '../../operationLock';
 import type { OperationType } from '../../operationLock';
 import { activeViewProvider } from '../../panels/TheSeedViewProvider';
@@ -93,6 +95,27 @@ suite('Dependency Commands', () => {
 
       assert.ok(!messages.info.called && !messages.warning.called && !messages.error.called, 'no message is shown');
       assert.deepStrictEqual(fs.readdirSync(state.prefix as string), [], 'nothing is written under the prefix');
+    });
+  });
+
+  suite('Install steps for a prefix that already holds sources', () => {
+    const clone = { label: 'clone libecs-cpp', program: 'git', args: ['clone', 'https://example.invalid/libecs-cpp.git', 'libecs-cpp'] };
+    const configure = { label: 'libecs-cpp configure', program: './configure', args: ['--prefix=/x'], cwd: 'libecs-cpp' };
+    const compile = { label: 'libecs-cpp compile', program: 'make', args: ['-j1'], cwd: 'libecs-cpp' };
+
+    test('a fresh prefix keeps the steps as they are', () => {
+      const dir = state.dir('fresh');
+      assert.deepStrictEqual(adaptInstallSteps([clone, configure, compile], dir), [clone, configure, compile]);
+    });
+
+    test('an existing source directory is updated instead of cloned, and cleaned before configure', () => {
+      const dir = state.dir('existing');
+      fs.mkdirSync(path.join(dir, 'libecs-cpp'));
+      const adapted = adaptInstallSteps([clone, configure, compile], dir);
+      assert.deepStrictEqual(adapted.map((step) => step.label), ['update libecs-cpp', 'libecs-cpp distclean', 'libecs-cpp configure', 'libecs-cpp compile']);
+      assert.deepStrictEqual(adapted[0].args, ['-C', 'libecs-cpp', 'pull', '--ff-only']);
+      assert.strictEqual(adapted[1].ignoreExitCode, true);
+      assert.strictEqual(adapted[1].cwd, 'libecs-cpp');
     });
   });
 

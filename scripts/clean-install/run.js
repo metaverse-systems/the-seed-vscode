@@ -114,7 +114,8 @@ async function main() {
     USERPROFILE: layout.home,
     XDG_CONFIG_HOME: path.join(layout.home, '.config'),
   };
-  const freshEnv = { ...process.env, ...home };
+  // The editor's launcher asks a question when it runs inside WSL; there is no one to answer it.
+  const freshEnv = { ...process.env, ...home, DONT_PROMPT_WSL_INSTALL: '1' };
 
   const installed = cp.spawnSync(cli, lib.installArgs(layout, vsix), { env: freshEnv, stdio: 'inherit' });
   if (installed.status !== 0) {
