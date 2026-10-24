@@ -229,7 +229,7 @@ export interface LibraryStatus {
 }
 
 export interface DependencyStatusPayload {
-  target: string;
+  target: 'native' | 'windows';
   libraries: LibraryStatus[];
   checking: boolean;
   timestamp: string;

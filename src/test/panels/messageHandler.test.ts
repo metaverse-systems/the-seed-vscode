@@ -636,7 +636,24 @@ suite('messageHandler', () => {
 
         assert.strictEqual(response?.type, 'resourcePakBuilt');
         assert.ok(fs.existsSync(path.join(pak, 'assets.pak')), 'the pak must be written');
+        assert.strictEqual((response!.payload as unknown as { pakFilePath: string }).pakFilePath, path.join(pak, 'assets.pak'));
         assert.ok(pushed.some((m) => m.type === 'resourcePakBuildProgress' && m.payload.state === 'completed'));
+      });
+
+      test('buildResourcePak answers with the path the tool\'s build returned', async () => {
+        await post({
+          command: 'addResource',
+          requestId: 'add-first',
+          data: { resourceName: 'tex', filePath: source('tex.png', 'texture') },
+        });
+        const elsewhere = path.join(scratch('output'), 'renamed.pak');
+        sinon.stub(testTool().ResourcePak.prototype, 'build').returns(elsewhere);
+
+        const response = await handleMessage({ command: 'buildResourcePak', requestId: 'build-elsewhere' });
+
+        assert.strictEqual(response?.type, 'resourcePakBuilt');
+        assert.notStrictEqual(elsewhere, path.join(pak, 'assets.pak'), 'the case needs a path other than <dir>/<name>.pak');
+        assert.strictEqual(response.type === 'resourcePakBuilt' ? response.payload.pakFilePath : undefined, elsewhere);
       });
     });
 

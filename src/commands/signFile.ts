@@ -8,6 +8,17 @@ import { commandTargets, NO_FILE_SELECTED } from './commandTargets';
 type Signing = InstanceType<ToolApi['Signing']>;
 type SignResult = Awaited<ReturnType<Signing['signFile']>>;
 
+/**
+ * The file name at the end of `p`. A path with backslashes and no forward slash is a Windows path, whose
+ * name is found the Windows way on every host.
+ */
+function displayName(p: string): string {
+  if (p.includes('\\') && !p.includes('/')) {
+    return path.win32.basename(p);
+  }
+  return path.basename(p);
+}
+
 /** Writes the output lines for one signed file. */
 function logSigned(outputChannel: vscode.OutputChannel, result: SignResult): void {
   const timestamp = new Date().toISOString();
@@ -25,13 +36,13 @@ function logSigned(outputChannel: vscode.OutputChannel, result: SignResult): voi
 async function signOne(outputChannel: vscode.OutputChannel, signing: Signing, targetPath: string, scope: string): Promise<void> {
   try {
     const result = await signing.signFile(targetPath, { scope });
-    const fileName = targetPath.split('/').pop() || targetPath;
+    const fileName = displayName(targetPath);
     logSigned(outputChannel, result);
 
     if (result.signatureType === 'embedded') {
       vscode.window.showInformationMessage(`Embedded signature applied to ${fileName}`);
     } else {
-      const sigName = result.signaturePath?.split('/').pop() || result.signaturePath;
+      const sigName = result.signaturePath ? displayName(result.signaturePath) : result.signaturePath;
       vscode.window.showInformationMessage(`Detached signature saved to ${sigName}`);
     }
 

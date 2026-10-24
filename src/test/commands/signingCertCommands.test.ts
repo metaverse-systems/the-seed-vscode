@@ -7,6 +7,7 @@
 import * as assert from 'assert';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
@@ -233,6 +234,31 @@ suite('Signing Certificate Commands', () => {
       assert.deepStrictEqual(fs.readdirSync(target), []);
       assert.ok(info.notCalled);
       assert.ok(error.notCalled);
+    });
+
+    test('with a folder open the save dialog starts at signing-cert.pem in the first folder', async () => {
+      await createCertFor(SCOPE);
+      const first = state.dir('first');
+      state.setWorkspaceFolders([first, state.dir('second')]);
+      const dialog = sinon.stub(vscode.window, 'showSaveDialog').resolves(undefined);
+
+      await vscode.commands.executeCommand('the-seed.exportSigningCert');
+
+      assert.strictEqual(dialog.callCount, 1);
+      const options = dialog.firstCall.args[0] as vscode.SaveDialogOptions;
+      assert.strictEqual(options.defaultUri?.fsPath, path.join(first, 'signing-cert.pem'));
+    });
+
+    test('with no folder open the save dialog starts at signing-cert.pem in the home directory', async () => {
+      await createCertFor(SCOPE);
+      assert.strictEqual(os.homedir(), state.home, 'the home directory is the scratch home');
+      const dialog = sinon.stub(vscode.window, 'showSaveDialog').resolves(undefined);
+
+      await vscode.commands.executeCommand('the-seed.exportSigningCert');
+
+      assert.strictEqual(dialog.callCount, 1);
+      const options = dialog.firstCall.args[0] as vscode.SaveDialogOptions;
+      assert.strictEqual(options.defaultUri?.fsPath, path.join(state.home, 'signing-cert.pem'));
     });
 
     test('an export writes the PEM to the chosen path and shows it', async () => {

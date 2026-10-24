@@ -49,15 +49,17 @@ export function getCurrentBuildStatus(): BuildStatusPayload {
   return currentBuildStatus;
 }
 
-// Dependency status tracking for getDependencyStatus / late-joining
-let currentDependencyStatus: DependencyStatusPayload | null = null;
+// The last dependency status of each target, for getDependencyStatus
+const currentDependencyStatuses: { native?: DependencyStatusPayload; windows?: DependencyStatusPayload } = {};
 
 export function updateDependencyStatus(status: DependencyStatusPayload): void {
-  currentDependencyStatus = status;
+  currentDependencyStatuses[status.target] = status;
 }
 
-export function getCurrentDependencyStatus(): DependencyStatusPayload | null {
-  return currentDependencyStatus;
+/** The last status of each target that has one, native first. */
+export function getCurrentDependencyStatuses(): DependencyStatusPayload[] {
+  return [currentDependencyStatuses.native, currentDependencyStatuses.windows]
+    .filter((status): status is DependencyStatusPayload => status !== undefined);
 }
 
 // Package status tracking
@@ -481,9 +483,8 @@ export async function handleMessage(
         if (!packageDir) {
           return noPakProject(message.requestId);
         }
-        const pkgPath = path.join(packageDir, 'package.json');
-
-        const pkgData = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+        const rp = new tool.ResourcePak(config);
+        const pkgData = rp.readProject(packageDir);
         if (!pkgData.resources || pkgData.resources.length === 0) {
           if (pushMessage) {
             pushMessage({
@@ -511,10 +512,10 @@ export async function handleMessage(
           });
         }
 
-        // Perform build
-        const rp = new tool.ResourcePak(config);
+        // Perform build; the tool says where it wrote the pak
+        let pakFilePath: string;
         try {
-          rp.build(packageDir);
+          pakFilePath = rp.build(packageDir);
         } catch (error) {
           if (error instanceof tool.ProjectError) {
             if (pushMessage) {
@@ -531,10 +532,6 @@ export async function handleMessage(
           }
           throw error;
         }
-
-        // Determine output file
-        const [, name] = pkgData.name.split('/');
-        const pakFilePath = path.join(packageDir, name + '.pak');
 
         // Send progress: completed
         if (pushMessage) {
@@ -588,7 +585,7 @@ export async function handleMessage(
           timestamp: new Date().toISOString(),
         };
 
-        currentDependencyStatus = status;
+        updateDependencyStatus(status);
 
         return {
           type: 'dependencyStatus',
@@ -598,11 +595,16 @@ export async function handleMessage(
       }
 
       case 'getDependencyStatus': {
-        if (currentDependencyStatus) {
+        // Every known target's status: all but the last pushed, the last as the answer.
+        const known = getCurrentDependencyStatuses();
+        if (known.length > 0) {
+          for (const status of known.slice(0, -1)) {
+            pushMessage?.({ type: 'dependencyStatus', requestId: message.requestId, payload: status });
+          }
           return {
             type: 'dependencyStatus',
             requestId: message.requestId,
-            payload: currentDependencyStatus,
+            payload: known[known.length - 1],
           };
         }
         // Never checked — return null-like payload

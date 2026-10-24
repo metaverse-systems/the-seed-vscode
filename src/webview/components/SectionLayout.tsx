@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { initialSection, nextSection } from '../logic/sectionState';
 
 interface SectionLayoutProps {
   title: string;
@@ -11,24 +12,25 @@ export const SectionLayout: React.FC<SectionLayoutProps> = ({
   children,
   defaultCollapsed = false,
 }) => {
-  const [collapsed, setCollapsed] = useState(defaultCollapsed);
+  const [section, setSection] = useState(() => initialSection(defaultCollapsed));
+  const collapsed = section.collapsed;
 
   useEffect(() => {
-    if (defaultCollapsed) {
-      setCollapsed(true);
-    }
+    setSection((current) => nextSection(current, { kind: 'default', collapsed: defaultCollapsed }));
   }, [defaultCollapsed]);
+
+  const toggle = () => setSection((current) => nextSection(current, { kind: 'toggle' }));
 
   return (
     <div className="section-layout">
       <div
         className="section-header"
-        onClick={() => setCollapsed(!collapsed)}
+        onClick={toggle}
         role="button"
         tabIndex={0}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
-            setCollapsed(!collapsed);
+            toggle();
           }
         }}
         aria-expanded={!collapsed}

@@ -21,10 +21,23 @@ import type {
   RecursiveBuildProgressPayload,
   RecursiveBuildCompletePayload,
   ToolStatusPayload,
+  WebviewToExtensionMessage,
 } from '../types/messages';
+import { errorPlacement } from './logic/errorPlacement';
+import type { SectionArea } from './logic/errorPlacement';
 import '@vscode-elements/elements';
 
 const vscode = getVsCodeApi();
+
+/** Posts a section's request and records that section as the one waiting for its answer. */
+function postRequest(
+  pending: Map<string, SectionArea>,
+  area: SectionArea,
+  message: Extract<WebviewToExtensionMessage, { requestId: string }>
+): void {
+  pending.set(message.requestId, area);
+  vscode.postMessage(message);
+}
 
 const CHECKING_TOOL: ToolStatusPayload = {
   state: 'checking',
@@ -41,7 +54,8 @@ export const App: React.FC = () => {
   const [config, setConfig] = useState<ConfigPayload | null>(null);
   const [toolStatus, setToolStatus] = useState<ToolStatusPayload>(CHECKING_TOOL);
   const wasUsable = useRef(false);
-  const dependencyChecksSent = useRef(false);
+  // The section that sent each request still waiting for an answer.
+  const pendingRequests = useRef(new Map<string, SectionArea>());
   const [error, setError] = useState<string | null>(null);
   const [pendingOverwrite, setPendingOverwrite] = useState<string | null>(null);
   const [pendingOverwriteData, setPendingOverwriteData] = useState<ScopeFormData | null>(null);
@@ -130,11 +144,20 @@ export const App: React.FC = () => {
             const text = message.payload.hint
               ? `${message.payload.message} ${message.payload.hint}`
               : message.payload.message;
-            setError(text);
-            setTemplateCreating(false);
-            setTemplateError(text);
-            setResourcePakLoading(false);
-            setResourcePakError(text);
+            const area = errorPlacement(message.requestId, pendingRequests.current);
+            if (area === 'banner') {
+              setError(text);
+            } else if (area === 'templates') {
+              setTemplateCreating(false);
+              setTemplateError(text);
+            } else if (area === 'resourcePak') {
+              setResourcePakLoading(false);
+              setResourcePakError(text);
+            } else {
+              setIsCheckingNative(false);
+              setIsCheckingWindows(false);
+              setInstallError(text);
+            }
             if (message.payload.code === 'toolUnavailable') {
               // A refused request never produces its normal answer; end what was waiting for one.
               setIsCheckingNative(false);
@@ -188,7 +211,7 @@ export const App: React.FC = () => {
           setBrowsedFilePath(null);
           setBrowsedFileName(null);
           // Refresh status to get updated resource count
-          vscode.postMessage({
+          postRequest(pendingRequests.current, 'resourcePak', {
             command: 'getResourcePakStatus',
             requestId: crypto.randomUUID(),
           });
@@ -257,31 +280,26 @@ export const App: React.FC = () => {
           setInstallerStatus(message.payload);
           break;
       }
+      // An answer, error or not, ends the wait for its request.
+      const answered = (message as { requestId?: string }).requestId;
+      if (answered !== undefined) {
+        pendingRequests.current.delete(answered);
+      }
     };
 
     window.addEventListener('message', handleMessage);
     vscode.postMessage({ command: 'ready' });
-    vscode.postMessage({
+    postRequest(pendingRequests.current, 'resourcePak', {
       command: 'getResourcePakStatus',
       requestId: crypto.randomUUID(),
     });
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
-  // Once the tool is usable: load the configuration again, and check the dependencies the first time.
+  // Once the tool is usable, load the configuration again. The extension checks the dependencies itself.
   useEffect(() => {
     if (toolStatus.usable && !wasUsable.current) {
       vscode.postMessage({ command: 'getConfig', requestId: crypto.randomUUID() });
-      if (!dependencyChecksSent.current) {
-        dependencyChecksSent.current = true;
-        for (const target of ['native', 'windows'] as const) {
-          vscode.postMessage({
-            command: 'checkDependencies',
-            requestId: crypto.randomUUID(),
-            data: { target },
-          });
-        }
-      }
     }
     wasUsable.current = toolStatus.usable;
   }, [toolStatus.usable]);
@@ -348,7 +366,7 @@ export const App: React.FC = () => {
     setTemplateCreating(true);
     setTemplateError(null);
     setTemplateExistsWarning(null);
-    vscode.postMessage({
+    postRequest(pendingRequests.current, 'templates', {
       command: 'createTemplate',
       requestId: crypto.randomUUID(),
       data: { templateType, scopeName, templateName },
@@ -392,7 +410,7 @@ export const App: React.FC = () => {
     setResourcePakLoading(true);
     setResourcePakError(null);
     setResourcePakCreateSuccess(null);
-    vscode.postMessage({
+    postRequest(pendingRequests.current, 'resourcePak', {
       command: 'createResourcePak',
       requestId: crypto.randomUUID(),
       data: { scopeName, pakName },
@@ -403,7 +421,7 @@ export const App: React.FC = () => {
     setResourcePakLoading(true);
     setBrowsedFilePath(null);
     setBrowsedFileName(null);
-    vscode.postMessage({
+    postRequest(pendingRequests.current, 'resourcePak', {
       command: 'browseResourceFile',
       requestId: crypto.randomUUID(),
     });
@@ -412,7 +430,7 @@ export const App: React.FC = () => {
   const handleAddResource = (resourceName: string, filePath: string) => {
     setResourcePakLoading(true);
     setResourcePakError(null);
-    vscode.postMessage({
+    postRequest(pendingRequests.current, 'resourcePak', {
       command: 'addResource',
       requestId: crypto.randomUUID(),
       data: { resourceName, filePath },
@@ -424,7 +442,7 @@ export const App: React.FC = () => {
     setResourcePakError(null);
     setResourcePakActionSuccess(null);
     setResourcePakBuildProgress(null);
-    vscode.postMessage({
+    postRequest(pendingRequests.current, 'resourcePak', {
       command: 'buildResourcePak',
       requestId: crypto.randomUUID(),
     });
@@ -438,7 +456,7 @@ export const App: React.FC = () => {
       setIsCheckingWindows(true);
     }
     setInstallError(null);
-    vscode.postMessage({
+    postRequest(pendingRequests.current, 'dependencies', {
       command: 'checkDependencies',
       requestId: crypto.randomUUID(),
       data: { target },
@@ -448,7 +466,7 @@ export const App: React.FC = () => {
   // The command reports the run's start, steps and outcome; until then nothing is shown running.
   const handleInstallDependencies = (target: 'native' | 'windows') => {
     setInstallError(null);
-    vscode.postMessage({
+    postRequest(pendingRequests.current, 'dependencies', {
       command: 'installDependencies',
       requestId: crypto.randomUUID(),
       data: { target },
@@ -541,7 +559,7 @@ export const App: React.FC = () => {
       <div className="section-divider" />
       <BuildSection
         buildStatus={buildStatus}
-        hasProject={config !== null}
+        configState={config === null ? 'loading' : 'loaded'}
         onStartBuild={handleStartBuild}
         onCancelBuild={handleCancelBuild}
         onStartRecursiveBuild={handleStartRecursiveBuild}

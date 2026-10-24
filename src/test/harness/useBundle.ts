@@ -12,8 +12,9 @@ const root = path.resolve(__dirname, '..', '..', '..');
 /** The bundle the tests run against. */
 export const bundlePath = path.join(root, 'dist', 'extension.js');
 
-// Compiled host files under out/ (outside out/test/), relative to out/,
-// forward slashes, no extension.
+// Compiled host files under out/ (outside out/test/ and out/webview/, whose
+// page modules the tests load as compiled), relative to out/, forward
+// slashes, no extension.
 function listCompiledHostFiles(): string[] {
   const outRoot = path.join(root, 'out');
   const found: string[] = [];
@@ -21,7 +22,7 @@ function listCompiledHostFiles(): string[] {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, entry.name);
       const relative = path.relative(outRoot, full).split(path.sep).join('/');
-      if (relative === 'test') {
+      if (relative === 'test' || relative === 'webview') {
         continue;
       }
       if (entry.isDirectory()) {
