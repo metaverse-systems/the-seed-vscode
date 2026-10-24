@@ -1,40 +1,27 @@
 # Change Log
 
-All notable changes to the "the-seed-vscode" extension will be documented in this file.
+All notable changes to The Seed extension are recorded in this file, in the format of [Keep a Changelog](https://keepachangelog.com/).
 
-Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
-
-## [0.0.2] - 2026-02-15
+## [1.0.0] - 2026-10-24
 
 ### Added
-- **Package Projects** command — resolve project binaries and transitive shared-library dependencies, copy into a flat `dist/` directory (Command Palette + webview)
-- **Packaging sidebar section** — Package button with inline progress, success/failure indicators, and file count display
-- **Check Dependencies** command — verify libecs-cpp and libthe-seed installation status via `pkg-config` for native or Windows targets (Command Palette + webview)
-- **Install Dependencies** command — clone and build missing dependencies from source with real-time output streaming, progress notification, and cancellation support (Command Palette + webview)
-- **Dependencies sidebar section** — auto-checks on render, per-library status indicators (✓/⚠), target selector dropdown, Check and Install action buttons
-- Shared operation lock for mutual exclusion between build and install operations
-- Dependency status tracking and replay for late-joining webview panels
-- Install progress tracking with per-step streaming updates
 
-### Changed
-- Refactored build commands to use shared operation lock instead of module-level variable
-- Builds now report operation type in mutual exclusion warnings (build vs install)
+- Configuration and scopes: set the installation prefix, and add, edit, delete and list scopes with their author details (Configure Project, Show Config, Add Scope, Edit Scope, Delete Scope, List Scopes).
+- Templates: create component, system and program projects in a scope, in the open folder or a folder you choose.
+- Builds: build the project of the active file, or one you choose, for Linux (Build Native) or Windows with MinGW (Build Windows), rebuild it incrementally (Build (Incremental)), or build it with every project it depends on first (Build Native (Recursive), Build Windows (Recursive)). Builds report their output and can be cancelled.
+- Resource paks: create a resource pak, add files to it as resources, and build its `.pak` file.
+- Dependencies: check whether libecs-cpp and libthe-seed are installed for Linux or Windows, and install the missing ones into the prefix, with the installation's output streamed as it runs, cancellation, and the last status kept for the sidebar.
+- Signing: create, import, export and inspect a scope's signing certificate; sign files (embedded signatures for Windows and Mac programs and installers, detached signatures for other files) and verify their signatures, from the Command Palette or the explorer's context menu on one or more files.
+- Packaging and installer: copy a project's programs and the shared libraries they load into its `dist/` directory (Package Projects), and generate a Windows `.msi` installer (Generate Windows Installer), with the tool's own progress in the output channel and the sidebar.
+- The sidebar: Configuration, Dependencies, Templates, Build, ResourcePaks, Packaging and Installer sections.
+- The tool check: the extension finds the installed the-seed tool in the global npm installation, through the `the-seed` command on the path, or at the `the-seed.toolPath` setting; The Seed: Check Tool reports the version and where it was found, and an unusable tool is reported with the command that installs a supported one.
 
-## [Unreleased]
+### Requirements
 
-### Added
-- **ResourcePak Add Resource** command — register files as resources from Command Palette and webview sidebar
-- **ResourcePak Build** command — build ResourcePaks into `.pak` binaries from Command Palette and webview sidebar
-- **ResourcePaks sidebar section** — collapsible section with Create, Add Resource, and Build action buttons
-- Auto-detection of workspace folder as ResourcePak with info bar display
-- Target scope/name selection UI when no ResourcePak is auto-detected
-- Build progress indicator with building/completed/failed states
-- File browse dialog integration for resource file selection
-- Resource name input with validation during add-resource flow
+- The the-seed tool 2.1.0 or a later 2.x, installed globally with npm.
+- VS Code 1.143 or later.
+- On Windows, the extension host in WSL; without WSL the operations that need the tool's native component are unavailable.
 
-### Changed
-- Extended `the-seed` `ResourcePak.addResource()` and `build()` with optional `packageDir` parameter for explicit path support
-- Fixed relative path bug in `ResourcePak.build()` that used wrong CWD for `.pak` output
+### Notes
 
-### Initial
-- Initial release
+- The first public release. The earlier 0.x versions were never released.
