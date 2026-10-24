@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { runBuildSteps } from '../build/buildRunner';
 import { acquireOperationLock, releaseOperationLock, getOperationLock, lockRefusal } from '../operationLock';
@@ -157,6 +158,8 @@ export function installDependenciesCommand(
     const abortController = lockResult.abortController!;
 
     try {
+      // The steps run inside the prefix, so a prefix that was configured but never created must exist first
+      fs.mkdirSync(config.config.prefix, { recursive: true });
       post({ type: 'installDependenciesStarted' });
 
       // Show output channel with timestamped separator

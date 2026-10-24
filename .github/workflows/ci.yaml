@@ -403,6 +403,7 @@ jobs:
           echo "Tag $REF_NAME matches package.json version $version"
 
       - name: Set up WSL
+        timeout-minutes: 10
         uses: Vampire/setup-wsl@v7.2.0
         with:
           distribution: Ubuntu-24.04
@@ -799,8 +800,20 @@ jobs:
 
       # Windows with WSL: the extension host and the tool in Ubuntu, as on Linux.
 
+      # The same action, version and inputs as the check job's WSL; the setup is bounded so a hang
+      # fails in minutes, and it is tried a second time because a hung first attempt is a runner fault.
       - name: Set up WSL
+        id: wsl
         if: matrix.leg == 'windows-wsl'
+        continue-on-error: true
+        timeout-minutes: 10
+        uses: Vampire/setup-wsl@v7.2.0
+        with:
+          distribution: Ubuntu-24.04
+
+      - name: Set up WSL (second attempt)
+        if: matrix.leg == 'windows-wsl' && steps.wsl.outcome != 'success'
+        timeout-minutes: 10
         uses: Vampire/setup-wsl@v7.2.0
         with:
           distribution: Ubuntu-24.04

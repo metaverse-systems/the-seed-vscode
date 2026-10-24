@@ -132,6 +132,17 @@ suite('Dependency Commands', () => {
       assert.strictEqual(getOperationLock().active, false, 'the lock is free afterwards');
     });
 
+    test('a configured prefix that does not exist yet is created, and the steps run inside it', async () => {
+      git.failing();
+      fs.rmSync(state.prefix as string, { recursive: true, force: true });
+
+      await vscode.commands.executeCommand('the-seed.installDependencies', 'native');
+
+      assert.ok(fs.existsSync(state.prefix as string), 'the prefix was created');
+      assert.ok(!/ENOENT/.test(panelText(recorder)), 'no step failed to start for want of its directory');
+      assert.ok(/Step 1\//.test(panelText(recorder)), 'the first step ran');
+    });
+
     test("with the target 'mac', shows the unknown target error and runs nothing", async () => {
       git.failing();
 
