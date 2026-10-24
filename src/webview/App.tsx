@@ -23,6 +23,7 @@ import type {
   ToolStatusPayload,
   WebviewToExtensionMessage,
 } from '../types/messages';
+import { REQUIRED_TOOL_VERSION, TOOL_SETTING } from '../tool/requiredVersion';
 import { errorPlacement } from './logic/errorPlacement';
 import type { SectionArea } from './logic/errorPlacement';
 import '@vscode-elements/elements';
@@ -46,8 +47,8 @@ const CHECKING_TOOL: ToolStatusPayload = {
   location: undefined,
   version: undefined,
   foundThrough: undefined,
-  required: '2.0.0',
-  setting: 'the-seed.toolPath',
+  required: REQUIRED_TOOL_VERSION,
+  setting: TOOL_SETTING,
 };
 
 export const App: React.FC = () => {

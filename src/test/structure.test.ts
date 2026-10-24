@@ -70,6 +70,15 @@ suite('Structure: each operation exists in one place', () => {
     assert.deepStrictEqual(users, [], `host sources that name ${runner} or ${module}`);
   });
 
+  test('the supported tool version is written only in src/tool/requiredVersion.ts', () => {
+    // The webview page is checked too: its placeholder status must not carry a stale version.
+    const versionLiteral = /(['"`])\d+\.\d+\.\d+\1/;
+    const writing = filesUnder(SRC)
+      .filter((source) => /\.tsx?$/.test(source) && !source.startsWith('test/') && source !== 'tool/requiredVersion.ts')
+      .filter((source) => versionLiteral.test(read(source)));
+    assert.deepStrictEqual(writing, [], 'sources other than src/tool/requiredVersion.ts write a version literal');
+  });
+
   test('no command is written inline in extension.ts', () => {
     assert.ok(!/wrapCommand\(\s*async\b/.test(read('extension.ts')), 'extension.ts contains wrapCommand(async');
   });
