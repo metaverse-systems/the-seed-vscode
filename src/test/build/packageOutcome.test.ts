@@ -100,17 +100,7 @@ suite('packageOutcome', () => {
       config.config.prefix = path.join(tmpDir, 'prefix');
       const outputDir = path.join(tmpDir, 'dist');
 
-      const log = console.log;
-      const error = console.error;
-      console.log = () => {};
-      console.error = () => {};
-      let packaged: PackageResult;
-      try {
-        packaged = await new (testTool().Package)(config).run(outputDir, dirs);
-      } finally {
-        console.log = log;
-        console.error = error;
-      }
+      const packaged: PackageResult = await new (testTool().Package)(config).run(outputDir, dirs, { log: () => undefined });
 
       assert.strictEqual(packaged.success, false);
       const status = packageStatusFrom(packaged, timestamp);

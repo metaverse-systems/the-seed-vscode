@@ -6,7 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
-import type { ProjectBuildOptions } from '@metaverse-systems/the-seed/types';
+import type { InstallerRunOptions, PackageRunOptions, ProjectBuildOptions } from '@metaverse-systems/the-seed/types';
 import { NO_BUILDABLE_PROJECT } from '../../build/buildStart';
 import { acquireOperationLock, getOperationLock, lockRefusal } from '../../operationLock';
 import type { OperationType } from '../../operationLock';
@@ -471,10 +471,11 @@ suite('Sidebar and palette give the same run: packaging and the installer', func
     return palette.recording;
   }
 
-  /** A packaging run that writes its progress with `console.log`, as the tool does before it takes a log option. */
+  /** A packaging run that reports its progress through the run's options, as the tool does. */
   function stubPackageRun(result: ReturnType<typeof packageResult>): sinon.SinonStub {
-    return sinon.stub(testTool().Package.prototype, 'run').callsFake(async () => {
-      console.log('Copying game...');
+    return sinon.stub(testTool().Package.prototype, 'run').callsFake(async (_output: string, _dirs: string[], options?: PackageRunOptions) => {
+      options?.log?.('Copying game...', 'info');
+      options?.onCopy?.({ name: 'game', source: '/nowhere/game', index: 1, total: 1 });
       return result as never;
     });
   }
@@ -487,7 +488,8 @@ suite('Sidebar and palette give the same run: packaging and the installer', func
     assert.strictEqual(run.callCount, 2, 'each start packaged once');
     assert.deepStrictEqual(shownOf(palette, 'info'), ['Packaged 2 files into dist/']);
     assert.ok(panelText(palette).includes('── Packaged 2 files into dist/ ──'));
-    assert.deepStrictEqual(postedTypes(palette), ['packageStatus:running', 'packageStatus:completed']);
+    assert.ok(panelText(palette).includes('\nCopying game...\n'), "the panel holds the tool's log line");
+    assert.deepStrictEqual(postedTypes(palette), ['packageStatus:running', 'packageStatus:running', 'packageStatus:completed']);
   });
 
   test('a refused packaging run: both show the same refusal', async () => {
@@ -497,12 +499,12 @@ suite('Sidebar and palette give the same run: packaging and the installer', func
 
     assert.deepStrictEqual(shownOf(palette, 'error'), ['Packaging failed: No buildable projects found.']);
     assert.ok(panelText(palette).includes('── Packaging failed ──\nNo buildable projects found.\nSecond line of the refusal\n'));
-    assert.deepStrictEqual(postedTypes(palette), ['packageStatus:running', 'packageStatus:failed']);
+    assert.deepStrictEqual(postedTypes(palette), ['packageStatus:running', 'packageStatus:running', 'packageStatus:failed']);
   });
 
   function stubInstallerRun(result: { ok: true; msiPath: string } | { ok: false; status: 1 | 2; message: string }): sinon.SinonStub {
-    return sinon.stub(testTool().Installer.prototype, 'run').callsFake(async () => {
-      console.log('Generating installer...');
+    return sinon.stub(testTool().Installer.prototype, 'run').callsFake(async (_dir: string, options?: InstallerRunOptions) => {
+      options?.log?.('Generating installer...', 'info');
       return result as never;
     });
   }
@@ -514,7 +516,8 @@ suite('Sidebar and palette give the same run: packaging and the installer', func
 
     assert.strictEqual(run.callCount, 2, 'each start generated once');
     assert.deepStrictEqual(shownOf(palette, 'info'), ['Windows installer generated successfully.']);
-    assert.deepStrictEqual(postedTypes(palette), ['installerStatus:running', 'installerStatus:completed']);
+    assert.ok(panelText(palette).includes('\nGenerating installer...\n'), "the panel holds the tool's log line");
+    assert.deepStrictEqual(postedTypes(palette), ['installerStatus:running', 'installerStatus:running', 'installerStatus:completed']);
   });
 
   test('a failed installer: both show the same failure', async () => {
@@ -524,7 +527,7 @@ suite('Sidebar and palette give the same run: packaging and the installer', func
 
     assert.deepStrictEqual(shownOf(palette, 'error'), ['wixl failed: stubbed']);
     assert.ok(panelText(palette).includes('── Installer generation failed ──'));
-    assert.deepStrictEqual(postedTypes(palette), ['installerStatus:running', 'installerStatus:failed']);
+    assert.deepStrictEqual(postedTypes(palette), ['installerStatus:running', 'installerStatus:running', 'installerStatus:failed']);
   });
 });
 

@@ -53,6 +53,13 @@ suite('Structure: each operation exists in one place', () => {
     assert.deepStrictEqual(users, ['build/buildStart.ts']);
   });
 
+  test('no host source assigns console.log, console.error or console.warn', () => {
+    // The console is shared with every other extension in the host; the tool's output is taken through its run options
+    const assignment = /\bconsole\s*(?:\.\s*(?:log|error|warn)|\[\s*['"`](?:log|error|warn)['"`]\s*\])\s*=(?!=)/;
+    const assigning = hostSources().filter((source) => assignment.test(read(source)));
+    assert.deepStrictEqual(assigning, [], 'host sources that assign a console method');
+  });
+
   test('no command is written inline in extension.ts', () => {
     assert.ok(!/wrapCommand\(\s*async\b/.test(read('extension.ts')), 'extension.ts contains wrapCommand(async');
   });
