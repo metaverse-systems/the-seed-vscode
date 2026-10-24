@@ -21,10 +21,10 @@ const policy = (): RequiredVersionModule => require('../../tool/requiredVersion'
 
 suite('required tool version', () => {
   const rows: Array<[Verdict, string[]]> = [
-    ['tooOld', ['1.2.1', '0.9.0', '2.0.0-rc.1', '2.0.0-alpha']],
-    ['compatible', ['2.0.0', '2.0.1', '2.3.1', '2.1.0-beta.2', '2.0.0+build.5']],
+    ['tooOld', ['1.2.1', '0.9.0', '2.0.0', '2.1.0-rc.1']],
+    ['compatible', ['2.1.0', '2.1.1', '2.3.1', '2.2.0-beta.2', '2.1.0+build.5']],
     ['tooNew', ['3.0.0', '3.0.0-rc.1', '10.0.0']],
-    ['unparsable', ['2', 'v2.0.0', 'latest', '']],
+    ['unparsable', ['2', 'v2.1.0', 'latest', '']],
   ];
 
   for (const [verdict, versions] of rows) {
@@ -36,7 +36,7 @@ suite('required tool version', () => {
   }
 
   test('numbers are compared as numbers, not as text', () => {
-    assert.strictEqual(policy().classifyVersion('2.0.10'), 'compatible');
+    assert.strictEqual(policy().classifyVersion('2.1.10'), 'compatible');
     assert.strictEqual(policy().classifyVersion('2.10.0'), 'compatible');
     assert.strictEqual(policy().classifyVersion('1.99.99'), 'tooOld');
     assert.strictEqual(policy().classifyVersion('9.0.0'), 'tooNew');
@@ -44,8 +44,8 @@ suite('required tool version', () => {
 
   test('every prerelease of the required version is older than it', () => {
     // Numeric identifiers rank below alphanumeric ones, numbers compare as numbers, and a shorter
-    // set ranks lower when everything before it is equal; all of these stay below 2.0.0 itself.
-    for (const version of ['2.0.0-0', '2.0.0-1.2.3', '2.0.0-alpha.beta', '2.0.0-alpha.1', '2.0.0-rc.1.x', '2.0.0-0.0.0', '2.0.0-x-y-z.--']) {
+    // set ranks lower when everything before it is equal; all of these stay below 2.1.0 itself.
+    for (const version of ['2.1.0-0', '2.1.0-1.2.3', '2.1.0-alpha.beta', '2.1.0-alpha.1', '2.1.0-rc.1.x', '2.1.0-0.0.0', '2.1.0-x-y-z.--']) {
       assert.strictEqual(policy().classifyVersion(version), 'tooOld', version);
     }
   });
@@ -57,22 +57,22 @@ suite('required tool version', () => {
   });
 
   test('build metadata is ignored', () => {
-    assert.strictEqual(policy().classifyVersion('2.0.0+build.5'), 'compatible');
+    assert.strictEqual(policy().classifyVersion('2.1.0+build.5'), 'compatible');
     assert.strictEqual(policy().classifyVersion('3.0.0+build.5'), 'tooNew');
     assert.strictEqual(policy().classifyVersion('1.9.9+build.5'), 'tooOld');
-    assert.strictEqual(policy().classifyVersion('2.0.0-rc.1+build.5'), 'tooOld');
+    assert.strictEqual(policy().classifyVersion('2.1.0-rc.1+build.5'), 'tooOld');
   });
 
   test('text that is not a version is unparsable', () => {
-    for (const version of ['2.0', '2.0.0.0', ' 2.0.0', '2.0.0 ', '2.0.0-', '2.0.0+', '2.x', '^2.0.0', '>=2.0.0', 'two', '2.0.0-rc_1', '-1.0.0', '1.-2.3']) {
+    for (const version of ['2.0', '2.1.0.0', ' 2.1.0', '2.1.0 ', '2.1.0-', '2.1.0+', '2.x', '^2.1.0', '>=2.1.0', 'two', '2.1.0-rc_1', '-1.0.0', '1.-2.3']) {
       assert.strictEqual(policy().classifyVersion(version), 'unparsable', JSON.stringify(version));
     }
   });
 
   test('the constants derive from the required version', () => {
     const constants = policy();
-    assert.strictEqual(constants.REQUIRED_TOOL_VERSION, '2.0.0');
-    assert.strictEqual(constants.SUPPORTED_RANGE_TEXT, '2.0.0 or a later 2.x');
+    assert.strictEqual(constants.REQUIRED_TOOL_VERSION, '2.1.0');
+    assert.strictEqual(constants.SUPPORTED_RANGE_TEXT, '2.1.0 or a later 2.x');
     assert.strictEqual(constants.INSTALL_COMMAND, 'npm install -g --foreground-scripts @metaverse-systems/the-seed@2');
     assert.strictEqual(constants.TOOL_PACKAGE_NAME, '@metaverse-systems/the-seed');
     assert.strictEqual(constants.TOOL_SETTING, 'the-seed.toolPath');

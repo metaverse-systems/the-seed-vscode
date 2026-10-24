@@ -16,7 +16,7 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 env:
-  THE_SEED_VERSION: "2.0.0" # the tool, from the public registry
+  THE_SEED_VERSION: "2.1.0" # the tool, from the public registry
   LIBECS_CPP_REF: 16a272ce17bf03369febf0796444a8df8cd1ffec # libecs-cpp 2.1.0
   LIBTHE_SEED_REF: 839bc62d3233e88347059942ce25e84da23b48ee # libthe-seed 0.8.0
   VSCODE_VERSION: "1.143.0" # must equal .vscode-test.mjs; checked below

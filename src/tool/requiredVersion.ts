@@ -1,5 +1,5 @@
 /** The one place the supported tool version is stated. */
-export const REQUIRED_TOOL_VERSION = '2.0.0';
+export const REQUIRED_TOOL_VERSION = '2.1.0';
 
 const REQUIRED_MAJOR = REQUIRED_TOOL_VERSION.split('.')[0];
 

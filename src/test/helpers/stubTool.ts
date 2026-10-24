@@ -14,7 +14,7 @@ const entry = (subpath: string, exportName: string, member: string, kind: Expect
   { subpath, exportName, member, kind }
 );
 
-/** Every value of the published 2.0.0 package that the extension's sources and tests use. */
+/** Every value of the published 2.1.0 package that the extension's sources and tests use. */
 export const EXPECTED_EXPORTS: readonly ExpectedExport[] = [
   entry('Config', 'default', 'Config', 'class'),
   entry('Config', 'ConfigError', 'ConfigError', 'class'),
@@ -40,6 +40,7 @@ export const EXPECTED_EXPORTS: readonly ExpectedExport[] = [
   entry('Dependencies', 'checkLibEcs', 'checkLibEcs', 'function'),
   entry('Dependencies', 'checkLibTheSeed', 'checkLibTheSeed', 'function'),
   entry('Dependencies', 'getInstallSteps', 'getInstallSteps', 'function'),
+  entry('Dependencies', 'runInstallSteps', 'runInstallSteps', 'function'),
   entry('NativeComponent', 'nativeComponentMessage', 'nativeComponentMessage', 'function'),
   entry('NativeComponent', 'NativeComponentMissingError', 'NativeComponentMissingError', 'class'),
 ];

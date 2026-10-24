@@ -1,7 +1,7 @@
 import type Build from '@metaverse-systems/the-seed/Build';
 import type Config from '@metaverse-systems/the-seed/Config';
 import type { ConfigError } from '@metaverse-systems/the-seed/Config';
-import type { checkLibEcs, checkLibTheSeed, getInstallSteps } from '@metaverse-systems/the-seed/Dependencies';
+import type { checkLibEcs, checkLibTheSeed, getInstallSteps, runInstallSteps } from '@metaverse-systems/the-seed/Dependencies';
 import type {
   ConflictingProjectError,
   CyclicDependencyError,
@@ -49,6 +49,7 @@ export interface ToolApi {
   readonly checkLibEcs: typeof checkLibEcs;
   readonly checkLibTheSeed: typeof checkLibTheSeed;
   readonly getInstallSteps: typeof getInstallSteps;
+  readonly runInstallSteps: typeof runInstallSteps;
   readonly nativeComponentMessage: typeof nativeComponentMessage;
   readonly NativeComponentMissingError: typeof NativeComponentMissingError;
 }
@@ -92,6 +93,7 @@ export const EXPORT_TABLE: readonly ExportRow[] = [
   row('Dependencies', 'checkLibEcs', 'checkLibEcs', 'function'),
   row('Dependencies', 'checkLibTheSeed', 'checkLibTheSeed', 'function'),
   row('Dependencies', 'getInstallSteps', 'getInstallSteps', 'function'),
+  row('Dependencies', 'runInstallSteps', 'runInstallSteps', 'function'),
   row('NativeComponent', 'nativeComponentMessage', 'nativeComponentMessage', 'function'),
   row('NativeComponent', 'NativeComponentMissingError', 'NativeComponentMissingError', 'class'),
 ];

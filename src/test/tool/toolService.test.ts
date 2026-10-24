@@ -98,7 +98,7 @@ const candidate = (overrides: Partial<ToolCandidate> = {}): ToolCandidate => ({
   packageDir: '/opt/node/lib/node_modules/@metaverse-systems/the-seed',
   foundThrough: 'global',
   detail: 'npm root -g',
-  version: '2.0.0',
+  version: '2.1.0',
   verdict: 'compatible',
   ...overrides,
 });
@@ -134,7 +134,7 @@ suite('tool status messages', () => {
 
   test('usable says what is in use, where and how it was found', () => {
     const text = describe(statusOf('usable', { installation: candidate() }));
-    includesAll(text, ['2.0.0', '/opt/node/lib/node_modules/@metaverse-systems/the-seed', 'global installation']);
+    includesAll(text, ['2.1.0', '/opt/node/lib/node_modules/@metaverse-systems/the-seed', 'global installation']);
   });
 
   test('usable through the setting and through the path name that way', () => {
@@ -169,7 +169,7 @@ suite('tool status messages', () => {
       'the-seed.toolPath',
       '/somewhere/else',
       'it is the package other-package',
-      '2.0.0',
+      '2.1.0',
       versionModule().INSTALL_COMMAND,
     ]);
   });
@@ -205,15 +205,15 @@ suite('tool status messages', () => {
 
   test('reloadRequired gives the location, both versions and the supported versions', () => {
     const text = describe(statusOf('reloadRequired', {
-      installation: candidate({ version: '2.0.1' }),
-      previousVersion: '2.0.0',
+      installation: candidate({ version: '2.1.1' }),
+      previousVersion: '2.1.0',
     }));
-    includesAll(text, ['/opt/node/lib/node_modules/@metaverse-systems/the-seed', '2.0.0', '2.0.1', 'Reload', versionModule().SUPPORTED_RANGE_TEXT]);
+    includesAll(text, ['/opt/node/lib/node_modules/@metaverse-systems/the-seed', '2.1.0', '2.1.1', 'Reload', versionModule().SUPPORTED_RANGE_TEXT]);
   });
 
   test('reloadRequired for a package that can no longer be read says so', () => {
-    const text = describe(statusOf('reloadRequired', { installation: candidate({ version: undefined, verdict: 'unreadable' }), previousVersion: '2.0.0' }));
-    includesAll(text, ['2.0.0', 'unreadable']);
+    const text = describe(statusOf('reloadRequired', { installation: candidate({ version: undefined, verdict: 'unreadable' }), previousVersion: '2.1.0' }));
+    includesAll(text, ['2.1.0', 'unreadable']);
   });
 
   suite('also found', () => {
@@ -321,7 +321,7 @@ suite('tool service', () => {
 
   suite('the first check', () => {
     test('starts as checking, and whenChecked resolves once the first check is done', async () => {
-      installGlobal('2.0.0');
+      installGlobal('2.1.0');
       const service = makeService();
       assert.strictEqual(service.status.state, 'checking');
       let settled = false;
@@ -336,15 +336,15 @@ suite('tool service', () => {
     });
 
     test('usable: the global installation, with its version and how it was found', async () => {
-      const pkg = installGlobal('2.0.0');
+      const pkg = installGlobal('2.1.0');
       const service = makeService();
       const status = await service.check('activate');
       assert.strictEqual(status.state, 'usable');
       assert.strictEqual(status.installation?.packageDir, pkg);
-      assert.strictEqual(status.installation?.version, '2.0.0');
+      assert.strictEqual(status.installation?.version, '2.1.0');
       assert.strictEqual(status.installation?.foundThrough, 'global');
-      assert.strictEqual(status.key, `usable|${pkg}|2.0.0`);
-      assert.ok(status.message.includes('2.0.0') && status.message.includes(pkg), status.message);
+      assert.strictEqual(status.key, `usable|${pkg}|2.1.0`);
+      assert.ok(status.message.includes('2.1.0') && status.message.includes(pkg), status.message);
     });
 
     test('notFound: nothing installed', async () => {
@@ -384,7 +384,7 @@ suite('tool service', () => {
     });
 
     test('notLoadable: a module that throws, with the first line of its error', async () => {
-      installGlobal('2.0.0', { throwOnLoad: 'Config' });
+      installGlobal('2.1.0', { throwOnLoad: 'Config' });
       const status = await makeService().check('activate');
       assert.strictEqual(status.state, 'notLoadable');
       assert.strictEqual(status.loadError, 'stub module failed to start: Config');
@@ -392,14 +392,14 @@ suite('tool service', () => {
     });
 
     test('notLoadable: a package.json that is not JSON, naming the location', async () => {
-      const pkg = installGlobal('2.0.0', { packageJson: 'malformed' });
+      const pkg = installGlobal('2.1.0', { packageJson: 'malformed' });
       const status = await makeService().check('activate');
       assert.strictEqual(status.state, 'notLoadable');
       assert.ok(status.message.includes(pkg), status.message);
     });
 
     test('notLoadable: a package.json without a version, naming the location', async () => {
-      const pkg = installGlobal('2.0.0', { packageJson: 'noVersion' });
+      const pkg = installGlobal('2.1.0', { packageJson: 'noVersion' });
       const status = await makeService().check('activate');
       assert.strictEqual(status.state, 'notLoadable');
       assert.ok(status.message.includes(pkg), status.message);
@@ -430,7 +430,7 @@ suite('tool service', () => {
     });
 
     test('a loader that throws something that is not an error gives notLoadable', async () => {
-      installGlobal('2.0.0');
+      installGlobal('2.1.0');
       const service = makeService({
         load: () => {
           // eslint-disable-next-line no-throw-literal
@@ -442,7 +442,7 @@ suite('tool service', () => {
     });
 
     test('a loader that throws an error gives notLoadable with the first line', async () => {
-      installGlobal('2.0.0');
+      installGlobal('2.1.0');
       const service = makeService({ load: () => { throw new Error('loader exploded\nand more'); } });
       const status = await service.check('activate');
       assert.strictEqual(status.state, 'notLoadable');
@@ -458,7 +458,7 @@ suite('tool service', () => {
 
   suite('acquire', () => {
     test('with a usable tool returns its API after reading only the version in use', async () => {
-      installGlobal('2.0.0');
+      installGlobal('2.1.0');
       const service = makeService();
       await service.check('activate');
       const callsAfterCheck = world.npmCalls;
@@ -468,30 +468,30 @@ suite('tool service', () => {
       if (first.ok && second.ok) {
         assert.strictEqual(first.api, second.api);
         assert.ok(Object.isFrozen(first.api));
-        assert.strictEqual(first.installation.version, '2.0.0');
+        assert.strictEqual(first.installation.version, '2.1.0');
       }
       assert.strictEqual(world.npmCalls, callsAfterCheck, 'acquire ran the lookup again');
     });
 
     test('a version that changed in place gives reloadRequired with both versions', async () => {
-      const pkg = installGlobal('2.0.0');
+      const pkg = installGlobal('2.1.0');
       const service = makeService();
       await service.check('activate');
-      fs.writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name: '@metaverse-systems/the-seed', version: '2.0.1' }));
+      fs.writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name: '@metaverse-systems/the-seed', version: '2.1.1' }));
       const result = await service.acquire();
       assert.strictEqual(result.ok, false);
       if (!result.ok) {
         assert.strictEqual(result.status.state, 'reloadRequired');
-        assert.strictEqual(result.status.previousVersion, '2.0.0');
-        assert.strictEqual(result.status.installation?.version, '2.0.1');
-        assert.ok(result.status.message.includes('2.0.0') && result.status.message.includes('2.0.1'), result.status.message);
+        assert.strictEqual(result.status.previousVersion, '2.1.0');
+        assert.strictEqual(result.status.installation?.version, '2.1.1');
+        assert.ok(result.status.message.includes('2.1.0') && result.status.message.includes('2.1.1'), result.status.message);
         assert.ok(result.status.message.includes(pkg), result.status.message);
       }
       assert.strictEqual(service.status.state, 'reloadRequired');
     });
 
     test('a package.json that can no longer be read gives reloadRequired', async () => {
-      const pkg = installGlobal('2.0.0');
+      const pkg = installGlobal('2.1.0');
       const service = makeService();
       await service.check('activate');
       fs.rmSync(path.join(pkg, 'package.json'));
@@ -499,29 +499,29 @@ suite('tool service', () => {
       assert.strictEqual(result.ok, false);
       if (!result.ok) {
         assert.strictEqual(result.status.state, 'reloadRequired');
-        assert.strictEqual(result.status.previousVersion, '2.0.0');
+        assert.strictEqual(result.status.previousVersion, '2.1.0');
       }
     });
 
     test('reloadRequired is kept by a check that resolves to the same directory at another version', async () => {
-      const pkg = installGlobal('2.0.0');
+      const pkg = installGlobal('2.1.0');
       const service = makeService();
       await service.check('activate');
-      fs.writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name: '@metaverse-systems/the-seed', version: '2.0.1' }));
+      fs.writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name: '@metaverse-systems/the-seed', version: '2.1.1' }));
       await service.acquire();
       const status = await service.check('checkAgain');
       assert.strictEqual(status.state, 'reloadRequired');
-      assert.strictEqual(status.previousVersion, '2.0.0');
+      assert.strictEqual(status.previousVersion, '2.1.0');
     });
 
     test('reloadRequired is left by a check that resolves to the version already loaded', async () => {
-      const pkg = installGlobal('2.0.0');
+      const pkg = installGlobal('2.1.0');
       const service = makeService();
       const first = await service.acquire();
       assert.ok(first.ok);
       const manifest = path.join(pkg, 'package.json');
       const original = fs.readFileSync(manifest, 'utf8');
-      fs.writeFileSync(manifest, JSON.stringify({ name: '@metaverse-systems/the-seed', version: '2.0.1' }));
+      fs.writeFileSync(manifest, JSON.stringify({ name: '@metaverse-systems/the-seed', version: '2.1.1' }));
       assert.strictEqual((await service.acquire()).ok, false);
       fs.writeFileSync(manifest, original);
       const status = await service.check('checkAgain');
@@ -534,12 +534,12 @@ suite('tool service', () => {
     });
 
     test('reloadRequired is left by a check that resolves to another directory', async () => {
-      const pkg = installGlobal('2.0.0');
+      const pkg = installGlobal('2.1.0');
       const service = makeService();
       await service.check('activate');
-      fs.writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name: '@metaverse-systems/the-seed', version: '2.0.1' }));
+      fs.writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name: '@metaverse-systems/the-seed', version: '2.1.1' }));
       await service.acquire();
-      const other = makeStubTool(scratch.dir('other'), { version: '2.0.1' });
+      const other = makeStubTool(scratch.dir('other'), { version: '2.1.1' });
       world.setting = other;
       const status = await service.check('setting');
       assert.strictEqual(status.state, 'usable');
@@ -553,7 +553,7 @@ suite('tool service', () => {
       if (!refused.ok) {
         assert.strictEqual(refused.status.state, 'notFound');
       }
-      installGlobal('2.0.0');
+      installGlobal('2.1.0');
       const accepted = await service.acquire();
       assert.ok(accepted.ok, 'the tool placed after the refusal was not found');
       assert.strictEqual(service.status.state, 'usable');
@@ -566,10 +566,10 @@ suite('tool service', () => {
       installGlobal('3.0.0');
       assert.strictEqual((await service.acquire()).ok, false);
       assert.strictEqual(service.status.state, 'tooNew');
-      installGlobal('2.0.0', { throwOnLoad: 'Template' });
+      installGlobal('2.1.0', { throwOnLoad: 'Template' });
       assert.strictEqual((await service.acquire()).ok, false);
       assert.strictEqual(service.status.state, 'notLoadable');
-      installGlobal('2.0.0');
+      installGlobal('2.1.0');
       assert.strictEqual((await service.acquire()).ok, true);
     });
 
@@ -584,7 +584,7 @@ suite('tool service', () => {
 
   suite('checks', () => {
     test('concurrent checks share the one in flight', async () => {
-      installGlobal('2.0.0');
+      installGlobal('2.1.0');
       let calls = 0;
       const service = makeService({
         runNpmRoot: async () => {
@@ -601,7 +601,7 @@ suite('tool service', () => {
     });
 
     test('a check requested after the one in flight finished runs again', async () => {
-      installGlobal('2.0.0');
+      installGlobal('2.1.0');
       const service = makeService();
       await service.check('activate');
       const before = world.npmCalls;
@@ -612,14 +612,14 @@ suite('tool service', () => {
     test('a full check recomputes from scratch', async () => {
       const service = makeService();
       assert.strictEqual((await service.check('activate')).state, 'notFound');
-      installGlobal('2.0.0');
+      installGlobal('2.1.0');
       assert.strictEqual((await service.check('checkAgain')).state, 'usable');
       fs.rmSync(path.join(world.root, '@metaverse-systems'), { recursive: true });
       assert.strictEqual((await service.check('checkAgain')).state, 'notFound');
     });
 
     test('onDidChangeStatus fires only when the key changes', async () => {
-      const pkg = installGlobal('2.0.0');
+      const pkg = installGlobal('2.1.0');
       const service = makeService();
       const seen: ToolStatus[] = [];
       service.onDidChangeStatus((status) => seen.push(status));
@@ -639,8 +639,8 @@ suite('tool service', () => {
     });
 
     test('a full check that resolves to another directory loads a fresh copy, and switching back reuses the first', async () => {
-      installGlobal('2.0.0');
-      const second = makeStubTool(scratch.dir('second'), { version: '2.0.0' });
+      installGlobal('2.1.0');
+      const second = makeStubTool(scratch.dir('second'), { version: '2.1.0' });
       const service = makeService();
       const first = await service.acquire();
       assert.ok(first.ok);
@@ -664,7 +664,7 @@ suite('tool service', () => {
     });
 
     test('the setting alone decides when it is set: the global installation is not consulted', async () => {
-      installGlobal('2.0.0');
+      installGlobal('2.1.0');
       const mine = makeStubTool(scratch.dir('mine'), { version: '2.3.0' });
       world.setting = mine;
       const service = makeService();
@@ -703,7 +703,7 @@ suite('tool service', () => {
     }
 
     test('a change of the tool path rechecks, and the next acquire uses the new installation', async () => {
-      installGlobal('2.0.0');
+      installGlobal('2.1.0');
       const service = makeService();
       service.watchSetting(changes.event);
       const first = await service.acquire();
@@ -729,7 +729,7 @@ suite('tool service', () => {
     });
 
     test('a setting naming a compatible installation wins over the global one', async () => {
-      installGlobal('2.0.0');
+      installGlobal('2.1.0');
       const mine = makeStubTool(scratch.dir('mine'), { version: '2.1.0' });
       const service = makeService();
       service.watchSetting(changes.event);
@@ -746,7 +746,7 @@ suite('tool service', () => {
     });
 
     test('a setting that is not the tool gives notTheTool naming the setting and the path, with no fallback to the global installation', async () => {
-      installGlobal('2.0.0');
+      installGlobal('2.1.0');
       const service = makeService();
       service.watchSetting(changes.event);
       assert.strictEqual((await service.check('activate')).state, 'usable');
@@ -769,8 +769,8 @@ suite('tool service', () => {
     });
 
     test('a directory holding another package gives notTheTool saying which package', async () => {
-      installGlobal('2.0.0');
-      const other = makeStubTool(scratch.dir('other'), { version: '2.0.0', name: 'some-other-package' });
+      installGlobal('2.1.0');
+      const other = makeStubTool(scratch.dir('other'), { version: '2.1.0', name: 'some-other-package' });
       world.setting = other;
       const service = makeService();
       const status = await service.check('activate');
@@ -779,7 +779,7 @@ suite('tool service', () => {
     });
 
     test('clearing the setting returns to the default lookup over the injected environment', async () => {
-      installGlobal('2.0.0');
+      installGlobal('2.1.0');
       const mine = makeStubTool(scratch.dir('mine'), { version: '2.3.0' });
       world.setting = mine;
       const service = makeService();
@@ -793,7 +793,7 @@ suite('tool service', () => {
       const status = await started[0];
       assert.strictEqual(status.state, 'usable');
       assert.strictEqual(status.installation?.foundThrough, 'global');
-      assert.strictEqual(status.installation?.version, '2.0.0');
+      assert.strictEqual(status.installation?.version, '2.1.0');
       assert.strictEqual(world.npmCalls, 1);
 
       const result = await service.acquire();
@@ -804,7 +804,7 @@ suite('tool service', () => {
     });
 
     test('clearing a setting that was not the tool also returns to the default lookup', async () => {
-      installGlobal('2.0.0');
+      installGlobal('2.1.0');
       world.setting = path.join(scratch.dir('elsewhere'), 'nonexistent');
       const service = makeService();
       service.watchSetting(changes.event);
@@ -816,7 +816,7 @@ suite('tool service', () => {
     });
 
     test('a change to another setting does not recheck', async () => {
-      installGlobal('2.0.0');
+      installGlobal('2.1.0');
       const service = makeService();
       service.watchSetting(changes.event);
       await service.check('activate');
@@ -828,7 +828,7 @@ suite('tool service', () => {
     });
 
     test('after the watch is disposed a change no longer rechecks', async () => {
-      installGlobal('2.0.0');
+      installGlobal('2.1.0');
       const service = makeService();
       const watch = service.watchSetting(changes.event);
       await service.check('activate');
@@ -887,7 +887,7 @@ suite('tool service', () => {
     test('is not shown again for a key shown earlier this session, even after a usable state in between', async () => {
       const service = makeService();
       await service.check('activate');
-      installGlobal('2.0.0');
+      installGlobal('2.1.0');
       await service.check('setting');
       fs.rmSync(path.join(world.root, '@metaverse-systems'), { recursive: true });
       await service.check('setting');
@@ -905,7 +905,7 @@ suite('tool service', () => {
     });
 
     test('is never shown for a usable tool', async () => {
-      installGlobal('2.0.0');
+      installGlobal('2.1.0');
       const service = makeService();
       await service.check('activate');
       await service.check('checkAgain');
@@ -923,7 +923,7 @@ suite('tool service', () => {
     });
 
     test('is not shown for a usable tool even when the user asked', async () => {
-      installGlobal('2.0.0');
+      installGlobal('2.1.0');
       const service = makeService();
       await service.check('checkAgain');
       assert.strictEqual(world.notifier.notices.length, 0);
@@ -978,7 +978,7 @@ suite('tool service', () => {
   suite('what the status holds', () => {
     test('nothing from an .npmrc other than the prefix', async () => {
       const prefix = scratch.dir('prefix');
-      installGlobal('2.0.0', { root: path.join(prefix, 'lib', 'node_modules') });
+      installGlobal('2.1.0', { root: path.join(prefix, 'lib', 'node_modules') });
       fs.writeFileSync(path.join(world.home, '.npmrc'), [
         '//registry.npmjs.org/:_authToken=SECRET-TOKEN-0123',
         `prefix=${prefix}`,
@@ -1044,7 +1044,7 @@ suite('tool setting in the editor', () => {
   });
 
   test('a directory holding another package gives notTheTool saying which package', async () => {
-    const other = makeStubTool(scratch.dir('other'), { version: '2.0.0', name: 'some-other-package' });
+    const other = makeStubTool(scratch.dir('other'), { version: '2.1.0', name: 'some-other-package' });
     await withToolSetting(other, async () => {
       const result = await service().acquire();
       assert.strictEqual(result.ok, false);

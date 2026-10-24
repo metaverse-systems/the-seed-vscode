@@ -41,7 +41,7 @@ const payloadOf = (state: State, overrides: Partial<Payload> = {}): Payload => (
   location: undefined,
   version: undefined,
   foundThrough: undefined,
-  required: '2.0.0',
+  required: '2.1.0',
   setting: 'the-seed.toolPath',
   ...overrides,
 });
@@ -111,7 +111,7 @@ suite('toolBlockView', () => {
 
   test('only the checking state shows the loading line', () => {
     const states: State[] = ['checking', 'usable', ...UNUSABLE];
-    const loading = states.filter((state) => toolBlockView(payloadOf(state, { version: '2.0.0', location: '/x', foundThrough: 'setting' })).showLoading);
+    const loading = states.filter((state) => toolBlockView(payloadOf(state, { version: '2.1.0', location: '/x', foundThrough: 'setting' })).showLoading);
     assert.deepStrictEqual(loading, ['checking']);
   });
 });

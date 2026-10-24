@@ -305,7 +305,7 @@ suite('TheSeedViewProvider', () => {
           location: undefined,
           version: undefined,
           foundThrough: undefined,
-          required: '2.0.0',
+          required: '2.1.0',
           setting: 'the-seed.toolPath',
         });
       });
@@ -319,7 +319,7 @@ suite('TheSeedViewProvider', () => {
         location,
         version,
         foundThrough: 'setting',
-        required: '2.0.0',
+        required: '2.1.0',
         setting: 'the-seed.toolPath',
       });
     });
