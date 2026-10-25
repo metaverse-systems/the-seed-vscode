@@ -18,7 +18,7 @@ All notable changes to The Seed extension are recorded in this file, in the form
 
 ### Requirements
 
-- The the-seed tool 2.1.0 or a later 2.x, installed globally with npm.
+- The the-seed tool 2.1.1 or a later 2.x, installed globally with npm.
 - VS Code 1.143 or later.
 - On Windows, the extension host in WSL; without WSL the operations that need the tool's native component are unavailable.
 

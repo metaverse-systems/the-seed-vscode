@@ -411,7 +411,7 @@ suite('tool gate', () => {
         await withToolSetting(stub, async () => {
           assert.strictEqual(activeToolService().status.state, 'tooOld');
           await expectRefused();
-          includesAll(activeToolService().status.message, ['1.2.1', '2.1.0 or a later 2.x', 'npm install -g']);
+          includesAll(activeToolService().status.message, ['1.2.1', '2.1.1 or a later 2.x', 'npm install -g']);
         });
         assert.strictEqual(shown.error.callCount, 1);
       });
@@ -429,7 +429,7 @@ suite('tool gate', () => {
 
       test('notLoadable', async () => {
         const shown = stubMessages();
-        const stub = makeStubTool(state.dir('broken'), { version: '2.1.0', throwOnLoad: 'Config' });
+        const stub = makeStubTool(state.dir('broken'), { version: '2.1.1', throwOnLoad: 'Config' });
         await withToolSetting(stub, async () => {
           assert.strictEqual(activeToolService().status.state, 'notLoadable');
           await expectRefused();
@@ -464,7 +464,7 @@ suite('tool gate', () => {
           }, channel, service)();
           assert.strictEqual(called, false);
           assert.ok(lines[0].includes(service.status.message));
-          includesAll(service.status.message, ['not found', '2.1.0 or a later 2.x', 'npm install -g', 'the-seed.toolPath']);
+          includesAll(service.status.message, ['not found', '2.1.1 or a later 2.x', 'npm install -g', 'the-seed.toolPath']);
           const response = (await handleWith({ command: 'getConfig', requestId: 'n' }, service)) as unknown as Loose | null;
           assert.ok(response);
           assert.strictEqual(response.payload.code, 'toolUnavailable');

@@ -22,7 +22,7 @@ Key terms:
 ## Requirements
 
 - VS Code 1.143 or later.
-- The the-seed tool, version 2.1.0 or a later 2.x, installed globally with npm (see Installation).
+- The the-seed tool, version 2.1.1 or a later 2.x, installed globally with npm (see Installation).
 - The system packages listed in the tool's [Prerequisites](https://github.com/metaverse-systems/the-seed#prerequisites): Node.js and npm, a C++ compiler and `make`, autotools, `pkg-config`, `curl` and `git`.
 - Optionally, for Windows programs, the MinGW cross-compiler ([Windows cross-compilation](https://github.com/metaverse-systems/the-seed#optional-windows-cross-compilation)), and for Windows installers, `wixl` ([MSI installer generation](https://github.com/metaverse-systems/the-seed#optional-windows-msi-installer-generation)).
 
@@ -59,7 +59,7 @@ Install in this order, which follows the tool's own [Installation](https://githu
 
 7. Run **The Seed: Check Tool**.
 
-The extension looks for the tool in the global npm installation, then through the `the-seed` command on the path. If the tool is installed somewhere else, set **the-seed.toolPath** to its package directory, its `the-seed` command, or a path inside it; leave the setting empty to use the global installation. **The Seed: Check Tool** looks again and reports the version found, where it is and how it was found (the setting, the global installation or the command on the path), and whether the tool's native component is built; when it is not, it gives the tool's own message naming the step that builds it. When the tool is missing, older than 2.1.0, a 3.x or later, or cannot be loaded, it says so with the command that installs a supported version, and the other commands show the same message instead of running until a usable tool is found.
+The extension looks for the tool in the global npm installation, then through the `the-seed` command on the path. If the tool is installed somewhere else, set **the-seed.toolPath** to its package directory, its `the-seed` command, or a path inside it; leave the setting empty to use the global installation. **The Seed: Check Tool** looks again and reports the version found, where it is and how it was found (the setting, the global installation or the command on the path), and whether the tool's native component is built; when it is not, it gives the tool's own message naming the step that builds it. When the tool is missing, older than 2.1.1, a 3.x or later, or cannot be loaded, it says so with the command that installs a supported version, and the other commands show the same message instead of running until a usable tool is found.
 
 ## Windows
 
@@ -183,7 +183,7 @@ After `npm ci`, `npm run package` builds the extension from a clean output direc
 
 ### Working with the tool
 
-The tool is a separate install that the extension uses at run time: `npm install -g --foreground-scripts @metaverse-systems/the-seed@2`. The extension finds it in the global npm installation, then through the `the-seed` command on the path. The `the-seed.toolPath` setting names another installation (its package directory, its `the-seed` command, or a path inside it), and **The Seed: Check Tool** rechecks it and reports what was found. The tool is a development-only dependency here (exactly `2.1.0` in `devDependencies`), used for its types and by the tests; it is never shipped.
+The tool is a separate install that the extension uses at run time: `npm install -g --foreground-scripts @metaverse-systems/the-seed@2`. The extension finds it in the global npm installation, then through the `the-seed` command on the path. The `the-seed.toolPath` setting names another installation (its package directory, its `the-seed` command, or a path inside it), and **The Seed: Check Tool** rechecks it and reports what was found. The tool is a development-only dependency here (exactly `2.1.1` in `devDependencies`), used for its types and by the tests; it is never shipped.
 
 To run the extension against a local checkout of the tool:
 
