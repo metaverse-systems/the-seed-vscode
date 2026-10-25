@@ -2,6 +2,12 @@
 
 All notable changes to The Seed extension are recorded in this file, in the format of [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.0.1] - 2026-10-25
+
+### Changed
+
+- The extension's description and readme now state that The Seed is a C++ game engine built on an entity component system. There are no code changes.
+
 ## [1.0.0] - 2026-10-25
 
 ### Added

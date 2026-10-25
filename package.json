@@ -2,8 +2,8 @@
   "name": "the-seed-vscode",
   "displayName": "The Seed",
   "publisher": "metaverse-systems",
-  "description": "Create, build, sign and package projects of The Seed, a C++ entity component system framework, from VS Code.",
-  "version": "1.0.0",
+  "description": "Create, build, sign and package games made with The Seed, a C++ game engine, from VS Code.",
+  "version": "1.0.1",
   "license": "MIT",
   "icon": "media/icon.png",
   "repository": {
@@ -25,6 +25,7 @@
     "the-seed",
     "ecs",
     "game engine",
+    "gamedev",
     "c++",
     "autotools",
     "mingw",
