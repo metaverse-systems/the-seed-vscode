@@ -26,3 +26,29 @@ export function nextSection(state: SectionState, event: SectionEvent): SectionSt
   }
   return { collapsed: event.collapsed, userSet: false };
 }
+
+// The page's saved state (the webview state API) keeps what the user set, by section title, so a
+// section stays as they left it when the view is hidden and shown again. Other keys are left alone.
+
+function savedSections(saved: unknown): Record<string, boolean> {
+  const sections = (saved as { sections?: unknown } | null | undefined)?.sections;
+  return sections !== null && typeof sections === 'object' ? sections as Record<string, boolean> : {};
+}
+
+/** The section `title` as the saved state left it, or untouched at its default when the user never set it. */
+export function restoreSection(saved: unknown, title: string, defaultCollapsed: boolean): SectionState {
+  const collapsed = savedSections(saved)[title];
+  return typeof collapsed === 'boolean' ? { collapsed, userSet: true } : initialSection(defaultCollapsed);
+}
+
+/** The saved state after `section` changed; a section the user has not set is not kept. */
+export function saveSection(saved: unknown, title: string, section: SectionState): unknown {
+  const base = saved !== null && typeof saved === 'object' ? saved as Record<string, unknown> : {};
+  const sections = { ...savedSections(saved) };
+  if (section.userSet) {
+    sections[title] = section.collapsed;
+  } else {
+    delete sections[title];
+  }
+  return { ...base, sections };
+}

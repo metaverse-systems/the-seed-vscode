@@ -78,6 +78,7 @@ export async function signFile(outputChannel: vscode.OutputChannel, tool: ToolAp
       binaries.push(target);
     } else {
       skipped.push(path.basename(target));
+      outputChannel.appendLine(`[${new Date().toISOString()}] Skipped (not a binary file, which the tool does not sign): ${target}`);
     }
   }
 

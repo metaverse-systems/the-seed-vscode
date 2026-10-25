@@ -97,6 +97,21 @@ suite('signFile command', () => {
     assert.ok(spy.notCalled);
     assert.strictEqual(digest(program), original);
   });
+
+  test('a file that is skipped is named in the output', async () => {
+    writeScopes({ '@only': 'Only Author' });
+    await createCertFor('@only');
+    const notes = path.join(state.home, 'notes.txt');
+    fs.writeFileSync(notes, 'plain text\n');
+    const lines: string[] = [];
+    const recording = { appendLine: (line: string): void => { lines.push(line); } } as unknown as vscode.OutputChannel;
+
+    await signFile(recording, testTool(), vscode.Uri.file(program), [vscode.Uri.file(program), vscode.Uri.file(notes)]);
+
+    const skippedLines = lines.filter((line) => line.includes('Skipped') && line.includes(notes));
+    assert.strictEqual(skippedLines.length, 1, lines.join('\n'));
+    assert.ok(!lines.some((line) => line.includes('Skipped') && line.includes(program)), 'the program is not reported as skipped');
+  });
 });
 
 // The file and signature names in the notifications, for a target the tool

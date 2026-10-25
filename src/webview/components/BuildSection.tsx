@@ -1,4 +1,5 @@
 import React from 'react';
+import { projectCount } from '../../types/projectCount';
 import { SectionLayout } from './SectionLayout';
 import { buildNotice } from '../logic/buildNotice';
 import type { ConfigState } from '../logic/buildNotice';
@@ -166,7 +167,7 @@ export const BuildSection: React.FC<BuildSectionProps> = ({
           <span className="build-status-icon">{recursiveBuildComplete.success ? '✓' : '✗'}</span>
           <span>
             {recursiveBuildComplete.success
-              ? `Recursive build complete: ${recursiveBuildComplete.completedCount} projects built`
+              ? `Recursive build complete: ${projectCount(recursiveBuildComplete.completedCount)} built`
               : recursiveBuildComplete.cancelled
                 ? `Recursive build cancelled. ${recursiveBuildComplete.completedCount}/${recursiveBuildComplete.totalCount} complete`
                 : `Recursive build failed on ${recursiveBuildComplete.failedProject}`

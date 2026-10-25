@@ -45,6 +45,7 @@ export const EXPECTED_EXPORTS: readonly ExpectedExport[] = [
   entry('Dependencies', 'runInstallSteps', 'runInstallSteps', 'function'),
   entry('NativeComponent', 'nativeComponentMessage', 'nativeComponentMessage', 'function'),
   entry('NativeComponent', 'NativeComponentMissingError', 'NativeComponentMissingError', 'class'),
+  entry('NativeComponent', 'requireNativeComponent', 'requireNativeComponent', 'function'),
 ];
 
 export const TOOL_NAME = '@metaverse-systems/the-seed';

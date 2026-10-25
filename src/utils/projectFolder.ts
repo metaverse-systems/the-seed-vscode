@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import type { ToolApi } from '../tool/toolApi';
-import { detectResourcePak } from './detectResourcePak';
+import * as path from 'path';
+import { currentPak, paksInOpenFolder, rememberPak } from './pakChoice';
 
 /** An error the tool raises to refuse a request: `name` is `ProjectError`, with a `code` and, often, a `hint`. */
 export type ToolRefusal = Error & { code?: string; hint?: string };
@@ -73,17 +74,32 @@ export function openCreatedProject(projectDir: string): Thenable<unknown> {
   return vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(projectDir));
 }
 
+const OTHER_FOLDER = 'Choose another folder...';
+
 /**
- * The resource pak project to work on: the one in the first workspace folder, else a folder the user chooses
- * and the tool accepts as a resource pak project. Resolves to undefined when the user cancels or the chosen
- * folder is refused (the refusal is shown).
+ * Asks for a resource pak project: one of the resource paks found in the open folder when there are several
+ * to choose from (or another folder), else a folder the tool accepts as a resource pak project. Resolves to
+ * undefined when the user cancels or the chosen folder is refused (the refusal is shown).
  */
-export async function choosePakProject(tool: ToolApi): Promise<string | undefined> {
-  const folders = vscode.workspace.workspaceFolders;
-  if (folders && folders.length > 0) {
-    const detected = detectResourcePak(folders[0].uri.fsPath);
-    if (detected) {
-      return detected.packageDir;
+export async function pickPakProject(tool: ToolApi): Promise<string | undefined> {
+  const found = paksInOpenFolder();
+  if (found.length > 1) {
+    const folders = vscode.workspace.workspaceFolders;
+    const base = folders && folders.length > 0 ? folders[0].uri.fsPath : '';
+    const items = found.map((pak) => ({
+      label: pak.pakName || path.basename(pak.packageDir ?? ''),
+      description: path.relative(base, pak.packageDir ?? '') || '.',
+      packageDir: pak.packageDir,
+    }));
+    const picked = await vscode.window.showQuickPick(
+      [...items, { label: OTHER_FOLDER, description: '', packageDir: undefined }],
+      { placeHolder: 'Select the resource pak' }
+    );
+    if (!picked) {
+      return undefined;
+    }
+    if (picked.packageDir) {
+      return picked.packageDir;
     }
   }
 
@@ -99,6 +115,28 @@ export async function choosePakProject(tool: ToolApi): Promise<string | undefine
       return undefined;
     }
     throw error;
+  }
+  return chosen;
+}
+
+/**
+ * The resource pak project to work on: the one chosen or created before, else the only one in the open folder
+ * (or in a folder directly inside it), else one the user picks. Resolves to undefined when the user cancels or
+ * the chosen folder is refused (the refusal is shown).
+ */
+export async function choosePakProject(tool: ToolApi): Promise<string | undefined> {
+  const known = currentPak();
+  if (known?.packageDir) {
+    return known.packageDir;
+  }
+  return pickPakProject(tool);
+}
+
+/** Asks for a resource pak project and remembers it for the sidebar and the commands. */
+export async function chooseAndRememberPak(tool: ToolApi): Promise<string | undefined> {
+  const chosen = await pickPakProject(tool);
+  if (chosen) {
+    rememberPak(chosen);
   }
   return chosen;
 }

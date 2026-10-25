@@ -468,6 +468,78 @@ suite('messageHandler', () => {
       }
     });
 
+    function makePak(parent: string, name: string): string {
+      return new (testTool().ResourcePak)(loadConfig()).createPackage(SCOPE, name, parent);
+    }
+
+    interface PakStatus { type: string; payload: { detected: boolean; packageDir?: string; choices?: number } }
+    const status = async (): Promise<PakStatus['payload']> => (
+      (await post({ command: 'getResourcePakStatus', requestId: 's' }) as unknown as PakStatus).payload
+    );
+
+    test('a resource pak in a folder inside the open folder is detected', async () => {
+      const workspace = scratch('workspace');
+      const pak = makePak(workspace, 'assets');
+      state.setWorkspaceFolders([workspace]);
+
+      const found = await status();
+
+      assert.strictEqual(found.detected, true);
+      assert.strictEqual(found.packageDir, pak);
+    });
+
+    test('several resource paks in the open folder are offered, none is chosen until the user picks', async () => {
+      const workspace = scratch('workspace');
+      makePak(workspace, 'first');
+      const second = makePak(workspace, 'second');
+      state.setWorkspaceFolders([workspace]);
+
+      const before = await status();
+      assert.strictEqual(before.detected, false);
+      assert.strictEqual(before.choices, 2);
+
+      sinon.stub(vscode.window, 'showQuickPick').callsFake(((items: readonly { packageDir?: string }[]) => (
+        Promise.resolve(items.find((item) => item.packageDir === second))
+      )) as never);
+      const chosen = await post({ command: 'chooseResourcePak', requestId: 'c' }) as unknown as PakStatus;
+
+      assert.strictEqual(chosen.type, 'resourcePakStatus');
+      assert.strictEqual(chosen.payload.detected, true);
+      assert.strictEqual(chosen.payload.packageDir, second);
+
+      const added = path.join(scratch('files'), 'tex.png');
+      fs.writeFileSync(added, 'png');
+      const response = await post({ command: 'addResource', requestId: 'a', data: { resourceName: 'tex', filePath: added } });
+      assert.strictEqual(response?.type, 'resourceAdded');
+      assert.ok(fs.existsSync(path.join(second, 'package.json')));
+      assert.strictEqual(JSON.parse(fs.readFileSync(path.join(second, 'package.json'), 'utf-8')).resources.length, 1);
+    });
+
+    test('with no resource pak in the open folder the user can choose a folder', async () => {
+      const workspace = scratch('workspace');
+      const elsewhere = makePak(scratch('elsewhere'), 'assets');
+      state.setWorkspaceFolders([workspace]);
+      assert.strictEqual((await status()).detected, false);
+      stubChooser(elsewhere);
+
+      const chosen = await post({ command: 'chooseResourcePak', requestId: 'c' }) as unknown as PakStatus;
+
+      assert.strictEqual(chosen.payload.packageDir, elsewhere);
+      assert.strictEqual((await status()).packageDir, elsewhere);
+    });
+
+    test('a resource pak created from the sidebar is the one the section then works on', async () => {
+      const workspace = scratch('workspace');
+      makePak(workspace, 'first');
+      makePak(workspace, 'second');
+      state.setWorkspaceFolders([workspace]);
+
+      const created = await post({ command: 'createResourcePak', requestId: 'n', data: { scopeName: SCOPE, pakName: 'third' } });
+
+      assert.strictEqual(created?.type, 'resourcePakCreated');
+      assert.strictEqual((await status()).packageDir, path.join(workspace, 'third'));
+    });
+
     test('createResourcePak with no open folder asks for a folder and creates the pak there', async () => {
       const chosen = scratch('chosen');
       const dialog = stubChooser(chosen);

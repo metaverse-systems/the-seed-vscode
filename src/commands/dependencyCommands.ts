@@ -13,7 +13,8 @@ import type { DependencyStatusPayload, ExtensionToWebviewMessage } from '../type
  * Validates config, shows QuickPick for target, checks libraries, displays notification.
  */
 export function checkDependenciesCommand(
-  outputChannel: vscode.OutputChannel
+  outputChannel: vscode.OutputChannel,
+  viewProvider?: InstallMessageSink
 ): ToolHandler {
   return async (_oc, tool) => {
     // Validate config exists (prefix configured)
@@ -53,6 +54,19 @@ export function checkDependenciesCommand(
     // Check libraries synchronously
     const ecsInstalled = tool.checkLibEcs(config, target.label);
     const seedInstalled = tool.checkLibTheSeed(config, target.label);
+
+    // The sidebar shows the result too, with the time of this check
+    const status: DependencyStatusPayload = {
+      target: target.label as InstallTarget,
+      libraries: [
+        { name: 'libecs-cpp', installed: ecsInstalled },
+        { name: 'libthe-seed', installed: seedInstalled },
+      ],
+      checking: false,
+      timestamp: new Date().toISOString(),
+    };
+    updateDependencyStatus(status);
+    viewProvider?.postMessage({ type: 'dependencyStatus', payload: status });
 
     const ecsStatus = ecsInstalled ? '✓' : '✗';
     const seedStatus = seedInstalled ? '✓' : '✗';

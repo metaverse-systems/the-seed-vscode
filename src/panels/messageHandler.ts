@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { detectResourcePak } from '../utils/detectResourcePak';
-import { chooseCreationFolder, describeError } from '../utils/projectFolder';
+import { currentPak, rememberPak, resourcePakStatus } from '../utils/pakChoice';
+import { chooseAndRememberPak, chooseCreationFolder, describeError } from '../utils/projectFolder';
 import { addResourceFile } from '../utils/addResourceFile';
 import type {
   WebviewToExtensionMessage,
@@ -92,13 +92,9 @@ function toScopeAnswers(data: ScopeFormData) {
   };
 }
 
-/** The resource pak project in the first workspace folder, if there is one. */
+/** The resource pak project the section works on: the one chosen or created, else the only one in the open folder. */
 function detectedPakDir(): string | undefined {
-  const folders = vscode.workspace.workspaceFolders;
-  if (!folders || folders.length === 0) {
-    return undefined;
-  }
-  return detectResourcePak(folders[0].uri.fsPath)?.packageDir;
+  return currentPak()?.packageDir;
 }
 
 function noPakProject(requestId: string): ExtensionToWebviewMessage {
@@ -378,21 +374,13 @@ export async function handleMessage(
 
       // ── ResourcePak Handlers ────────────────────────────────
 
-      case 'getResourcePakStatus': {
-        const workspaceFolders = vscode.workspace.workspaceFolders;
-        if (!workspaceFolders || workspaceFolders.length === 0) {
-          return {
-            type: 'resourcePakStatus',
-            requestId: message.requestId,
-            payload: { detected: false },
-          };
-        }
-        const detected = detectResourcePak(workspaceFolders[0].uri.fsPath);
-        return {
-          type: 'resourcePakStatus',
-          requestId: message.requestId,
-          payload: detected ?? { detected: false },
-        };
+      case 'getResourcePakStatus':
+        return { type: 'resourcePakStatus', requestId: message.requestId, payload: resourcePakStatus() };
+
+      case 'chooseResourcePak': {
+        // A dismissed chooser leaves the section as it was
+        await chooseAndRememberPak(tool);
+        return { type: 'resourcePakStatus', requestId: message.requestId, payload: resourcePakStatus() };
       }
 
       case 'createResourcePak': {
@@ -407,6 +395,7 @@ export async function handleMessage(
         }
         const folder = creation.folder;
         const packageDir = rp.createPackage(scope, pakName, folder);
+        rememberPak(packageDir);
         return {
           type: 'resourcePakCreated',
           requestId: message.requestId,

@@ -61,6 +61,7 @@ const PANEL_MESSAGES: Record<PanelCommand, { kind: Kind; message: object }> = {
   cancelRecursiveBuild: { kind: 'toolFree', message: { command: 'cancelRecursiveBuild', requestId: 'r' } },
   getResourcePakStatus: { kind: 'toolFree', message: { command: 'getResourcePakStatus', requestId: 'r' } },
   createResourcePak: { kind: 'operation', message: { command: 'createResourcePak', requestId: 'r', data: { scopeName: '@gate', pakName: 'gate' } } },
+  chooseResourcePak: { kind: 'operation', message: { command: 'chooseResourcePak', requestId: 'r' } },
   browseResourceFile: { kind: 'toolFree', message: { command: 'browseResourceFile', requestId: 'r' } },
   addResource: { kind: 'operation', message: { command: 'addResource', requestId: 'r', data: { resourceName: 'gate', filePath: '/nowhere/file.png' } } },
   buildResourcePak: { kind: 'operation', message: { command: 'buildResourcePak', requestId: 'r' } },
@@ -200,7 +201,7 @@ suite('tool gate', () => {
       assert.ok(!showWarning.called && !showError.called, 'no warning or error is shown');
       assert.strictEqual(
         showInfo.firstCall.args[0],
-        `The Seed: Using the-seed ${version} at ${location} (found through the "the-seed.toolPath" setting).`,
+        `The Seed: Using the-seed ${version} at ${location} (found through the "the-seed.toolPath" setting). The native component is built.`,
       );
       assert.strictEqual(service.status.state, 'usable');
     });

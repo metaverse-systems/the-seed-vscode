@@ -197,6 +197,11 @@ export const App: React.FC = () => {
             `ResourcePak '${message.payload.pakName}' created in scope '${message.payload.scope}'`
           );
           setResourcePakError(null);
+          // The new pak is the one the section works on
+          postRequest(pendingRequests.current, 'resourcePak', {
+            command: 'getResourcePakStatus',
+            requestId: crypto.randomUUID(),
+          });
           break;
         case 'resourceFileBrowsed':
           setBrowsedFilePath(message.payload.filePath);
@@ -418,6 +423,15 @@ export const App: React.FC = () => {
     });
   };
 
+  const handleChooseResourcePak = () => {
+    setResourcePakLoading(true);
+    setResourcePakError(null);
+    postRequest(pendingRequests.current, 'resourcePak', {
+      command: 'chooseResourcePak',
+      requestId: crypto.randomUUID(),
+    });
+  };
+
   const handleBrowseResourceFile = () => {
     setResourcePakLoading(true);
     setBrowsedFilePath(null);
@@ -575,6 +589,7 @@ export const App: React.FC = () => {
         error={resourcePakError}
         success={resourcePakActionSuccess}
         buildProgress={resourcePakBuildProgress}
+        onChooseResourcePak={handleChooseResourcePak}
         onBrowseResourceFile={handleBrowseResourceFile}
         onAddResource={handleAddResource}
         onBuildResourcePak={handleBuildResourcePak}

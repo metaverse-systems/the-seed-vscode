@@ -59,7 +59,7 @@ Install in this order, which follows the tool's own [Installation](https://githu
 
 7. Run **The Seed: Check Tool**.
 
-The extension looks for the tool in the global npm installation, then through the `the-seed` command on the path. If the tool is installed somewhere else, set **the-seed.toolPath** to its package directory, its `the-seed` command, or a path inside it; leave the setting empty to use the global installation. **The Seed: Check Tool** looks again and reports the version found, where it is and how it was found (the setting, the global installation or the command on the path). When the tool is missing, older than 2.1.0, a 3.x or later, or cannot be loaded, it says so with the command that installs a supported version, and the other commands show the same message instead of running until a usable tool is found.
+The extension looks for the tool in the global npm installation, then through the `the-seed` command on the path. If the tool is installed somewhere else, set **the-seed.toolPath** to its package directory, its `the-seed` command, or a path inside it; leave the setting empty to use the global installation. **The Seed: Check Tool** looks again and reports the version found, where it is and how it was found (the setting, the global installation or the command on the path), and whether the tool's native component is built; when it is not, it gives the tool's own message naming the step that builds it. When the tool is missing, older than 2.1.0, a 3.x or later, or cannot be loaded, it says so with the command that installs a supported version, and the other commands show the same message instead of running until a usable tool is found.
 
 ## Windows
 
@@ -69,19 +69,19 @@ On Windows without WSL, configuration, scopes, templates, resource paks, detache
 
 ## The sidebar
 
-The Seed's view in the activity bar has these sections:
+The Seed's view in the activity bar has these sections, each of which stays open or closed as you leave it when the view is hidden and shown again:
 
 - **Configuration**: the tool's status, with a button to check again or open the **the-seed.toolPath** setting; the installation prefix, which you can edit and save; the scopes, which you can add, edit and delete.
-- **Dependencies**: whether libecs-cpp and libthe-seed are installed for Linux and for Windows, with a Check button for each target and an Install button that streams the installation's output and can be cancelled. The last status of each target is kept while the window is open, so reopening the view shows it without checking again.
+- **Dependencies**: whether libecs-cpp and libthe-seed are installed for Linux and for Windows, with a Check button for each target and an Install button that streams the installation's output and can be cancelled. The last status of each target is kept while the window is open, so reopening the view shows it without checking again; Check Dependencies from the Command Palette updates it too.
 - **Templates**: creates a component, system or program project, or a resource pak, in a scope, in the open folder or in a folder you choose.
 - **Build**: builds the project of the active file, or one you choose, for Linux or Windows, incrementally, or recursively with every project it depends on first; a running build can be cancelled.
-- **ResourcePaks**: for the resource pak in the open folder, or one you choose, adds a file as a resource and builds the `.pak` file.
+- **ResourcePaks**: for the resource pak in the open folder (or in a folder directly inside it), or one you choose with the Choose ResourcePak button, adds a file as a resource and builds the `.pak` file. A resource pak you create is the one the section then works on. The commands in the Command Palette use the same pak and ask only when there is none or several.
 - **Packaging**: copies the open project's programs and the shared libraries they load into its `dist/` directory, showing the tool's progress.
 - **Installer**: generates a Windows `.msi` installer for the open project, showing the tool's progress.
 
 ## The explorer menu
 
-Right-click one or more files in the explorer for **The Seed: Sign File** and **The Seed: Verify Signature**. They act on every file chosen: Windows and Mac programs and installers get or are checked for an embedded signature, other files a detached signature next to them.
+Right-click one or more files in the explorer for **The Seed: Sign File** and **The Seed: Verify Signature**. They act on every file chosen: Windows and Mac programs and installers get or are checked for an embedded signature, other binary files a detached signature next to them. The tool signs only binary files, so a text file is skipped and named in the output.
 
 ## Commands
 

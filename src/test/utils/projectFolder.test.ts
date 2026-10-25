@@ -23,6 +23,7 @@ import { testTool } from '../helpers/tool';
 interface ProjectFolder {
   chooseProjectFolder(): Promise<string | undefined>;
   choosePakProject(tool: ToolApi): Promise<string | undefined>;
+  chooseAndRememberPak(tool: ToolApi): Promise<string | undefined>;
   chooseCreationFolder(): Promise<{ folder: string; openAfterCreate: boolean } | undefined>;
   openCreatedProject(projectDir: string): Thenable<unknown>;
 }
@@ -155,6 +156,46 @@ suite('projectFolder', () => {
 
       assert.strictEqual(await load().choosePakProject(testTool()), pak);
       assert.ok(dialog.notCalled);
+    });
+
+    test('a pak project in a folder inside the open folder is returned without asking', async () => {
+      const workspace = scratch('workspace');
+      const pak = makePak(workspace, 'assets');
+      state.setWorkspaceFolders([workspace]);
+      const dialog = sinon.stub(vscode.window, 'showOpenDialog').resolves(undefined);
+      const pick = sinon.stub(vscode.window, 'showQuickPick').resolves(undefined);
+
+      assert.strictEqual(await load().choosePakProject(testTool()), pak);
+      assert.ok(dialog.notCalled && pick.notCalled);
+    });
+
+    test('several pak projects in the open folder: the user picks one', async () => {
+      const workspace = scratch('workspace');
+      makePak(workspace, 'first');
+      const second = makePak(workspace, 'second');
+      state.setWorkspaceFolders([workspace]);
+      const dialog = sinon.stub(vscode.window, 'showOpenDialog').resolves(undefined);
+      const pick = sinon.stub(vscode.window, 'showQuickPick').callsFake(((items: readonly { label: string; packageDir?: string }[]) => (
+        Promise.resolve(items.find((item) => item.packageDir === second))
+      )) as never);
+
+      assert.strictEqual(await load().choosePakProject(testTool()), second);
+      assert.ok(pick.calledOnce);
+      assert.ok(dialog.notCalled);
+    });
+
+    test('a pak project chosen for the sidebar is used afterwards without asking', async () => {
+      const workspace = scratch('workspace');
+      const parent = scratch('parent');
+      const pak = makePak(parent, 'assets');
+      state.setWorkspaceFolders([workspace]);
+      sinon.stub(vscode.window, 'showOpenDialog').resolves([vscode.Uri.file(pak)]);
+
+      assert.strictEqual(await load().chooseAndRememberPak(testTool()), pak);
+      (vscode.window.showOpenDialog as sinon.SinonStub).resetHistory();
+
+      assert.strictEqual(await load().choosePakProject(testTool()), pak);
+      assert.ok((vscode.window.showOpenDialog as sinon.SinonStub).notCalled);
     });
 
     test('open folder that is not a pak project: asks, and a chosen pak project is returned', async () => {

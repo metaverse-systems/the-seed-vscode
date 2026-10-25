@@ -60,6 +60,21 @@ suite('Dependency Commands', () => {
       assert.ok(!messages.error.called, 'no error message');
     });
 
+    test('sends the result to the sidebar, as the install does', async () => {
+      sinon.stub(vscode.window, 'showQuickPick').resolves({ label: 'native' });
+      const recorder = recordOperation();
+
+      await vscode.commands.executeCommand('the-seed.checkDependencies');
+
+      const sent = (recorder.sidebar as { type: string; payload?: { target: string; libraries: { name: string; installed: boolean }[]; checking: boolean; timestamp: string } }[])
+        .filter((message) => message.type === 'dependencyStatus');
+      assert.strictEqual(sent.length, 1, JSON.stringify(recorder.sidebar));
+      assert.strictEqual(sent[0].payload?.target, 'native');
+      assert.deepStrictEqual(sent[0].payload?.libraries.map((library) => library.name), ['libecs-cpp', 'libthe-seed']);
+      assert.strictEqual(sent[0].payload?.checking, false);
+      assert.ok(!Number.isNaN(Date.parse(String(sent[0].payload?.timestamp))), 'the result carries the time of the check');
+    });
+
     test('should exit cleanly when QuickPick is cancelled', async () => {
       const messages = stubMessages();
       sinon.stub(vscode.window, 'showQuickPick').resolves(undefined);

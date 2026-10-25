@@ -16,6 +16,7 @@ export type WebviewToExtensionMessage =
   | { command: 'cancelRecursiveBuild'; requestId: string }
   | { command: 'getResourcePakStatus'; requestId: string }
   | { command: 'createResourcePak'; requestId: string; data: ResourcePakFormData }
+  | { command: 'chooseResourcePak'; requestId: string }
   | { command: 'browseResourceFile'; requestId: string }
   | { command: 'addResource'; requestId: string; data: AddResourceData }
   | { command: 'buildResourcePak'; requestId: string }
@@ -183,6 +184,8 @@ export interface ResourcePakStatusPayload {
   displayName?: string;
   resourceCount?: number;
   packageDir?: string;
+  /** How many resource paks the open folder holds (itself and its immediate subfolders). */
+  choices?: number;
 }
 
 export interface ResourcePakCreatedPayload {

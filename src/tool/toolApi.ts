@@ -12,7 +12,7 @@ import type {
 } from '@metaverse-systems/the-seed/DependencyWalker';
 import type { replaceResourceHint } from '@metaverse-systems/the-seed/Hints';
 import type Installer from '@metaverse-systems/the-seed/Installer';
-import type { NativeComponentMissingError, nativeComponentMessage } from '@metaverse-systems/the-seed/NativeComponent';
+import type { NativeComponentMissingError, nativeComponentMessage, requireNativeComponent } from '@metaverse-systems/the-seed/NativeComponent';
 import type Package from '@metaverse-systems/the-seed/Package';
 import type { ProjectError } from '@metaverse-systems/the-seed/ProjectError';
 import type { buildRecursive } from '@metaverse-systems/the-seed/RecursiveBuild';
@@ -53,6 +53,7 @@ export interface ToolApi {
   readonly runInstallSteps: typeof runInstallSteps;
   readonly nativeComponentMessage: typeof nativeComponentMessage;
   readonly NativeComponentMissingError: typeof NativeComponentMissingError;
+  readonly requireNativeComponent: typeof requireNativeComponent;
 }
 
 export type ExportKind = 'class' | 'function' | 'number';
@@ -98,4 +99,5 @@ export const EXPORT_TABLE: readonly ExportRow[] = [
   row('Dependencies', 'runInstallSteps', 'runInstallSteps', 'function'),
   row('NativeComponent', 'nativeComponentMessage', 'nativeComponentMessage', 'function'),
   row('NativeComponent', 'NativeComponentMissingError', 'NativeComponentMissingError', 'class'),
+  row('NativeComponent', 'requireNativeComponent', 'requireNativeComponent', 'function'),
 ];
