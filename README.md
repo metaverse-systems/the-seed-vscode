@@ -71,7 +71,7 @@ On Windows without WSL, configuration, scopes, templates, resource paks, detache
 
 The Seed's view in the activity bar has these sections, each of which stays open or closed as you leave it when the view is hidden and shown again:
 
-- **Configuration**: the tool's status, with a button to check again or open the **the-seed.toolPath** setting; the installation prefix, which you can edit and save; the scopes, which you can add, edit and delete.
+- **Configuration**: the tool's status, with a button to check again or open the **the-seed.toolPath** setting; the installation prefix, which you can edit and save; the scopes, which you can add, edit and delete. Configure Project, Add Scope, Edit Scope and Delete Scope from the Command Palette update the open view at once.
 - **Dependencies**: whether libecs-cpp and libthe-seed are installed for Linux and for Windows, with a Check button for each target and an Install button that streams the installation's output and can be cancelled. The last status of each target is kept while the window is open, so reopening the view shows it without checking again; Check Dependencies from the Command Palette updates it too.
 - **Templates**: creates a component, system or program project, or a resource pak, in a scope, in the open folder or in a folder you choose.
 - **Build**: builds the project of the active file, or one you choose, for Linux or Windows, incrementally, or recursively with every project it depends on first; a running build can be cancelled.

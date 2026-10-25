@@ -238,12 +238,17 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider, vscode.D
     }
   }
 
-  private async _refreshConfig(): Promise<void> {
+  /** Pushes the configuration as it is now to an open sidebar, after a command changed it. */
+  public refreshConfig(): Promise<void> {
+    return this._refreshConfig('__config__');
+  }
+
+  private async _refreshConfig(requestId = '__visibility__'): Promise<void> {
     if (!this._view) {
       return;
     }
     try {
-      const response = await handleMessage({ command: 'getConfig', requestId: '__visibility__' }, undefined, this._service);
+      const response = await handleMessage({ command: 'getConfig', requestId }, undefined, this._service);
       if (response) {
         this._view.webview.postMessage(response);
       }

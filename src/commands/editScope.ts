@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { askQuestions } from '../askQuestions';
 import type { ScopeAnswersType } from '@metaverse-systems/the-seed/types';
 import type { ToolApi } from '../tool/toolApi';
+import { activeViewProvider } from '../panels/TheSeedViewProvider';
 
 export async function editScope(outputChannel: vscode.OutputChannel, tool: ToolApi): Promise<void> {
   const config = new tool.Config();
@@ -41,4 +42,5 @@ export async function editScope(outputChannel: vscode.OutputChannel, tool: ToolA
 
   outputChannel.appendLine(`Scope '${selectedScope}' updated.`);
   vscode.window.showInformationMessage(`Scope '${selectedScope}' updated.`);
+  await activeViewProvider()?.refreshConfig();
 }
