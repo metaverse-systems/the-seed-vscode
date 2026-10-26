@@ -21,7 +21,9 @@ import type Config from '@metaverse-systems/the-seed/Config';
 import { activeToolService } from '../../tool/toolService';
 import { createCertFor, writeScopes } from '../helpers/scratchHome';
 import { ScratchState, useScratchState } from '../helpers/scratchState';
-import { testTool } from '../helpers/tool';
+import { withoutInternalMembers } from '../helpers/stubTool';
+import { testTool, useToolApi } from '../helpers/tool';
+import type { ToolApi } from '../../tool/toolApi';
 
 type Message = Parameters<typeof handleWithService>[0];
 type Push = NonNullable<Parameters<typeof handleWithService>[1]>;
@@ -466,6 +468,78 @@ suite('messageHandler', () => {
       }
     });
 
+    function makePak(parent: string, name: string): string {
+      return new (testTool().ResourcePak)(loadConfig()).createPackage(SCOPE, name, parent);
+    }
+
+    interface PakStatus { type: string; payload: { detected: boolean; packageDir?: string; choices?: number } }
+    const status = async (): Promise<PakStatus['payload']> => (
+      (await post({ command: 'getResourcePakStatus', requestId: 's' }) as unknown as PakStatus).payload
+    );
+
+    test('a resource pak in a folder inside the open folder is detected', async () => {
+      const workspace = scratch('workspace');
+      const pak = makePak(workspace, 'assets');
+      state.setWorkspaceFolders([workspace]);
+
+      const found = await status();
+
+      assert.strictEqual(found.detected, true);
+      assert.strictEqual(found.packageDir, pak);
+    });
+
+    test('several resource paks in the open folder are offered, none is chosen until the user picks', async () => {
+      const workspace = scratch('workspace');
+      makePak(workspace, 'first');
+      const second = makePak(workspace, 'second');
+      state.setWorkspaceFolders([workspace]);
+
+      const before = await status();
+      assert.strictEqual(before.detected, false);
+      assert.strictEqual(before.choices, 2);
+
+      sinon.stub(vscode.window, 'showQuickPick').callsFake(((items: readonly { packageDir?: string }[]) => (
+        Promise.resolve(items.find((item) => item.packageDir === second))
+      )) as never);
+      const chosen = await post({ command: 'chooseResourcePak', requestId: 'c' }) as unknown as PakStatus;
+
+      assert.strictEqual(chosen.type, 'resourcePakStatus');
+      assert.strictEqual(chosen.payload.detected, true);
+      assert.strictEqual(chosen.payload.packageDir, second);
+
+      const added = path.join(scratch('files'), 'tex.png');
+      fs.writeFileSync(added, 'png');
+      const response = await post({ command: 'addResource', requestId: 'a', data: { resourceName: 'tex', filePath: added } });
+      assert.strictEqual(response?.type, 'resourceAdded');
+      assert.ok(fs.existsSync(path.join(second, 'package.json')));
+      assert.strictEqual(JSON.parse(fs.readFileSync(path.join(second, 'package.json'), 'utf-8')).resources.length, 1);
+    });
+
+    test('with no resource pak in the open folder the user can choose a folder', async () => {
+      const workspace = scratch('workspace');
+      const elsewhere = makePak(scratch('elsewhere'), 'assets');
+      state.setWorkspaceFolders([workspace]);
+      assert.strictEqual((await status()).detected, false);
+      stubChooser(elsewhere);
+
+      const chosen = await post({ command: 'chooseResourcePak', requestId: 'c' }) as unknown as PakStatus;
+
+      assert.strictEqual(chosen.payload.packageDir, elsewhere);
+      assert.strictEqual((await status()).packageDir, elsewhere);
+    });
+
+    test('a resource pak created from the sidebar is the one the section then works on', async () => {
+      const workspace = scratch('workspace');
+      makePak(workspace, 'first');
+      makePak(workspace, 'second');
+      state.setWorkspaceFolders([workspace]);
+
+      const created = await post({ command: 'createResourcePak', requestId: 'n', data: { scopeName: SCOPE, pakName: 'third' } });
+
+      assert.strictEqual(created?.type, 'resourcePakCreated');
+      assert.strictEqual((await status()).packageDir, path.join(workspace, 'third'));
+    });
+
     test('createResourcePak with no open folder asks for a folder and creates the pak there', async () => {
       const chosen = scratch('chosen');
       const dialog = stubChooser(chosen);
@@ -636,7 +710,24 @@ suite('messageHandler', () => {
 
         assert.strictEqual(response?.type, 'resourcePakBuilt');
         assert.ok(fs.existsSync(path.join(pak, 'assets.pak')), 'the pak must be written');
+        assert.strictEqual((response!.payload as unknown as { pakFilePath: string }).pakFilePath, path.join(pak, 'assets.pak'));
         assert.ok(pushed.some((m) => m.type === 'resourcePakBuildProgress' && m.payload.state === 'completed'));
+      });
+
+      test('buildResourcePak answers with the path the tool\'s build returned', async () => {
+        await post({
+          command: 'addResource',
+          requestId: 'add-first',
+          data: { resourceName: 'tex', filePath: source('tex.png', 'texture') },
+        });
+        const elsewhere = path.join(scratch('output'), 'renamed.pak');
+        sinon.stub(testTool().ResourcePak.prototype, 'build').returns(elsewhere);
+
+        const response = await handleMessage({ command: 'buildResourcePak', requestId: 'build-elsewhere' });
+
+        assert.strictEqual(response?.type, 'resourcePakBuilt');
+        assert.notStrictEqual(elsewhere, path.join(pak, 'assets.pak'), 'the case needs a path other than <dir>/<name>.pak');
+        assert.strictEqual(response.type === 'resourcePakBuilt' ? response.payload.pakFilePath : undefined, elsewhere);
       });
     });
 
@@ -715,5 +806,74 @@ suite('messageHandler scope validation and signing status', () => {
     assert.strictEqual(withCert!.fingerprint, fingerprint);
     assert.ok(!without!.fingerprint);
     assert.ok(Object.values(without!).includes('no certificate'));
+  });
+
+  test('getSigningStatus shows a certificate\'s subject through the tool\'s public formatSubject', async () => {
+    writeScopes({ '@with': 'With Cert' });
+    const config = new (testTool().Config)();
+    config.config.scopes['@with'].author.email = 'with@example.com';
+    config.saveConfig();
+    await createCertFor('@with');
+    await useToolApi(withoutInternalMembers(testTool()));
+
+    const response = await handleMessage({ command: 'getSigningStatus', requestId: 'status' });
+
+    assert.strictEqual(response?.type, 'signingStatus');
+    const payload = response!.payload as unknown as { scopes: Array<Record<string, unknown>> };
+    assert.deepStrictEqual(payload.scopes.map((entry) => [entry.scope, entry.subject]), [
+      ['@with', 'CN=With Cert, EMAIL=with@example.com, O=@with'],
+    ]);
+  });
+});
+
+suite('messageHandler: whether the configuration is the default one', () => {
+  const scratchState = useScratchState({ scopes: { [SCOPE]: 'Ada Lovelace' } });
+
+  /** The configuration file under the scratch home, which the tool's own location would name. */
+  function homeConfigFile(): string {
+    return path.join(scratchState.home, 'the-seed', 'config.json');
+  }
+
+  /** The loaded tool, with the configuration location it reports and, optionally, its Config replaced. */
+  function toolReporting(location: string, config?: ToolApi['Config']): ToolApi {
+    return Object.assign({}, testTool(), { configFilePath: () => location }, config ? { Config: config } : {});
+  }
+
+  async function readyIsDefault(): Promise<boolean> {
+    const response = await handleMessage({ command: 'ready' });
+    assert.strictEqual(response?.type, 'configLoaded');
+    return (response!.payload as { isDefault: boolean }).isDefault;
+  }
+
+  test('a file at the location the tool reports is not the default, with none under the home', async () => {
+    const reported = path.join(scratchState.dir('reported'), 'config.json');
+    fs.writeFileSync(reported, '{}\n');
+    fs.rmSync(homeConfigFile());
+    await useToolApi(toolReporting(reported));
+
+    assert.strictEqual(await readyIsDefault(), false);
+  });
+
+  test('no file at the location the tool reports is the default, even with one under the home', async () => {
+    assert.ok(fs.existsSync(homeConfigFile()), 'the scratch home has a configuration file');
+    const reported = path.join(scratchState.dir('reported'), 'config.json');
+    await useToolApi(toolReporting(reported));
+
+    assert.strictEqual(await readyIsDefault(), true);
+  });
+
+  test('the location is looked at before Config is constructed, which creates the file there', async () => {
+    const reported = path.join(scratchState.dir('reported'), 'config.json');
+    const RealConfig = testTool().Config;
+    class CreatingConfig extends RealConfig {
+      constructor(configDir?: string) {
+        super(configDir);
+        fs.writeFileSync(reported, '{}\n');
+      }
+    }
+    await useToolApi(toolReporting(reported, CreatingConfig));
+
+    assert.strictEqual(await readyIsDefault(), true);
+    assert.ok(fs.existsSync(reported), 'the Config constructor created the file');
   });
 });

@@ -61,6 +61,7 @@ const PANEL_MESSAGES: Record<PanelCommand, { kind: Kind; message: object }> = {
   cancelRecursiveBuild: { kind: 'toolFree', message: { command: 'cancelRecursiveBuild', requestId: 'r' } },
   getResourcePakStatus: { kind: 'toolFree', message: { command: 'getResourcePakStatus', requestId: 'r' } },
   createResourcePak: { kind: 'operation', message: { command: 'createResourcePak', requestId: 'r', data: { scopeName: '@gate', pakName: 'gate' } } },
+  chooseResourcePak: { kind: 'operation', message: { command: 'chooseResourcePak', requestId: 'r' } },
   browseResourceFile: { kind: 'toolFree', message: { command: 'browseResourceFile', requestId: 'r' } },
   addResource: { kind: 'operation', message: { command: 'addResource', requestId: 'r', data: { resourceName: 'gate', filePath: '/nowhere/file.png' } } },
   buildResourcePak: { kind: 'operation', message: { command: 'buildResourcePak', requestId: 'r' } },
@@ -200,7 +201,7 @@ suite('tool gate', () => {
       assert.ok(!showWarning.called && !showError.called, 'no warning or error is shown');
       assert.strictEqual(
         showInfo.firstCall.args[0],
-        `The Seed: Using the-seed ${version} at ${location} (found through the "the-seed.toolPath" setting).`,
+        `The Seed: Using the-seed ${version} at ${location} (found through the "the-seed.toolPath" setting). The native component is built.`,
       );
       assert.strictEqual(service.status.state, 'usable');
     });
@@ -410,7 +411,7 @@ suite('tool gate', () => {
         await withToolSetting(stub, async () => {
           assert.strictEqual(activeToolService().status.state, 'tooOld');
           await expectRefused();
-          includesAll(activeToolService().status.message, ['1.2.1', '2.0.0 or a later 2.x', 'npm install -g']);
+          includesAll(activeToolService().status.message, ['1.2.1', '2.1.1 or a later 2.x', 'npm install -g']);
         });
         assert.strictEqual(shown.error.callCount, 1);
       });
@@ -428,7 +429,7 @@ suite('tool gate', () => {
 
       test('notLoadable', async () => {
         const shown = stubMessages();
-        const stub = makeStubTool(state.dir('broken'), { version: '2.0.0', throwOnLoad: 'Config' });
+        const stub = makeStubTool(state.dir('broken'), { version: '2.1.1', throwOnLoad: 'Config' });
         await withToolSetting(stub, async () => {
           assert.strictEqual(activeToolService().status.state, 'notLoadable');
           await expectRefused();
@@ -463,7 +464,7 @@ suite('tool gate', () => {
           }, channel, service)();
           assert.strictEqual(called, false);
           assert.ok(lines[0].includes(service.status.message));
-          includesAll(service.status.message, ['not found', '2.0.0 or a later 2.x', 'npm install -g', 'the-seed.toolPath']);
+          includesAll(service.status.message, ['not found', '2.1.1 or a later 2.x', 'npm install -g', 'the-seed.toolPath']);
           const response = (await handleWith({ command: 'getConfig', requestId: 'n' }, service)) as unknown as Loose | null;
           assert.ok(response);
           assert.strictEqual(response.payload.code, 'toolUnavailable');

@@ -1,7 +1,7 @@
 import type Build from '@metaverse-systems/the-seed/Build';
 import type Config from '@metaverse-systems/the-seed/Config';
-import type { ConfigError } from '@metaverse-systems/the-seed/Config';
-import type { checkLibEcs, checkLibTheSeed, getInstallSteps } from '@metaverse-systems/the-seed/Dependencies';
+import type { ConfigError, configFilePath } from '@metaverse-systems/the-seed/Config';
+import type { checkLibEcs, checkLibTheSeed, getInstallSteps, runInstallSteps } from '@metaverse-systems/the-seed/Dependencies';
 import type {
   ConflictingProjectError,
   CyclicDependencyError,
@@ -12,7 +12,7 @@ import type {
 } from '@metaverse-systems/the-seed/DependencyWalker';
 import type { replaceResourceHint } from '@metaverse-systems/the-seed/Hints';
 import type Installer from '@metaverse-systems/the-seed/Installer';
-import type { NativeComponentMissingError, nativeComponentMessage } from '@metaverse-systems/the-seed/NativeComponent';
+import type { NativeComponentMissingError, nativeComponentMessage, requireNativeComponent } from '@metaverse-systems/the-seed/NativeComponent';
 import type Package from '@metaverse-systems/the-seed/Package';
 import type { ProjectError } from '@metaverse-systems/the-seed/ProjectError';
 import type { buildRecursive } from '@metaverse-systems/the-seed/RecursiveBuild';
@@ -27,6 +27,7 @@ import type Template from '@metaverse-systems/the-seed/Template';
 export interface ToolApi {
   readonly Config: typeof Config;
   readonly ConfigError: typeof ConfigError;
+  readonly configFilePath: typeof configFilePath;
   readonly Scopes: typeof Scopes;
   readonly validateScopeName: typeof validateScopeName;
   readonly Template: typeof Template;
@@ -49,8 +50,10 @@ export interface ToolApi {
   readonly checkLibEcs: typeof checkLibEcs;
   readonly checkLibTheSeed: typeof checkLibTheSeed;
   readonly getInstallSteps: typeof getInstallSteps;
+  readonly runInstallSteps: typeof runInstallSteps;
   readonly nativeComponentMessage: typeof nativeComponentMessage;
   readonly NativeComponentMissingError: typeof NativeComponentMissingError;
+  readonly requireNativeComponent: typeof requireNativeComponent;
 }
 
 export type ExportKind = 'class' | 'function' | 'number';
@@ -70,6 +73,7 @@ const row = (subpath: string, exportName: string, member: keyof ToolApi, kind: E
 export const EXPORT_TABLE: readonly ExportRow[] = [
   row('Config', 'default', 'Config', 'class'),
   row('Config', 'ConfigError', 'ConfigError', 'class'),
+  row('Config', 'configFilePath', 'configFilePath', 'function'),
   row('Scopes', 'default', 'Scopes', 'class'),
   row('Scopes', 'validateScopeName', 'validateScopeName', 'function'),
   row('Template', 'default', 'Template', 'class'),
@@ -92,6 +96,8 @@ export const EXPORT_TABLE: readonly ExportRow[] = [
   row('Dependencies', 'checkLibEcs', 'checkLibEcs', 'function'),
   row('Dependencies', 'checkLibTheSeed', 'checkLibTheSeed', 'function'),
   row('Dependencies', 'getInstallSteps', 'getInstallSteps', 'function'),
+  row('Dependencies', 'runInstallSteps', 'runInstallSteps', 'function'),
   row('NativeComponent', 'nativeComponentMessage', 'nativeComponentMessage', 'function'),
   row('NativeComponent', 'NativeComponentMissingError', 'NativeComponentMissingError', 'class'),
+  row('NativeComponent', 'requireNativeComponent', 'requireNativeComponent', 'function'),
 ];

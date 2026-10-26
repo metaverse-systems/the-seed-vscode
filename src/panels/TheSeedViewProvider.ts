@@ -12,7 +12,10 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider, vscode.D
   private _view?: vscode.WebviewView;
   private _readyReceived = false;
   private _currentBuildStatus: BuildStatusPayload | null = null;
-  private _currentDependencyStatus: DependencyStatusPayload | null = null;
+  // The last dependency status of each target, replayed to a page that has just loaded or been shown.
+  private dependencyStatuses: { native?: DependencyStatusPayload; windows?: DependencyStatusPayload } = {};
+  // The running check of the targets that have no status yet, so that two triggers start only one.
+  private dependencyCheck: Promise<void> | undefined;
   private _currentInstallProgress: InstallProgressPayload | null = null;
   private _currentPackageStatus: PackageStatusPayload | null = null;
   private _currentInstallerStatus: InstallerStatusPayload | null = null;
@@ -24,7 +27,13 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider, vscode.D
     private readonly _extensionUri: vscode.Uri,
     private readonly _service: ToolService
   ) {
-    this._statusSubscription = this._service.onDidChangeStatus(() => this._postToolStatus());
+    this._statusSubscription = this._service.onDidChangeStatus(() => {
+      this._postToolStatus();
+      // A tool that becomes usable after the page loaded checks what the page has not been told yet.
+      if (this._readyReceived && this._service.status.state === 'usable') {
+        void this.checkMissingDependencies();
+      }
+    });
   }
 
   public dispose(): void {
@@ -61,6 +70,9 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider, vscode.D
       }, this._service);
       if (response) {
         webviewView.webview.postMessage(response);
+        if (message.command === 'checkDependencies' && response.type === 'dependencyStatus') {
+          this.dependencyStatuses[response.payload.target] = response.payload;
+        }
 
         // A created project is opened only when no folder was open when it was asked for.
         if (
@@ -81,6 +93,9 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider, vscode.D
       // A page that has just loaded catches up on what is running, whichever place started it.
       if (message.command === 'ready') {
         this._replayTrackedState();
+        if (response?.type === 'configLoaded' && response.payload.prefix !== '') {
+          await this.checkMissingDependencies();
+        }
       }
     });
 
@@ -101,9 +116,11 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider, vscode.D
     if (this._currentBuildStatus) {
       this.postMessage({ type: 'buildStatus', payload: this._currentBuildStatus });
     }
-    // Push current dependency status so the webview catches up
-    if (this._currentDependencyStatus) {
-      this.postMessage({ type: 'dependencyStatus', payload: this._currentDependencyStatus });
+    // Push the dependency status of each target that has one so the webview catches up
+    for (const status of [this.dependencyStatuses.native, this.dependencyStatuses.windows]) {
+      if (status) {
+        this.postMessage({ type: 'dependencyStatus', payload: status });
+      }
     }
     // Push current install progress if install is running
     if (this._currentInstallProgress) {
@@ -140,7 +157,7 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider, vscode.D
       this._currentBuildStatus = message.payload;
     }
     if (message.type === 'dependencyStatus') {
-      this._currentDependencyStatus = message.payload;
+      this.dependencyStatuses[message.payload.target] = message.payload;
     }
     if (message.type === 'installDependenciesProgress') {
       this._currentInstallProgress = message.payload;
@@ -178,12 +195,60 @@ export class TheSeedViewProvider implements vscode.WebviewViewProvider, vscode.D
     }
   }
 
-  private async _refreshConfig(): Promise<void> {
+  /**
+   * Checks the dependencies of each target that has no status yet, through the sidebar's own check, and
+   * posts the results. Nothing is checked unless the tool is usable and a prefix is configured.
+   */
+  private checkMissingDependencies(): Promise<void> {
+    if (!this.dependencyCheck) {
+      this.dependencyCheck = this.runMissingDependencyChecks().finally(() => {
+        this.dependencyCheck = undefined;
+      });
+    }
+    return this.dependencyCheck;
+  }
+
+  private async runMissingDependencyChecks(): Promise<void> {
+    const missing = (['native', 'windows'] as const).filter((target) => !this.dependencyStatuses[target]);
+    if (missing.length === 0 || this._service.status.state !== 'usable') {
+      return;
+    }
+    try {
+      const acquired = await this._service.acquire();
+      if (!acquired.ok) {
+        return;
+      }
+      const config = new acquired.api.Config();
+      config.loadConfig();
+      if (!config.config.prefix) {
+        return;
+      }
+      for (const target of missing) {
+        const response = await handleMessage(
+          { command: 'checkDependencies', requestId: `__open__${target}`, data: { target } },
+          undefined,
+          this._service
+        );
+        if (response?.type === 'dependencyStatus') {
+          this.postMessage(response);
+        }
+      }
+    } catch {
+      // The page's Check buttons remain; an automatic check that fails shows nothing.
+    }
+  }
+
+  /** Pushes the configuration as it is now to an open sidebar, after a command changed it. */
+  public refreshConfig(): Promise<void> {
+    return this._refreshConfig('__config__');
+  }
+
+  private async _refreshConfig(requestId = '__visibility__'): Promise<void> {
     if (!this._view) {
       return;
     }
     try {
-      const response = await handleMessage({ command: 'getConfig', requestId: '__visibility__' }, undefined, this._service);
+      const response = await handleMessage({ command: 'getConfig', requestId }, undefined, this._service);
       if (response) {
         this._view.webview.postMessage(response);
       }

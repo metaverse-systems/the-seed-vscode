@@ -25,6 +25,7 @@ import { exportSigningCert } from "./commands/exportSigningCert";
 import { signFile } from "./commands/signFile";
 import { verifySignature } from "./commands/verifySignature";
 import { TheSeedViewProvider, setActiveViewProvider } from "./panels/TheSeedViewProvider";
+import { nativeComponentState } from "./tool/nativeComponentState";
 import { createToolService, setActiveToolService } from "./tool/toolService";
 
 export function activate(context: vscode.ExtensionContext) {
@@ -142,7 +143,7 @@ export function activate(context: vscode.ExtensionContext) {
   // Check Dependencies command
   const checkDependenciesDisposable = vscode.commands.registerCommand(
     "the-seed.checkDependencies",
-    wrapCommand(checkDependenciesCommand(outputChannel), outputChannel, toolService)
+    wrapCommand(checkDependenciesCommand(outputChannel, viewProvider), outputChannel, toolService)
   );
 
   // Install Dependencies command
@@ -198,7 +199,13 @@ export function activate(context: vscode.ExtensionContext) {
   const checkToolDisposable = vscode.commands.registerCommand("the-seed.checkTool", async () => {
     const status = await toolService.check("checkAgain");
     if (status.state === "usable") {
-      void vscode.window.showInformationMessage(`The Seed: ${status.message}`);
+      const acquired = await toolService.acquire();
+      const native = acquired.ok ? nativeComponentState(acquired.api) : undefined;
+      if (native && !native.built) {
+        void vscode.window.showWarningMessage(`The Seed: ${status.message} ${native.message}`);
+      } else {
+        void vscode.window.showInformationMessage(`The Seed: ${status.message}${native ? " The native component is built." : ""}`);
+      }
     }
     // An unusable status was already announced by the check the user asked for.
   });

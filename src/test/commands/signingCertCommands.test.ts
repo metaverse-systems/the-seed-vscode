@@ -7,14 +7,26 @@
 import * as assert from 'assert';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import { createCertFor, writeScopes } from '../helpers/scratchHome';
 import { useScratchState } from '../helpers/scratchState';
-import { testTool } from '../helpers/tool';
+import { withoutInternalMembers } from '../helpers/stubTool';
+import { testTool, useToolApi } from '../helpers/tool';
 
 const SCOPE = '@only';
+const EMAIL = 'only@example.com';
+/** The subject as the commands show it for the scope's certificate made with EMAIL. */
+const SUBJECT_TEXT = `CN=Only Author, EMAIL=${EMAIL}, O=${SCOPE}`;
+
+/** Gives the scope's author an email, so that certificates made for it carry all three subject fields. */
+function giveScopeEmail(): void {
+  const config = new (testTool().Config)();
+  config.config.scopes[SCOPE].author.email = EMAIL;
+  config.saveConfig();
+}
 
 suite('Signing Certificate Commands', () => {
   const state = useScratchState({ scopes: { [SCOPE]: 'Only Author' } });
@@ -92,9 +104,11 @@ suite('Signing Certificate Commands', () => {
       assert.strictEqual(info.callCount + warning.callCount + error.callCount, 0);
     });
 
-    test('a successful import shows the subject and fingerprint', async () => {
+    test('a successful import shows the subject and fingerprint, through the tool\'s public formatSubject', async () => {
+      giveScopeEmail();
       const files = await certificateFiles();
       stubDialogs(files.cert, files.key);
+      await useToolApi(withoutInternalMembers(testTool()));
 
       await vscode.commands.executeCommand('the-seed.importSigningCert');
 
@@ -103,7 +117,7 @@ suite('Signing Certificate Commands', () => {
       assert.strictEqual(stored.fingerprint, files.fingerprint);
       assert.ok(warning.notCalled, 'no overwrite question without a certificate');
       assert.deepStrictEqual(messages(info), [
-        `Certificate imported. Subject: ${signing()._formatSubject(stored.subject)} | Fingerprint: ${files.fingerprint}`,
+        `Certificate imported. Subject: ${SUBJECT_TEXT} | Fingerprint: ${files.fingerprint}`,
       ]);
       assert.ok(error.notCalled);
     });
@@ -193,15 +207,17 @@ suite('Signing Certificate Commands', () => {
       });
     }
 
-    test('with a certificate, the subject, issuer, status and fingerprint are shown', async () => {
+    test('with a certificate, the subject, issuer, status and fingerprint are shown, through the tool\'s public formatSubject', async () => {
+      giveScopeEmail();
       const fingerprint = await createCertFor(SCOPE);
       const stored = signing().getCertInfo(SCOPE);
       assert.ok(stored);
+      await useToolApi(withoutInternalMembers(testTool()));
 
       await vscode.commands.executeCommand('the-seed.signingCertInfo');
 
       assert.deepStrictEqual(messages(info), [
-        `Certificate: ${signing()._formatSubject(stored.subject)} | Issuer: ${stored.issuer} | Status: Active | Fingerprint: ${fingerprint}`,
+        `Certificate: ${SUBJECT_TEXT} | Issuer: ${stored.issuer} | Status: Active | Fingerprint: ${fingerprint}`,
       ]);
       assert.deepStrictEqual(executed, ['the-seed.signingCertInfo']);
       assert.ok(error.notCalled);
@@ -233,6 +249,31 @@ suite('Signing Certificate Commands', () => {
       assert.deepStrictEqual(fs.readdirSync(target), []);
       assert.ok(info.notCalled);
       assert.ok(error.notCalled);
+    });
+
+    test('with a folder open the save dialog starts at signing-cert.pem in the first folder', async () => {
+      await createCertFor(SCOPE);
+      const first = state.dir('first');
+      state.setWorkspaceFolders([first, state.dir('second')]);
+      const dialog = sinon.stub(vscode.window, 'showSaveDialog').resolves(undefined);
+
+      await vscode.commands.executeCommand('the-seed.exportSigningCert');
+
+      assert.strictEqual(dialog.callCount, 1);
+      const options = dialog.firstCall.args[0] as vscode.SaveDialogOptions;
+      assert.strictEqual(options.defaultUri?.fsPath, path.join(first, 'signing-cert.pem'));
+    });
+
+    test('with no folder open the save dialog starts at signing-cert.pem in the home directory', async () => {
+      await createCertFor(SCOPE);
+      assert.strictEqual(os.homedir(), state.home, 'the home directory is the scratch home');
+      const dialog = sinon.stub(vscode.window, 'showSaveDialog').resolves(undefined);
+
+      await vscode.commands.executeCommand('the-seed.exportSigningCert');
+
+      assert.strictEqual(dialog.callCount, 1);
+      const options = dialog.firstCall.args[0] as vscode.SaveDialogOptions;
+      assert.strictEqual(options.defaultUri?.fsPath, path.join(state.home, 'signing-cert.pem'));
     });
 
     test('an export writes the PEM to the chosen path and shows it', async () => {

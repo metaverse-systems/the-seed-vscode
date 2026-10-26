@@ -1,7 +1,8 @@
 import * as vscode from "vscode";
+import type { PromptQuestion } from "@metaverse-systems/the-seed/types";
 
-export async function askQuestions(questions: any[]): Promise<{ [key: string]: any }> {
-  const answers: { [key: string]: any } = {};
+export async function askQuestions(questions: readonly PromptQuestion[]): Promise<{ [key: string]: string }> {
+  const answers: { [key: string]: string } = {};
 
   for (const question of questions) {
     let response: string | undefined;
@@ -13,11 +14,11 @@ export async function askQuestions(questions: any[]): Promise<{ [key: string]: a
     } else {
       response = await vscode.window.showInputBox({
         prompt: question.message,
-        value: question.default || '',
+        value: question.default ?? '',
         placeHolder: question.message,
         validateInput: typeof question.validate === 'function'
           ? (value: string) => {
-              const result = question.validate(value);
+              const result = question.validate?.(value);
               return typeof result === 'string' ? result : undefined;
             }
           : undefined,

@@ -5,6 +5,8 @@ import * as sinon from 'sinon';
 import { TheSeedViewProvider, activeViewProvider } from '../../panels/TheSeedViewProvider';
 import * as vscode from 'vscode';
 import { activeToolService } from '../../tool/toolService';
+import type { ToolService } from '../../tool/toolService';
+import type { ToolApi } from '../../tool/toolApi';
 import { useScratchState } from '../helpers/scratchState';
 import { testTool, withToolSetting } from '../helpers/tool';
 import { requires } from '../harness/platform';
@@ -303,7 +305,7 @@ suite('TheSeedViewProvider', () => {
           location: undefined,
           version: undefined,
           foundThrough: undefined,
-          required: '2.0.0',
+          required: '2.1.1',
           setting: 'the-seed.toolPath',
         });
       });
@@ -317,7 +319,7 @@ suite('TheSeedViewProvider', () => {
         location,
         version,
         foundThrough: 'setting',
-        required: '2.0.0',
+        required: '2.1.1',
         setting: 'the-seed.toolPath',
       });
     });
@@ -507,5 +509,106 @@ suite('TheSeedViewProvider', () => {
         assert.deepStrictEqual(ofType(again, type), [], `no ${type} is replayed once the run has ended`);
       });
     }
+  });
+
+  suite('dependency checks when the sidebar opens', function () {
+    this.timeout(60000);
+    useScratchState();
+    let probes: string[];
+    let counted: TheSeedViewProvider;
+
+    /**
+     * The extension's service, except that the tool it hands out counts its library probes instead of
+     * running pkg-config.
+     */
+    function countingService(): ToolService {
+      const real = activeToolService();
+      const api: ToolApi = Object.freeze({
+        ...testTool(),
+        checkLibEcs: (_config: Parameters<ToolApi['checkLibEcs']>[0], target: string) => {
+          probes.push(`libecs-cpp ${target}`);
+          return true;
+        },
+        checkLibTheSeed: (_config: Parameters<ToolApi['checkLibTheSeed']>[0], target: string) => {
+          probes.push(`libthe-seed ${target}`);
+          return false;
+        },
+      });
+      return {
+        get status() {
+          return real.status;
+        },
+        onDidChangeStatus: real.onDidChangeStatus,
+        acquire: async () => {
+          const acquired = await real.acquire();
+          return acquired.ok ? { ...acquired, api } : acquired;
+        },
+        check: (reason: Parameters<ToolService['check']>[0]) => real.check(reason),
+      } as unknown as ToolService;
+    }
+
+    /** Lets work the provider started without being awaited finish: until `condition` holds or a second passes, then a little more. */
+    async function settle(condition: () => boolean): Promise<void> {
+      const deadline = Date.now() + 1000;
+      while (!condition() && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+
+    const dependencyTargets = (messages: Posted[]): string[] => messages
+      .filter((message) => message.type === 'dependencyStatus')
+      .map((message) => String(message.payload?.target))
+      .sort();
+
+    setup(() => {
+      probes = [];
+      counted = new TheSeedViewProvider(vscode.Uri.file('/test/extension'), countingService());
+    });
+
+    teardown(() => {
+      counted.dispose();
+    });
+
+    test('the first ready probes each library once for each target and posts both statuses', async () => {
+      const fake = fakeView(counted);
+
+      await fake.receive({ command: 'ready' });
+      await settle(() => probes.length >= 4);
+
+      assert.deepStrictEqual([...probes].sort(), [
+        'libecs-cpp native',
+        'libecs-cpp windows',
+        'libthe-seed native',
+        'libthe-seed windows',
+      ]);
+      assert.deepStrictEqual(dependencyTargets(fake.posted), ['native', 'windows']);
+    });
+
+    test('a reopened sidebar probes nothing and is sent the status of both targets', async () => {
+      const fake = fakeView(counted);
+      await fake.receive({ command: 'ready' });
+      await settle(() => probes.length >= 4);
+      const before = probes.length;
+
+      const replayed = await fake.reopen();
+      await settle(() => false);
+
+      assert.deepStrictEqual(probes.slice(before), [], 'no library is probed on a reopen');
+      assert.deepStrictEqual(dependencyTargets(replayed), ['native', 'windows']);
+    });
+
+    test('Check for windows in the sidebar probes both libraries for windows', async () => {
+      const fake = fakeView(counted);
+      await fake.receive({ command: 'ready' });
+      await settle(() => probes.length >= 4);
+      const before = probes.length;
+
+      await fake.receive({ command: 'checkDependencies', requestId: 'check-windows', data: { target: 'windows' } });
+
+      assert.deepStrictEqual(probes.slice(before).sort(), ['libecs-cpp windows', 'libthe-seed windows']);
+      const answer = fake.posted.find((message) => message.requestId === 'check-windows');
+      assert.strictEqual(answer?.type, 'dependencyStatus');
+    });
   });
 });

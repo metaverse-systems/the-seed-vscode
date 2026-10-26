@@ -3,6 +3,8 @@ import { acquireOperationLock, releaseOperationLock, lockRefusal } from '../oper
 import type { TheSeedViewProvider } from '../panels/TheSeedViewProvider';
 import type { InstallerStatusPayload } from '../types/messages';
 import type { ToolApi } from '../tool/toolApi';
+import type { InstallerRunOptions, ToolLogLevel } from '@metaverse-systems/the-seed/types';
+import { levelLine } from './packageProject';
 import type { ToolHandler } from './wrapCommand';
 
 /**
@@ -38,9 +40,24 @@ export function generateInstallerCommand(
       return;
     }
 
-    // Monkey-patch console.log/console.error to capture output
-    const originalLog = console.log;
-    const originalError = console.error;
+    // Set in finally: the tool's reports after the run has ended go nowhere
+    let ended = false;
+    // Each line the tool reports goes to the panel and becomes the current step, for this run only;
+    // the files its packaging step writes are shown by those lines alone
+    const options: InstallerRunOptions = {
+      log: (line: string, level: ToolLogLevel) => {
+        if (ended) {
+          return;
+        }
+        outputChannel.appendLine(levelLine(line, level));
+        const stepStatus: InstallerStatusPayload = {
+          state: 'running',
+          currentStep: line,
+          timestamp: new Date().toISOString(),
+        };
+        viewProvider.postMessage({ type: 'installerStatus', payload: stepStatus });
+      },
+    };
 
     try {
       // Broadcast running status
@@ -59,23 +76,6 @@ export function generateInstallerCommand(
       outputChannel.appendLine(`Project: ${projectDir}`);
       outputChannel.appendLine(`${'═'.repeat(60)}\n`);
 
-      console.log = (...args: unknown[]) => {
-        const line = args.map(String).join(' ');
-        outputChannel.appendLine(line);
-        // Update running status with current step
-        const stepStatus: InstallerStatusPayload = {
-          state: 'running',
-          currentStep: line,
-          timestamp: new Date().toISOString(),
-        };
-        viewProvider.postMessage({ type: 'installerStatus', payload: stepStatus });
-      };
-
-      console.error = (...args: unknown[]) => {
-        const line = args.map(String).join(' ');
-        outputChannel.appendLine(`[ERROR] ${line}`);
-      };
-
       // Wrap Installer.run() in withProgress for notification-level spinner
       let success = false;
       let failureMessage: string | undefined;
@@ -87,7 +87,7 @@ export function generateInstallerCommand(
         },
         async () => {
           const installer = new tool.Installer(config);
-          const result = await installer.run(projectDir);
+          const result = await installer.run(projectDir, options);
           success = result.ok;
           if (!result.ok) {
             failureMessage = result.message;
@@ -136,9 +136,7 @@ export function generateInstallerCommand(
 
       vscode.window.showErrorMessage(`Installer generation failed: ${errorMessage}`);
     } finally {
-      // Restore console methods
-      console.log = originalLog;
-      console.error = originalError;
+      ended = true;
 
       // Always release the operation lock
       releaseOperationLock();

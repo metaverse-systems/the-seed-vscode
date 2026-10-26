@@ -1,9 +1,8 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
-import { detectResourcePak } from '../utils/detectResourcePak';
-import { chooseCreationFolder, describeError } from '../utils/projectFolder';
+import { currentPak, rememberPak, resourcePakStatus } from '../utils/pakChoice';
+import { chooseAndRememberPak, chooseCreationFolder, describeError } from '../utils/projectFolder';
 import { addResourceFile } from '../utils/addResourceFile';
 import type {
   WebviewToExtensionMessage,
@@ -30,14 +29,6 @@ import type { ToolApi } from '../tool/toolApi';
 import type { ToolService } from '../tool/toolService';
 import { isToolRefusal } from '../utils/projectFolder';
 
-function getConfigDir(): string {
-  return path.join(os.homedir(), 'the-seed');
-}
-
-function getConfigFilePath(): string {
-  return path.join(getConfigDir(), 'config.json');
-}
-
 // Build status tracking for getBuildStatus queries
 let currentBuildStatus: BuildStatusPayload = { state: 'idle', target: '' };
 
@@ -49,15 +40,17 @@ export function getCurrentBuildStatus(): BuildStatusPayload {
   return currentBuildStatus;
 }
 
-// Dependency status tracking for getDependencyStatus / late-joining
-let currentDependencyStatus: DependencyStatusPayload | null = null;
+// The last dependency status of each target, for getDependencyStatus
+const currentDependencyStatuses: { native?: DependencyStatusPayload; windows?: DependencyStatusPayload } = {};
 
 export function updateDependencyStatus(status: DependencyStatusPayload): void {
-  currentDependencyStatus = status;
+  currentDependencyStatuses[status.target] = status;
 }
 
-export function getCurrentDependencyStatus(): DependencyStatusPayload | null {
-  return currentDependencyStatus;
+/** The last status of each target that has one, native first. */
+export function getCurrentDependencyStatuses(): DependencyStatusPayload[] {
+  return [currentDependencyStatuses.native, currentDependencyStatuses.windows]
+    .filter((status): status is DependencyStatusPayload => status !== undefined);
 }
 
 // Package status tracking
@@ -99,13 +92,9 @@ function toScopeAnswers(data: ScopeFormData) {
   };
 }
 
-/** The resource pak project in the first workspace folder, if there is one. */
+/** The resource pak project the section works on: the one chosen or created, else the only one in the open folder. */
 function detectedPakDir(): string | undefined {
-  const folders = vscode.workspace.workspaceFolders;
-  if (!folders || folders.length === 0) {
-    return undefined;
-  }
-  return detectResourcePak(folders[0].uri.fsPath)?.packageDir;
+  return currentPak()?.packageDir;
 }
 
 function noPakProject(requestId: string): ExtensionToWebviewMessage {
@@ -169,10 +158,10 @@ export async function handleMessage(
         if (!acquired.ok) {
           return statusMessage;
         }
-        const configFileExists = fs.existsSync(getConfigFilePath());
+        // Decided before Config is constructed, since constructing it writes a default file there
+        const isDefault = !fs.existsSync(acquired.api.configFilePath());
         const config = new acquired.api.Config();
         config.loadConfig();
-        const isDefault = !configFileExists;
         return {
           type: 'configLoaded',
           payload: buildConfigPayload(config, isDefault),
@@ -385,21 +374,13 @@ export async function handleMessage(
 
       // ── ResourcePak Handlers ────────────────────────────────
 
-      case 'getResourcePakStatus': {
-        const workspaceFolders = vscode.workspace.workspaceFolders;
-        if (!workspaceFolders || workspaceFolders.length === 0) {
-          return {
-            type: 'resourcePakStatus',
-            requestId: message.requestId,
-            payload: { detected: false },
-          };
-        }
-        const detected = detectResourcePak(workspaceFolders[0].uri.fsPath);
-        return {
-          type: 'resourcePakStatus',
-          requestId: message.requestId,
-          payload: detected ?? { detected: false },
-        };
+      case 'getResourcePakStatus':
+        return { type: 'resourcePakStatus', requestId: message.requestId, payload: resourcePakStatus() };
+
+      case 'chooseResourcePak': {
+        // A dismissed chooser leaves the section as it was
+        await chooseAndRememberPak(tool);
+        return { type: 'resourcePakStatus', requestId: message.requestId, payload: resourcePakStatus() };
       }
 
       case 'createResourcePak': {
@@ -414,6 +395,7 @@ export async function handleMessage(
         }
         const folder = creation.folder;
         const packageDir = rp.createPackage(scope, pakName, folder);
+        rememberPak(packageDir);
         return {
           type: 'resourcePakCreated',
           requestId: message.requestId,
@@ -481,9 +463,8 @@ export async function handleMessage(
         if (!packageDir) {
           return noPakProject(message.requestId);
         }
-        const pkgPath = path.join(packageDir, 'package.json');
-
-        const pkgData = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+        const rp = new tool.ResourcePak(config);
+        const pkgData = rp.readProject(packageDir);
         if (!pkgData.resources || pkgData.resources.length === 0) {
           if (pushMessage) {
             pushMessage({
@@ -511,10 +492,10 @@ export async function handleMessage(
           });
         }
 
-        // Perform build
-        const rp = new tool.ResourcePak(config);
+        // Perform build; the tool says where it wrote the pak
+        let pakFilePath: string;
         try {
-          rp.build(packageDir);
+          pakFilePath = rp.build(packageDir);
         } catch (error) {
           if (error instanceof tool.ProjectError) {
             if (pushMessage) {
@@ -531,10 +512,6 @@ export async function handleMessage(
           }
           throw error;
         }
-
-        // Determine output file
-        const [, name] = pkgData.name.split('/');
-        const pakFilePath = path.join(packageDir, name + '.pak');
 
         // Send progress: completed
         if (pushMessage) {
@@ -588,7 +565,7 @@ export async function handleMessage(
           timestamp: new Date().toISOString(),
         };
 
-        currentDependencyStatus = status;
+        updateDependencyStatus(status);
 
         return {
           type: 'dependencyStatus',
@@ -598,11 +575,16 @@ export async function handleMessage(
       }
 
       case 'getDependencyStatus': {
-        if (currentDependencyStatus) {
+        // Every known target's status: all but the last pushed, the last as the answer.
+        const known = getCurrentDependencyStatuses();
+        if (known.length > 0) {
+          for (const status of known.slice(0, -1)) {
+            pushMessage?.({ type: 'dependencyStatus', requestId: message.requestId, payload: status });
+          }
           return {
             type: 'dependencyStatus',
             requestId: message.requestId,
-            payload: currentDependencyStatus,
+            payload: known[known.length - 1],
           };
         }
         // Never checked — return null-like payload
@@ -698,7 +680,7 @@ export async function handleMessage(
           return {
             scope,
             status: certInfo.isExpired ? 'expired' : 'active',
-            subject: signing._formatSubject(certInfo.subject),
+            subject: signing.formatSubject(certInfo.subject),
             issuer: certInfo.issuer,
             fingerprint: certInfo.fingerprint,
             validFrom: certInfo.notBefore.toISOString(),

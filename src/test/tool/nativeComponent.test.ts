@@ -186,6 +186,21 @@ suite('Native component of the installation in use', function () {
       });
     });
 
+    test('Check Tool reports the missing native component with the tool message in full', async () => {
+      await withToolSetting(copy, async () => {
+        const message = expectedMessage();
+
+        await vscode.commands.executeCommand('the-seed.checkTool');
+
+        assert.strictEqual(warning.callCount, 1, `one warning: ${JSON.stringify(warning.args)}`);
+        const shown = String(warning.firstCall.args[0]);
+        assert.ok(shown.includes(message), shown);
+        assert.ok(shown.includes(activeToolService().status.message), 'the version and location are still reported');
+        assert.ok(info.notCalled, 'no plain report is shown');
+        assertUsable();
+      });
+    });
+
     test('a configuration change and a template scaffold still work', async () => {
       await withToolSetting(copy, async () => {
         const response = await handleMessage(

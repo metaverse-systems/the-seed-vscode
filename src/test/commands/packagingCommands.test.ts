@@ -1,6 +1,7 @@
 // Packaging commands: no workspace folder open, the installer's prefix check and
-// operation lock, and the previous packaging output kept unless a run produces a
-// new one.
+// operation lock, the previous packaging output kept unless a run produces a
+// new one, and the tool's output taken through its per-run options rather than
+// the shared console.
 import * as assert from 'assert';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -16,7 +17,10 @@ import { useScratchState } from '../helpers/scratchState';
 import { testTool } from '../helpers/tool';
 import { fakeView, until } from '../helpers/fakeView';
 import { readTree } from '../helpers/workspaceStub';
+import { panelText, recordOperation } from '../helpers/operationRecorder';
+import type { Recorder } from '../helpers/operationRecorder';
 import type { ToolApi } from '../../tool/toolApi';
+import type { InstallerRunOptions, PackageCopyEvent, PackageRunOptions } from '@metaverse-systems/the-seed/types';
 
 suite('Packaging Commands', () => {
   useScratchState({ workspaceFolders: 0 });
@@ -420,6 +424,207 @@ suite('Packaging Commands: previous output', function () {
     assert.deepStrictEqual(fs.readdirSync(projectDir()), ['dist'], 'nothing else is in the project');
     assert.strictEqual(getOperationLock().active, false, 'the lock is free');
   });
+});
+
+const CONSOLE_METHODS = ['log', 'warn', 'error'] as const;
+type ConsoleMethod = typeof CONSOLE_METHODS[number];
+
+/**
+ * Puts the case's own accessors on console.log, console.warn and console.error:
+ * reads give the current method, and every assignment is recorded (and applied,
+ * so code that replaces the console behaves as it would elsewhere). Assignments
+ * to the editor host's own console accessors are ignored without trace, so
+ * comparing those alone could not show a replacement.
+ */
+class ConsoleWatch {
+  /** Every assignment to a watched method, in order. */
+  readonly assignments: ConsoleMethod[] = [];
+  /** The descriptors the watch put in place. */
+  readonly descriptors = new Map<ConsoleMethod, PropertyDescriptor>();
+  private readonly originals = new Map<ConsoleMethod, PropertyDescriptor | undefined>();
+
+  constructor() {
+    for (const method of CONSOLE_METHODS) {
+      const original = Object.getOwnPropertyDescriptor(console, method);
+      this.originals.set(method, original);
+      let current: (...args: unknown[]) => void = console[method].bind(console);
+      const descriptor: PropertyDescriptor = {
+        configurable: true,
+        enumerable: original?.enumerable ?? true,
+        get: () => current,
+        set: (value: (...args: unknown[]) => void) => {
+          this.assignments.push(method);
+          current = value;
+        },
+      };
+      Object.defineProperty(console, method, descriptor);
+      this.descriptors.set(method, descriptor);
+    }
+  }
+
+  /** Asserts that each method still has the watch's descriptor, field for field. */
+  assertUnchanged(when: string): void {
+    for (const method of CONSOLE_METHODS) {
+      const now = Object.getOwnPropertyDescriptor(console, method);
+      const expected = this.descriptors.get(method)!;
+      assert.ok(now !== undefined, `console.${method} has a descriptor ${when}`);
+      assert.strictEqual(now.get, expected.get, `console.${method}'s getter ${when}`);
+      assert.strictEqual(now.set, expected.set, `console.${method}'s setter ${when}`);
+      assert.strictEqual(now.configurable, expected.configurable, `console.${method}'s configurable ${when}`);
+      assert.strictEqual(now.enumerable, expected.enumerable, `console.${method}'s enumerable ${when}`);
+      assert.ok(!('value' in now), `console.${method} is still an accessor ${when}`);
+    }
+  }
+
+  /** Puts the console's own descriptors back. */
+  restore(): void {
+    for (const method of CONSOLE_METHODS) {
+      const original = this.originals.get(method);
+      if (original) {
+        Object.defineProperty(console, method, original);
+      } else {
+        delete (console as unknown as Record<string, unknown>)[method];
+      }
+    }
+  }
+}
+
+const OUTSIDE_LINE = 'a line another extension writes with console.log';
+
+/** The packageStatus or installerStatus payloads posted to the sidebar, without their times. */
+function statusPosts(recording: { sidebar: unknown[] }, type: string): Record<string, unknown>[] {
+  return (recording.sidebar as { type: string; payload: Record<string, unknown> }[])
+    .filter((posted) => posted.type === type)
+    .map((posted) => {
+      const { timestamp: _timestamp, ...rest } = posted.payload;
+      return rest;
+    });
+}
+
+// Packaging and the installer report through the tool's per-run options: the
+// console every extension shares is never replaced, a line written to it
+// elsewhere stays out of the panel, and calls after the run has ended reach
+// nothing.
+suite('Packaging Commands: shared console', function () {
+  this.timeout(60000);
+  useScratchState({ workspaceFolders: 1 });
+
+  let watch: ConsoleWatch | null = null;
+  let recorder: Recorder;
+
+  setup(() => {
+    recorder = recordOperation();
+    watch = new ConsoleWatch();
+    watch.assertUnchanged('before the run');
+  });
+
+  teardown(() => {
+    watch?.restore();
+    watch = null;
+  });
+
+  function copyEvent(name: string, index: number, total: number): PackageCopyEvent {
+    return { name, source: `/nowhere/${name}`, index, total };
+  }
+
+  /** Reports the way the tool does: an outside console line, one line per level and, for packaging, two copies. */
+  function report(options: PackageRunOptions | undefined): void {
+    watch!.assertUnchanged('during the run');
+    console.log(OUTSIDE_LINE);
+    options?.log?.('Copying game...', 'info');
+    options?.onCopy?.(copyEvent('game', 1, 2));
+    options?.log?.('Copying game.sig...', 'info');
+    options?.onCopy?.(copyEvent('game.sig', 2, 2));
+    options?.log?.('stubbed warning', 'warn');
+    options?.log?.('stubbed error', 'error');
+  }
+
+  test('packaging reports through its options and leaves the console alone', async () => {
+    const run = sinon.stub(testTool().Package.prototype, 'run').callsFake(async (output: string, _dirs: string[], options?: PackageRunOptions) => {
+      report(options);
+      return packageResult(output, true, null, ['game', 'game.sig']) as never;
+    });
+
+    await vscode.commands.executeCommand('the-seed.packageProject');
+
+    assert.strictEqual(run.callCount, 1, 'Package.run is called once');
+    assert.deepStrictEqual(watch!.assignments, [], 'no console method is assigned');
+    watch!.assertUnchanged('after the run');
+    const panel = panelText(recorder);
+    assert.ok(!panel.includes(OUTSIDE_LINE), 'the outside console line is not in the panel');
+    assert.ok(panel.includes('\nCopying game...\nCopying game.sig...\n[WARNING] stubbed warning\n[ERROR] stubbed error\n'), `the tool's lines are in the panel with their levels, got: ${panel}`);
+    assert.deepStrictEqual(statusPosts(recorder, 'packageStatus'), [
+      { state: 'running' },
+      { state: 'running', currentFile: 'Copying game...', filesCopied: 1, totalFiles: 2 },
+      { state: 'running', currentFile: 'Copying game.sig...', filesCopied: 2, totalFiles: 2 },
+      { state: 'completed', filesCopied: 2, totalFiles: 2 },
+    ]);
+  });
+
+  test('the installer reports through its options and leaves the console alone', async () => {
+    const run = sinon.stub(testTool().Installer.prototype, 'run').callsFake(async (_dir: string, options?: InstallerRunOptions) => {
+      report(options);
+      return { ok: true, msiPath: '/nowhere/game.msi' } as never;
+    });
+
+    await vscode.commands.executeCommand('the-seed.generateWindowsInstaller');
+
+    assert.strictEqual(run.callCount, 1, 'Installer.run is called once');
+    assert.deepStrictEqual(watch!.assignments, [], 'no console method is assigned');
+    watch!.assertUnchanged('after the run');
+    const panel = panelText(recorder);
+    assert.ok(!panel.includes(OUTSIDE_LINE), 'the outside console line is not in the panel');
+    assert.ok(panel.includes('\nCopying game...\nCopying game.sig...\n[WARNING] stubbed warning\n[ERROR] stubbed error\n'), `the tool's lines are in the panel with their levels, got: ${panel}`);
+    assert.deepStrictEqual(statusPosts(recorder, 'installerStatus'), [
+      { state: 'running', currentStep: 'Initializing...' },
+      { state: 'running', currentStep: 'Copying game...' },
+      { state: 'running', currentStep: 'Copying game.sig...' },
+      { state: 'running', currentStep: 'stubbed warning' },
+      { state: 'running', currentStep: 'stubbed error' },
+      { state: 'completed', currentStep: 'Done' },
+    ]);
+    assert.deepStrictEqual(statusPosts(recorder, 'packageStatus'), [], 'the installer\'s packaging posts no packaging status');
+  });
+
+  const lateRuns: { name: string; commandId: string; stub: (keep: (options: PackageRunOptions | undefined) => void) => sinon.SinonStub }[] = [
+    {
+      name: 'packaging',
+      commandId: 'the-seed.packageProject',
+      stub: (keep) => sinon.stub(testTool().Package.prototype, 'run').callsFake(async (output: string, _dirs: string[], options?: PackageRunOptions) => {
+        keep(options);
+        return packageResult(output, false, 'stubbed refusal') as never;
+      }),
+    },
+    {
+      name: 'the installer',
+      commandId: 'the-seed.generateWindowsInstaller',
+      stub: (keep) => sinon.stub(testTool().Installer.prototype, 'run').callsFake(async (_dir: string, options?: InstallerRunOptions) => {
+        keep(options);
+        return { ok: false, status: 1, message: 'stubbed installer failure' } as never;
+      }),
+    },
+  ];
+
+  for (const { name, commandId, stub } of lateRuns) {
+    test(`calls ${name}'s options receive after the run has ended reach nothing`, async () => {
+      let kept: PackageRunOptions | undefined;
+      const run = stub((options) => { kept = options; });
+
+      await vscode.commands.executeCommand(commandId);
+
+      assert.strictEqual(run.callCount, 1, 'the tool is run once');
+      assert.ok(kept?.log, 'the run is given a log');
+      recorder.take();
+      kept.log('late info line', 'info');
+      kept.log('late error line', 'error');
+      kept.onCopy?.(copyEvent('late', 1, 1));
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const late = recorder.take();
+      assert.deepStrictEqual(late.panel, [], 'nothing more reaches the panel');
+      assert.deepStrictEqual(late.sidebar, [], 'nothing more reaches the sidebar');
+      assert.deepStrictEqual(watch!.assignments, [], 'no console method is assigned');
+    });
+  }
 });
 
 const REAL_SCOPE = '@acme';

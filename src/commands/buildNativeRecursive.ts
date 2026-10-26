@@ -3,6 +3,7 @@ import type { BuildableProject, BuildStep } from '@metaverse-systems/the-seed/ty
 import { startBuild } from '../build/buildStart';
 import type { TheSeedViewProvider } from '../panels/TheSeedViewProvider';
 import type { BuildStatusPayload, RecursiveBuildProgressPayload, RecursiveBuildCompletePayload } from '../types/messages';
+import { projectCount } from '../types/projectCount';
 import { discoveryFailure } from '../build/recursiveOutcome';
 import { describeBuildRejection } from '../build/buildFailure';
 import { releaseOperationLock, getOperationLock } from '../operationLock';
@@ -214,10 +215,10 @@ async function executeRecursiveBuild(
           } else {
             progress.report({ increment: 100, message: 'Complete' });
             vscode.window.showInformationMessage(
-              `Recursive build complete: ${result.completed.length} projects built.`
+              `Recursive build complete: ${projectCount(result.completed.length)} built.`
             );
             outputChannel.appendLine(
-              `\n── Recursive build complete: ${result.completed.length} projects built successfully ──`
+              `\n── Recursive build complete: ${projectCount(result.completed.length)} built successfully ──`
             );
             broadcastBuildStatus({
               state: 'completed',

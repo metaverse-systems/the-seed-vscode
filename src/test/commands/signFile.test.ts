@@ -18,6 +18,7 @@ import { createCertFor, fixturePath, writeScopes } from '../helpers/scratchHome'
 import { useScratchState } from '../helpers/scratchState';
 import { requires } from '../harness/platform';
 import { testTool } from '../helpers/tool';
+import type { ToolApi } from '../../tool/toolApi';
 
 function digest(file: string): string {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
@@ -95,5 +96,71 @@ suite('signFile command', () => {
     assert.ok(exec.calledOnceWithExactly('the-seed.createSigningCert'));
     assert.ok(spy.notCalled);
     assert.strictEqual(digest(program), original);
+  });
+
+  test('a file that is skipped is named in the output', async () => {
+    writeScopes({ '@only': 'Only Author' });
+    await createCertFor('@only');
+    const notes = path.join(state.home, 'notes.txt');
+    fs.writeFileSync(notes, 'plain text\n');
+    const lines: string[] = [];
+    const recording = { appendLine: (line: string): void => { lines.push(line); } } as unknown as vscode.OutputChannel;
+
+    await signFile(recording, testTool(), vscode.Uri.file(program), [vscode.Uri.file(program), vscode.Uri.file(notes)]);
+
+    const skippedLines = lines.filter((line) => line.includes('Skipped') && line.includes(notes));
+    assert.strictEqual(skippedLines.length, 1, lines.join('\n'));
+    assert.ok(!lines.some((line) => line.includes('Skipped') && line.includes(program)), 'the program is not reported as skipped');
+  });
+});
+
+// The file and signature names in the notifications, for a target the tool
+// reports with backslashes. The tool's Signing is replaced by a stand-in, so
+// nothing is signed and the native component is not needed.
+suite('signFile command names files with either separator', () => {
+  useScratchState({ prefix: false });
+  const channel = { appendLine: (): void => undefined } as unknown as vscode.OutputChannel;
+  const TARGET = 'C:\\work\\app.exe';
+  let info: sinon.SinonStub;
+
+  setup(() => {
+    writeScopes({ '@only': 'Only Author' });
+    info = sinon.stub(vscode.window, 'showInformationMessage').resolves(undefined);
+    sinon.stub(vscode.window, 'showWarningMessage').resolves(undefined);
+    sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+    const editor = { document: { uri: { fsPath: TARGET } } } as unknown as vscode.TextEditor;
+    sinon.stub(vscode.window, 'activeTextEditor').get(() => editor);
+  });
+
+  /** The loaded tool with a Signing whose signFile answers `result` for any file. */
+  function toolSigning(result: { signatureType: 'embedded' | 'detached'; signaturePath: string | null }): ToolApi {
+    class StandInSigning {
+      async isBinaryFile(): Promise<boolean> {
+        return true;
+      }
+      hasCert(): boolean {
+        return true;
+      }
+      async signFile(filePath: string): Promise<unknown> {
+        return { filePath, fingerprint: 'AA:BB', warnings: [], ...result };
+      }
+    }
+    return { ...testTool(), Signing: StandInSigning as unknown as ToolApi['Signing'] };
+  }
+
+  function messages(): string[] {
+    return info.getCalls().map((call) => String(call.args[0]));
+  }
+
+  test('a detached signature at a backslash path is named app.exe.sig', async () => {
+    await signFile(channel, toolSigning({ signatureType: 'detached', signaturePath: 'C:\\work\\app.exe.sig' }));
+
+    assert.deepStrictEqual(messages(), ['Detached signature saved to app.exe.sig']);
+  });
+
+  test('an embedded signature in a backslash path is named app.exe', async () => {
+    await signFile(channel, toolSigning({ signatureType: 'embedded', signaturePath: null }));
+
+    assert.deepStrictEqual(messages(), ['Embedded signature applied to app.exe']);
   });
 });

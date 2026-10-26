@@ -57,7 +57,7 @@ suite('loading the tool', () => {
   });
 
   test('a stub with every export loads', () => {
-    const dir = makeStubTool(scratch.dir('stub'), { version: '2.0.0' });
+    const dir = makeStubTool(scratch.dir('stub'), { version: '2.1.1' });
     const api = loader().loadInstallation(dir);
     assert.ok(Object.isFrozen(api));
     for (const item of EXPECTED_EXPORTS) {
@@ -66,27 +66,27 @@ suite('loading the tool', () => {
   });
 
   test('a module that throws when it loads is a load failure carrying the first line of the error', () => {
-    const dir = makeStubTool(scratch.dir('stub'), { version: '2.0.0', throwOnLoad: 'Signing' });
+    const dir = makeStubTool(scratch.dir('stub'), { version: '2.1.1', throwOnLoad: 'Signing' });
     const failure = failureOf(() => loader().loadInstallation(dir));
     assert.strictEqual(failure.firstLine, stubLoadError('Signing'));
     assert.ok(!failure.firstLine.includes('\n'), 'the first line holds only one line');
   });
 
   test('a missing export is named with the subpath it should have come from', () => {
-    const dir = makeStubTool(scratch.dir('stub'), { version: '2.0.0', missingExport: 'validateScopeName' });
+    const dir = makeStubTool(scratch.dir('stub'), { version: '2.1.1', missingExport: 'validateScopeName' });
     const failure = failureOf(() => loader().loadInstallation(dir));
     assert.strictEqual(failure.firstLine, 'missing export validateScopeName from Scopes');
   });
 
   test('a missing default export is named by its member', () => {
-    const dir = makeStubTool(scratch.dir('stub'), { version: '2.0.0', missingExport: 'Template' });
+    const dir = makeStubTool(scratch.dir('stub'), { version: '2.1.1', missingExport: 'Template' });
     const failure = failureOf(() => loader().loadInstallation(dir));
     assert.ok(failure.firstLine.startsWith('missing export'), failure.firstLine);
     assert.ok(failure.firstLine.includes('Template'), failure.firstLine);
   });
 
   test('an export of the wrong kind is a load failure', () => {
-    const dir = makeStubTool(scratch.dir('stub'), { version: '2.0.0' });
+    const dir = makeStubTool(scratch.dir('stub'), { version: '2.1.1' });
     const file = path.join(dir, 'dist', 'Scopes.js');
     fs.appendFileSync(file, "exports.validateScopeName = 'not a function';\n");
     const failure = failureOf(() => loader().loadInstallation(dir));
@@ -100,7 +100,7 @@ suite('loading the tool', () => {
 
   suite('the loaded copies', () => {
     test('the same directory and version gives the same API', () => {
-      const dir = makeStubTool(scratch.dir('stub'), { version: '2.0.0' });
+      const dir = makeStubTool(scratch.dir('stub'), { version: '2.1.1' });
       assert.strictEqual(loader().loadInstallation(dir), loader().loadInstallation(dir));
     });
 
@@ -108,15 +108,15 @@ suite('loading the tool', () => {
       if (process.platform === 'win32') {
         this.skip();
       }
-      const dir = makeStubTool(scratch.dir('stub'), { version: '2.0.0' });
+      const dir = makeStubTool(scratch.dir('stub'), { version: '2.1.1' });
       const link = path.join(scratch.dir('holder'), 'linked');
       fs.symlinkSync(dir, link);
       assert.strictEqual(loader().loadInstallation(dir), loader().loadInstallation(link));
     });
 
     test('a different directory gives a different API', () => {
-      const first = makeStubTool(scratch.dir('first'), { version: '2.0.0' });
-      const second = makeStubTool(scratch.dir('second'), { version: '2.0.0' });
+      const first = makeStubTool(scratch.dir('first'), { version: '2.1.1' });
+      const second = makeStubTool(scratch.dir('second'), { version: '2.1.1' });
       const one = loader().loadInstallation(first);
       const two = loader().loadInstallation(second);
       assert.notStrictEqual(one, two);
@@ -124,9 +124,9 @@ suite('loading the tool', () => {
     });
 
     test('a failure is not remembered: the same directory loads once it is fixed', () => {
-      const dir = makeStubTool(scratch.dir('stub'), { version: '2.0.0', throwOnLoad: 'Config' });
+      const dir = makeStubTool(scratch.dir('stub'), { version: '2.1.1', throwOnLoad: 'Config' });
       failureOf(() => loader().loadInstallation(dir));
-      makeStubTool(dir, { version: '2.0.0' });
+      makeStubTool(dir, { version: '2.1.1' });
       const api = loader().loadInstallation(dir);
       assert.strictEqual(kindOf(api.Config), 'class');
     });

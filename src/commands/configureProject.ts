@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { askQuestions } from '../askQuestions';
 import type { ToolApi } from '../tool/toolApi';
+import { activeViewProvider } from '../panels/TheSeedViewProvider';
 
 export async function configureProject(outputChannel: vscode.OutputChannel, tool: ToolApi): Promise<void> {
   const config = new tool.Config();
@@ -21,4 +22,5 @@ export async function configureProject(outputChannel: vscode.OutputChannel, tool
 
   outputChannel.appendLine(`Configuration saved. Prefix: ${config.config.prefix}`);
   vscode.window.showInformationMessage('Configuration saved.');
+  await activeViewProvider()?.refreshConfig();
 }

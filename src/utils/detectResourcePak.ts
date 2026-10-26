@@ -45,3 +45,31 @@ export function detectResourcePak(folderPath: string): ResourcePakStatusPayload 
     return null;
   }
 }
+
+/**
+ * The resource paks in a folder: the folder itself when it is one, then each of its immediate
+ * subfolders that is one, in name order. Hidden folders and node_modules are not searched.
+ */
+export function findResourcePaks(folderPath: string): ResourcePakStatusPayload[] {
+  const found: ResourcePakStatusPayload[] = [];
+  const root = detectResourcePak(folderPath);
+  if (root) {
+    found.push(root);
+  }
+  let names: string[];
+  try {
+    names = fs.readdirSync(folderPath, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules')
+      .map((entry) => entry.name)
+      .sort();
+  } catch {
+    return found;
+  }
+  for (const name of names) {
+    const pak = detectResourcePak(path.join(folderPath, name));
+    if (pak) {
+      found.push(pak);
+    }
+  }
+  return found;
+}

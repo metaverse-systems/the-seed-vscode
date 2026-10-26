@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { askQuestions } from '../askQuestions';
 import type { ScopeAnswersType } from '@metaverse-systems/the-seed/types';
 import type { ToolApi } from '../tool/toolApi';
+import { activeViewProvider } from '../panels/TheSeedViewProvider';
 
 export async function addScope(outputChannel: vscode.OutputChannel, tool: ToolApi): Promise<void> {
   const config = new tool.Config();
@@ -47,4 +48,5 @@ export async function addScope(outputChannel: vscode.OutputChannel, tool: ToolAp
 
   outputChannel.appendLine(`Scope '${scopeName}' added.`);
   vscode.window.showInformationMessage(`Scope '${scopeName}' added.`);
+  await activeViewProvider()?.refreshConfig();
 }

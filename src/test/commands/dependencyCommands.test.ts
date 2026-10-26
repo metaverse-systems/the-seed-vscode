@@ -2,6 +2,7 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';
+import * as path from 'path';
 import { getOperationLock, acquireOperationLock } from '../../operationLock';
 import type { OperationType } from '../../operationLock';
 import { activeViewProvider } from '../../panels/TheSeedViewProvider';
@@ -57,6 +58,21 @@ suite('Dependency Commands', () => {
       assert.strictEqual(messages.info.callCount, 1, 'exactly one information message');
       assert.strictEqual(messages.info.firstCall.args[0], 'Dependencies (native): libecs-cpp ✗ | libthe-seed ✗');
       assert.ok(!messages.error.called, 'no error message');
+    });
+
+    test('sends the result to the sidebar, as the install does', async () => {
+      sinon.stub(vscode.window, 'showQuickPick').resolves({ label: 'native' });
+      const recorder = recordOperation();
+
+      await vscode.commands.executeCommand('the-seed.checkDependencies');
+
+      const sent = (recorder.sidebar as { type: string; payload?: { target: string; libraries: { name: string; installed: boolean }[]; checking: boolean; timestamp: string } }[])
+        .filter((message) => message.type === 'dependencyStatus');
+      assert.strictEqual(sent.length, 1, JSON.stringify(recorder.sidebar));
+      assert.strictEqual(sent[0].payload?.target, 'native');
+      assert.deepStrictEqual(sent[0].payload?.libraries.map((library) => library.name), ['libecs-cpp', 'libthe-seed']);
+      assert.strictEqual(sent[0].payload?.checking, false);
+      assert.ok(!Number.isNaN(Date.parse(String(sent[0].payload?.timestamp))), 'the result carries the time of the check');
     });
 
     test('should exit cleanly when QuickPick is cancelled', async () => {
@@ -132,6 +148,46 @@ suite('Dependency Commands', () => {
       assert.strictEqual(getOperationLock().active, false, 'the lock is free afterwards');
     });
 
+    test('a configured prefix that does not exist yet is created, and the steps run inside it', async () => {
+      git.failing();
+      fs.rmSync(state.prefix as string, { recursive: true, force: true });
+
+      await vscode.commands.executeCommand('the-seed.installDependencies', 'native');
+
+      assert.ok(fs.existsSync(state.prefix as string), 'the prefix was created');
+      assert.ok(!/ENOENT/.test(panelText(recorder)), 'no step failed to start for want of its directory');
+      assert.ok(/Step 1\//.test(panelText(recorder)), 'the first step ran');
+    });
+
+    test('a windows install after a native one updates and cleans the sources the native one left, and installs', async () => {
+      git.succeeding();
+
+      await vscode.commands.executeCommand('the-seed.installDependencies', 'native');
+      assert.deepStrictEqual(progressOf('completed').map((message) => message.payload?.target), ['native'], 'the native install completes');
+      for (const library of ['libecs-cpp', 'libthe-seed']) {
+        assert.ok(fs.existsSync(path.join(state.prefix as string, library)), `the native install left ${library} in the prefix`);
+      }
+      const nativeSteps = progressOf('running').length;
+
+      await vscode.commands.executeCommand('the-seed.installDependencies', 'windows');
+
+      const windowsSteps = progressOf('running').slice(nativeSteps).map((message) => String(message.payload?.currentStep));
+      for (const library of ['libecs-cpp', 'libthe-seed']) {
+        assert.ok(!windowsSteps.includes(`clone ${library}`), `${library} is not cloned again`);
+        const update = windowsSteps.indexOf(`update ${library}`);
+        const distclean = windowsSteps.indexOf(`${library} distclean`);
+        const configure = windowsSteps.indexOf(`${library} configure`);
+        assert.ok(update >= 0, `${library} is updated`);
+        assert.ok(update < distclean && distclean < configure, `${library} is cleaned after its update and before it is configured`);
+      }
+      const panel = panelText(recorder);
+      assert.ok(panel.includes('==> update libecs-cpp: git -C libecs-cpp pull --ff-only'), "the panel holds the tool's line for the update");
+      assert.ok(/libecs-cpp distclean exited with status \d+; ignored\./.test(panel), 'the failing distclean of a tree without that target is ignored');
+      assert.deepStrictEqual(progressOf('completed').map((message) => message.payload?.target), ['native', 'windows'], 'the windows install completes');
+      assert.deepStrictEqual(shown('error'), [], 'no error is shown');
+      assert.strictEqual(getOperationLock().active, false, 'the lock is free afterwards');
+    });
+
     test("with the target 'mac', shows the unknown target error and runs nothing", async () => {
       git.failing();
 
@@ -155,7 +211,8 @@ suite('Dependency Commands', () => {
       const panel = panelText(recorder);
       assert.ok(panel.includes(FAILING_STDOUT), "the panel holds the step's stdout");
       assert.ok(panel.includes(FAILING_STDERR), "the panel holds the step's stderr");
-      assert.strictEqual(count(panel, '── Installation failed at clone libecs-cpp: a step exited with a non-zero status ──'), 1);
+      const reason = /── Installation failed at clone libecs-cpp: git clone \S+ libecs-cpp exited with status 1 ──/g;
+      assert.strictEqual((panel.match(reason) ?? []).length, 1, "the panel line names the step's command and its exit status once");
       const failed = progressOf('failed');
       assert.strictEqual(failed.length, 1, 'one failure is posted');
       assert.strictEqual(failed[0].payload?.errorMessage, text);

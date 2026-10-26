@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { choosePakProject, describeError, isToolRefusal } from '../utils/projectFolder';
 import type { ToolApi } from '../tool/toolApi';
 
@@ -13,8 +12,9 @@ export async function buildResourcePak(outputChannel: vscode.OutputChannel, tool
   }
   outputChannel.appendLine(`[INFO] ResourcePak: ${packageDir}`);
 
+  let pakFilePath: string;
   try {
-    rp.build(packageDir);
+    pakFilePath = rp.build(packageDir);
   } catch (error) {
     if (isToolRefusal(error)) {
       outputChannel.appendLine(`[ERROR] ${describeError(error)}`);
@@ -23,10 +23,6 @@ export async function buildResourcePak(outputChannel: vscode.OutputChannel, tool
     }
     throw error;
   }
-
-  const pkgData = rp.readProject(packageDir);
-  const [, name] = pkgData.name.split("/");
-  const pakFilePath = path.join(packageDir, name + ".pak");
 
   vscode.window.showInformationMessage(
     `ResourcePak built successfully: ${pakFilePath}`

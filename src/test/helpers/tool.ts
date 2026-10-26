@@ -13,6 +13,19 @@ export function testTool(): ToolApi {
   return api;
 }
 
+/**
+ * Makes every operation of the running extension use `api` in place of the loaded tool, until sinon
+ * is restored. The installation reported with it is the one in use.
+ */
+export async function useToolApi(api: ToolApi): Promise<void> {
+  const service = activeToolService();
+  const acquired = await service.acquire();
+  if (!acquired.ok) {
+    throw new Error(acquired.status.message);
+  }
+  sinon.stub(service, 'acquire').resolves({ ok: true, api, installation: acquired.installation });
+}
+
 const SETTING_TIMEOUT_MS = 4000;
 
 async function setToolPath(value: string): Promise<void> {

@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as sinon from 'sinon';
 import { releaseOperationLock } from '../../operationLock';
+import { forgetPak } from '../../utils/pakChoice';
 import { ScratchHome, useScratchHome, writeScopes } from './scratchHome';
 import { makeScratchDir, stubWorkspaceFolders, useScratchPrefix } from './workspaceStub';
 
@@ -53,6 +54,7 @@ export function useScratchState(options: ScratchStateOptions = {}): ScratchState
 
   setup(() => {
     created = [];
+    forgetPak();
     restoreFolders = () => undefined;
     scratchHome = useScratchHome();
     state.home = scratchHome.dir;

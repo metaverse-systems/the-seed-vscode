@@ -2,8 +2,8 @@
   "name": "the-seed-vscode",
   "displayName": "The Seed",
   "publisher": "metaverse-systems",
-  "description": "Create, build, sign and package the-seed projects from the editor.",
-  "version": "0.3.0",
+  "description": "Create, build, sign and package games made with The Seed, a C++ game engine, from VS Code.",
+  "version": "1.0.1",
   "license": "MIT",
   "icon": "media/icon.png",
   "repository": {
@@ -25,6 +25,7 @@
     "the-seed",
     "ecs",
     "game engine",
+    "gamedev",
     "c++",
     "autotools",
     "mingw",
@@ -58,7 +59,7 @@
           "type": "string",
           "default": "",
           "scope": "machine",
-          "markdownDescription": "Where the the-seed tool is installed, when it is not in the global npm installation: its package directory (for example `/opt/node/lib/node_modules/@metaverse-systems/the-seed`), its `the-seed` command, or a path inside it. Leave empty to use the global installation, then the `the-seed` command on the path. Needs the-seed 2.0.0 or a later 2.x."
+          "markdownDescription": "Where the the-seed tool is installed, when it is not in the global npm installation: its package directory (for example `/opt/node/lib/node_modules/@metaverse-systems/the-seed`), its `the-seed` command, or a path inside it. Leave empty to use the global installation, then the `the-seed` command on the path. Needs the-seed 2.1.1 or a later 2.x."
         }
       }
     },
@@ -205,7 +206,7 @@
     "test": "node scripts/run-checks.js"
   },
   "devDependencies": {
-    "@metaverse-systems/the-seed": "2.0.0",
+    "@metaverse-systems/the-seed": "2.1.1",
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
     "@types/react": "^19.2.14",
@@ -217,7 +218,6 @@
     "@typescript-eslint/parser": "^8.22.0",
     "@vitejs/plugin-react": "^5.1.4",
     "@vscode-elements/elements": "^2.5.0",
-    "@vscode-elements/react-elements": "^2.4.0",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
     "@vscode/vsce": "4.0.0",

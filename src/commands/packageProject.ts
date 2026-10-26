@@ -5,9 +5,20 @@ import { acquireOperationLock, releaseOperationLock, lockRefusal } from '../oper
 import type { TheSeedViewProvider } from '../panels/TheSeedViewProvider';
 import type { PackageStatusPayload } from '../types/messages';
 import { packageStatusFrom, packageNotification } from '../build/packageOutcome';
-import type { PackageResult } from '@metaverse-systems/the-seed/types';
+import type { PackageCopyEvent, PackageResult, PackageRunOptions, ToolLogLevel } from '@metaverse-systems/the-seed/types';
 import type { ToolApi } from '../tool/toolApi';
 import type { ToolHandler } from './wrapCommand';
+
+/** A line the tool reported, as the output panel shows it: warnings and errors carry their level. */
+export function levelLine(line: string, level: ToolLogLevel): string {
+  if (level === 'warn') {
+    return `[WARNING] ${line}`;
+  }
+  if (level === 'error') {
+    return `[ERROR] ${line}`;
+  }
+  return line;
+}
 
 /**
  * Creates the packageProject command handler.
@@ -45,9 +56,8 @@ export function packageProjectCommand(
     const outputDir = path.join(projectDir, 'dist');
     // Where the previous output waits while the tool runs, until it is dropped or put back
     let aside: string | null = null;
-    // Console methods replaced for the run, restored in finally
-    let originalLog: typeof console.log | null = null;
-    let originalError: typeof console.error | null = null;
+    // Set in finally: the tool's reports after the run has ended go nowhere
+    let ended = false;
     let result: PackageResult | undefined;
 
     try {
@@ -99,28 +109,29 @@ export function packageProjectCommand(
       outputChannel.appendLine(`Project: ${projectDir}`);
       outputChannel.appendLine(`${'═'.repeat(60)}\n`);
 
-      try {
-        // Replace console.log/console.error to capture per-file output
-        originalLog = console.log;
-        originalError = console.error;
-        console.log = (...args: unknown[]) => {
-          const line = args.map(String).join(' ');
-          outputChannel.appendLine(line);
-          if (line.startsWith('Copying ')) {
-            const currentStatus: PackageStatusPayload = {
-              state: 'running',
-              currentFile: line,
-              timestamp: new Date().toISOString(),
-            };
-            viewProvider.postMessage({ type: 'packageStatus', payload: currentStatus });
+      // The tool's lines go to the panel and each file it writes to the sidebar, for this run only
+      const options: PackageRunOptions = {
+        log: (line: string, level: ToolLogLevel) => {
+          if (!ended) {
+            outputChannel.appendLine(levelLine(line, level));
           }
-        };
+        },
+        onCopy: (event: PackageCopyEvent) => {
+          if (ended) {
+            return;
+          }
+          const currentStatus: PackageStatusPayload = {
+            state: 'running',
+            currentFile: `Copying ${event.name}...`,
+            filesCopied: event.index,
+            totalFiles: event.total,
+            timestamp: new Date().toISOString(),
+          };
+          viewProvider.postMessage({ type: 'packageStatus', payload: currentStatus });
+        },
+      };
 
-        console.error = (...args: unknown[]) => {
-          const line = args.map(String).join(' ');
-          outputChannel.appendLine(`[ERROR] ${line}`);
-        };
-
+      try {
         // Wrap Package.run() in withProgress for notification-level spinner
         await vscode.window.withProgress(
           {
@@ -130,7 +141,7 @@ export function packageProjectCommand(
           },
           async () => {
             const pkg = new tool.Package(config);
-            result = await pkg.run(outputDir, [projectDir]);
+            result = await pkg.run(outputDir, [projectDir], options);
           }
         );
 
@@ -187,13 +198,7 @@ export function packageProjectCommand(
         vscode.window.showErrorMessage(`Packaging failed: ${errorMessage}`);
       }
     } finally {
-      // Restore console methods
-      if (originalLog !== null) {
-        console.log = originalLog;
-      }
-      if (originalError !== null) {
-        console.error = originalError;
-      }
+      ended = true;
 
       // Unless the run succeeded, drop what it left at dist/ and put the previous output back
       if (aside !== null) {

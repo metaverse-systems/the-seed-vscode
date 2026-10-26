@@ -4,6 +4,7 @@ on:
     branches: [main]
   push:
     branches: [main]
+    tags: ['v*']
   workflow_dispatch:
     inputs:
       repeat:
@@ -15,7 +16,7 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 env:
-  THE_SEED_VERSION: "2.0.0" # the tool, from the public registry
+  THE_SEED_VERSION: "2.1.1" # the tool, from the public registry
   LIBECS_CPP_REF: 16a272ce17bf03369febf0796444a8df8cd1ffec # libecs-cpp 2.1.0
   LIBTHE_SEED_REF: 839bc62d3233e88347059942ce25e84da23b48ee # libthe-seed 0.8.0
   VSCODE_VERSION: "1.143.0" # must equal .vscode-test.mjs; checked below
@@ -36,6 +37,19 @@ jobs:
         uses: actions/checkout@v7
         with:
           persist-credentials: false
+
+      - name: Check the tag matches the version
+        if: github.ref_type == 'tag'
+        shell: bash
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "$REF_NAME" != "v$version" ]; then
+            echo "::error::tag $REF_NAME does not match package.json version $version"
+            exit 1
+          fi
+          echo "Tag $REF_NAME matches package.json version $version"
 
       - name: Set up Node
         uses: actions/setup-node@v7
@@ -255,12 +269,48 @@ jobs:
           mkdir -p test-results
           npm run package 2>&1 | tee test-results/package.log
 
-      - name: Upload package
+      # The package's SHA-256 and each file's, so that a package downloaded
+      # later can be checked byte for byte against this build.
+      - name: Package digest
+        id: digest
         if: ${{ !cancelled() && steps.package.outcome == 'success' }}
+        run: |
+          shopt -s nullglob
+          packages=(the-seed-vscode-*.vsix)
+          if [ "${#packages[@]}" -ne 1 ]; then
+            echo "::error::expected one package, found ${#packages[@]}"
+            exit 1
+          fi
+          vsix="${packages[0]}"
+          mkdir -p test-results
+          {
+            echo "# Package"
+            sha256sum "$vsix"
+            echo
+            echo "# Files"
+            unzip -Z1 "$vsix" | LC_ALL=C sort | while IFS= read -r entry; do
+              case "$entry" in */) continue ;; esac
+              # unzip reads its member argument as a wildcard; brackets, * and ? are matched literally.
+              pattern="$(printf '%s' "$entry" | sed -e 's/\[/[[]/g' -e 's/\*/[*]/g' -e 's/?/[?]/g')"
+              printf '%s  %s\n' "$(unzip -p "$vsix" "$pattern" | sha256sum | cut -d' ' -f1)" "$entry"
+            done
+          } > test-results/package-digest.txt
+          {
+            echo "## Package digest"
+            echo
+            echo '```text'
+            cat test-results/package-digest.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload package
+        if: ${{ !cancelled() && steps.package.outcome == 'success' && steps.digest.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
           name: the-seed-vscode-vsix
-          path: the-seed-vscode-*.vsix
+          path: |
+            the-seed-vscode-*.vsix
+            test-results/package-digest.txt
           if-no-files-found: error
 
       - name: Summary
@@ -339,7 +389,21 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Check the tag matches the version
+        if: github.ref_type == 'tag'
+        shell: bash
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "$REF_NAME" != "v$version" ]; then
+            echo "::error::tag $REF_NAME does not match package.json version $version"
+            exit 1
+          fi
+          echo "Tag $REF_NAME matches package.json version $version"
+
       - name: Set up WSL
+        timeout-minutes: 10
         uses: Vampire/setup-wsl@v7.2.0
         with:
           distribution: Ubuntu-24.04
@@ -645,3 +709,265 @@ jobs:
             test-results/
             .vscode-test/user-data/logs/
           if-no-files-found: ignore
+
+  # The package built above, installed on clean machines the way the readme
+  # says: the system packages, then the tool from the registry, then the
+  # package into a fresh editor profile with a fresh home, and no library
+  # cache. Each leg writes one record per command (scripts/clean-install). It
+  # runs on version tags and on dispatch only, not on pull requests or pushes
+  # to main.
+  clean-install:
+    name: clean-install (${{ matrix.leg }})
+    needs: check
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref_type == 'tag') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - leg: linux
+            os: ubuntu-24.04
+          - leg: windows-wsl
+            os: windows-2025
+          - leg: windows-no-wsl
+            os: windows-2025
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    env:
+      NODE_MAJOR: "22" # same as the check jobs
+    steps:
+      - name: Keep line endings as committed
+        if: matrix.os == 'windows-2025'
+        shell: bash
+        run: git config --global core.autocrlf false
+
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Download package
+        if: matrix.leg != 'windows-no-wsl'
+        uses: actions/download-artifact@v8
+        with:
+          name: the-seed-vscode-vsix
+          path: package
+
+      # Linux: an Ubuntu runner.
+
+      - name: Set up Node (Linux)
+        if: matrix.leg == 'linux'
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_MAJOR }}
+          cache: npm
+
+      - name: Install system packages (Linux)
+        if: matrix.leg == 'linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libtool pkg-config autoconf automake curl git python3 \
+            mingw-w64-x86-64-dev g++-mingw-w64-x86-64 binutils-mingw-w64-x86-64 wixl xvfb xauth
+          # The POSIX threads flavour of the cross compiler, which libthe-seed needs.
+          sudo update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix
+          sudo update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix
+          if [ -e "$HOME/the-seed" ]; then
+            echo "::error::$HOME/the-seed exists on a fresh runner"
+            exit 1
+          fi
+
+      - name: Install the tool (Linux)
+        if: matrix.leg == 'linux'
+        shell: bash
+        run: npm install -g --foreground-scripts "@metaverse-systems/the-seed@$THE_SEED_VERSION"
+
+      - name: Install the check's packages (Linux)
+        if: matrix.leg == 'linux'
+        shell: bash
+        run: npm ci --ignore-scripts
+
+      - name: Clean-install check (Linux)
+        if: matrix.leg == 'linux'
+        shell: bash
+        run: |
+          shopt -s nullglob
+          packages=(package/the-seed-vscode-*.vsix)
+          if [ "${#packages[@]}" -ne 1 ]; then
+            echo "::error::expected one package, found ${#packages[@]}"
+            exit 1
+          fi
+          xvfb-run -a node scripts/clean-install/run.js --leg linux --vsix "${packages[0]}"
+
+      # Windows with WSL: the extension host and the tool in Ubuntu, as on Linux.
+
+      # The same action, version and inputs as the check job's WSL; the setup is bounded so a hang
+      # fails in minutes, and it is tried a second time because a hung first attempt is a runner fault.
+      - name: Set up WSL
+        id: wsl
+        if: matrix.leg == 'windows-wsl'
+        continue-on-error: true
+        timeout-minutes: 10
+        uses: Vampire/setup-wsl@v7.2.0
+        with:
+          distribution: Ubuntu-24.04
+
+      - name: Set up WSL (second attempt)
+        if: matrix.leg == 'windows-wsl' && steps.wsl.outcome != 'success'
+        timeout-minutes: 10
+        uses: Vampire/setup-wsl@v7.2.0
+        with:
+          distribution: Ubuntu-24.04
+
+      - name: Install system packages (WSL)
+        if: matrix.leg == 'windows-wsl'
+        shell: wsl-bash -u root {0}
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y sudo curl ca-certificates git xz-utils build-essential libtool pkg-config autoconf automake python3 \
+            mingw-w64-x86-64-dev g++-mingw-w64-x86-64 binutils-mingw-w64-x86-64 wixl xvfb xauth \
+            libasound2t64 libatk-bridge2.0-0t64 libatk1.0-0t64 libcups2t64 libdrm2 libgbm1 libgtk-3-0t64 libnss3 libsecret-1-0 \
+            libx11-xcb1 libxcomposite1 libxdamage1 libxfixes3 libxkbcommon0 libxkbfile1 libxrandr2 libxss1
+          # The POSIX threads flavour of the cross compiler, which libthe-seed needs.
+          update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix
+          update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix
+          # A normal user runs everything else; the editor will not start as root.
+          id runner >/dev/null 2>&1 || useradd --create-home --shell /bin/bash runner
+          echo 'runner ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/runner
+          chmod 0440 /etc/sudoers.d/runner
+          if [ -e /home/runner/the-seed ]; then
+            echo "::error::/home/runner/the-seed exists on a fresh distribution"
+            exit 1
+          fi
+          # Node, from the official release, owned by the user so that
+          # global installs need no privileges.
+          cd "$(mktemp -d)"
+          base="https://nodejs.org/dist/latest-v${{ env.NODE_MAJOR }}.x"
+          curl -fsSL "$base/SHASUMS256.txt" -o SHASUMS256.txt
+          archive="$(grep -oE "node-v[0-9.]+-linux-x64\.tar\.xz" SHASUMS256.txt | head -n 1)"
+          curl -fsSL "$base/$archive" -o "$archive"
+          grep " $archive\$" SHASUMS256.txt | sha256sum -c -
+          mkdir -p /opt/node
+          tar -xJf "$archive" -C /opt/node --strip-components=1
+          chown -R runner:runner /opt/node
+          for bin in node npm npx; do ln -sf "/opt/node/bin/$bin" "/usr/local/bin/$bin"; done
+          node --version
+
+      - name: Copy the checkout into WSL
+        if: matrix.leg == 'windows-wsl'
+        shell: wsl-bash -u runner {0}
+        run: |
+          src="$(wslpath -u "$(powershell.exe -NoProfile -Command '$env:GITHUB_WORKSPACE' | tr -d '\r')")"
+          mkdir -p "$HOME/work"
+          rm -rf "$HOME/work/the-seed-vscode"
+          cp -a "$src" "$HOME/work/the-seed-vscode"
+          rm -rf "$HOME/work/the-seed-vscode/.git"
+          ls "$HOME/work/the-seed-vscode/package"
+
+      - name: Install the tool (WSL)
+        if: matrix.leg == 'windows-wsl'
+        shell: wsl-bash -u runner {0}
+        run: npm install -g --foreground-scripts "@metaverse-systems/the-seed@${{ env.THE_SEED_VERSION }}"
+
+      - name: Install the check's packages (WSL)
+        if: matrix.leg == 'windows-wsl'
+        shell: wsl-bash -u runner {0}
+        run: |
+          cd "$HOME/work/the-seed-vscode"
+          npm ci --ignore-scripts
+
+      - name: Clean-install check (WSL)
+        if: matrix.leg == 'windows-wsl'
+        shell: wsl-bash -u runner {0}
+        run: |
+          cd "$HOME/work/the-seed-vscode"
+          shopt -s nullglob
+          packages=(package/the-seed-vscode-*.vsix)
+          if [ "${#packages[@]}" -ne 1 ]; then
+            echo "::error::expected one package, found ${#packages[@]}"
+            exit 1
+          fi
+          GITHUB_ACTIONS=true GITHUB_RUN_ID="${{ github.run_id }}" VSCODE_VERSION="${{ env.VSCODE_VERSION }}" \
+            xvfb-run -a node scripts/clean-install/run.js --leg windows-wsl --vsix "${packages[0]}"
+
+      - name: Copy results back (WSL)
+        if: always() && matrix.leg == 'windows-wsl'
+        shell: wsl-bash -u runner {0}
+        run: |
+          src="$(wslpath -u "$(powershell.exe -NoProfile -Command '$env:GITHUB_WORKSPACE' | tr -d '\r')")"
+          from="$HOME/work/the-seed-vscode"
+          if [ -d "$from/test-results" ]; then
+            mkdir -p "$src/test-results"
+            cp -R "$from/test-results/." "$src/test-results/"
+          fi
+
+      # Windows without WSL: Windows Node and the tool without its native
+      # component; no editor (the readme lists what is unavailable there).
+
+      - name: Set up Node (Windows)
+        if: matrix.leg == 'windows-no-wsl'
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_MAJOR }}
+
+      - name: Use a fresh home (Windows)
+        if: matrix.leg == 'windows-no-wsl'
+        shell: pwsh
+        run: |
+          $fresh = Join-Path $env:RUNNER_TEMP 'clean-install-home'
+          New-Item -ItemType Directory -Force -Path $fresh | Out-Null
+          if ((Get-ChildItem -Force -Path $fresh | Measure-Object).Count -ne 0) {
+            Write-Output "::error::$fresh is not empty"
+            exit 1
+          }
+          "HOME=$fresh" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "USERPROFILE=$fresh" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install the tool (Windows)
+        if: matrix.leg == 'windows-no-wsl'
+        shell: pwsh
+        run: npm install -g --foreground-scripts "@metaverse-systems/the-seed@$env:THE_SEED_VERSION"
+
+      - name: Clean-install check (Windows)
+        if: matrix.leg == 'windows-no-wsl'
+        shell: pwsh
+        run: node scripts/clean-install/no-wsl.js
+
+      - name: Summary
+        if: always()
+        shell: bash
+        env:
+          LEG: ${{ matrix.leg }}
+        run: |
+          file="test-results/clean-install-$LEG.json"
+          {
+            echo "## Clean-install check ($LEG)"
+            echo
+            if [ -f "$file" ]; then
+              node -e '
+                const records = require(require("path").resolve(process.argv[1]));
+                const counts = {};
+                for (const record of records) {
+                  const kind = record.outcome.replace(/ \(.*$|:.*$/, "");
+                  counts[kind] = (counts[kind] || 0) + 1;
+                }
+                console.log("| Outcome | Commands |");
+                console.log("|---|---|");
+                for (const [kind, count] of Object.entries(counts)) console.log(`| ${kind} | ${count} |`);
+                console.log();
+                console.log("| Command | Outcome |");
+                console.log("|---|---|");
+                for (const record of records) console.log(`| ${record.command} | ${record.outcome.replace(/\|/g, "\\|")} |`);
+              ' "$file"
+            else
+              echo "No records were written."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload records
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: clean-install-${{ matrix.leg }}
+          path: test-results/clean-install-*.json
+          if-no-files-found: warn

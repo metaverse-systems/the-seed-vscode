@@ -24,7 +24,7 @@ export async function signingCertInfo(outputChannel: vscode.OutputChannel, tool:
     return;
   }
 
-  const subject = signing._formatSubject(certInfo.subject);
+  const subject = signing.formatSubject(certInfo.subject);
   const status = certInfo.isExpired ? 'Expired' : 'Active';
   vscode.window.showInformationMessage(
     `Certificate: ${subject} | Issuer: ${certInfo.issuer} | Status: ${status} | Fingerprint: ${certInfo.fingerprint}`

@@ -1,0 +1,14 @@
+{
+  "name": "the-seed-clean-install-driver",
+  "displayName": "The Seed clean-install driver",
+  "description": "Drives the installed The Seed extension in the hosted clean-install check. Not published.",
+  "publisher": "metaverse-systems",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.143.0"
+  },
+  "activationEvents": [],
+  "main": "./extension.js"
+}

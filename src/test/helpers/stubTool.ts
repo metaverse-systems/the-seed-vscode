@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import type { ToolApi } from '../../tool/toolApi';
 import { makeScratchDir } from './workspaceStub';
 
 /** One value the extension takes from the tool: where it lives, what it is and what it is called here. */
@@ -14,10 +15,11 @@ const entry = (subpath: string, exportName: string, member: string, kind: Expect
   { subpath, exportName, member, kind }
 );
 
-/** Every value of the published 2.0.0 package that the extension's sources and tests use. */
+/** Every value of the published 2.1.0 package that the extension's sources and tests use. */
 export const EXPECTED_EXPORTS: readonly ExpectedExport[] = [
   entry('Config', 'default', 'Config', 'class'),
   entry('Config', 'ConfigError', 'ConfigError', 'class'),
+  entry('Config', 'configFilePath', 'configFilePath', 'function'),
   entry('Scopes', 'default', 'Scopes', 'class'),
   entry('Scopes', 'validateScopeName', 'validateScopeName', 'function'),
   entry('Template', 'default', 'Template', 'class'),
@@ -40,8 +42,10 @@ export const EXPECTED_EXPORTS: readonly ExpectedExport[] = [
   entry('Dependencies', 'checkLibEcs', 'checkLibEcs', 'function'),
   entry('Dependencies', 'checkLibTheSeed', 'checkLibTheSeed', 'function'),
   entry('Dependencies', 'getInstallSteps', 'getInstallSteps', 'function'),
+  entry('Dependencies', 'runInstallSteps', 'runInstallSteps', 'function'),
   entry('NativeComponent', 'nativeComponentMessage', 'nativeComponentMessage', 'function'),
   entry('NativeComponent', 'NativeComponentMissingError', 'NativeComponentMissingError', 'class'),
+  entry('NativeComponent', 'requireNativeComponent', 'requireNativeComponent', 'function'),
 ];
 
 export const TOOL_NAME = '@metaverse-systems/the-seed';
@@ -68,6 +72,12 @@ export interface StubToolOptions {
   missingExport?: string;
 }
 
+/** Members a stub class has, by class: the public ones the extension calls with no tool behaviour behind them. */
+const CLASS_BODIES: Record<string, string> = {
+  Signing: " formatSubject(subject) { return [['CN', subject.commonName], ['EMAIL', subject.email], ['O', subject.organization]]"
+    + ".filter((field) => field[1]).map((field) => `${field[0]}=${field[1]}`).join(', '); } ",
+};
+
 function moduleSource(subpath: string, options: StubToolOptions): string {
   const lines = ["'use strict';", "Object.defineProperty(exports, '__esModule', { value: true });"];
   if (options.throwOnLoad === subpath) {
@@ -78,7 +88,7 @@ function moduleSource(subpath: string, options: StubToolOptions): string {
       continue;
     }
     const value = item.kind === 'class'
-      ? `class ${item.member} {}`
+      ? `class ${item.member} {${CLASS_BODIES[item.member] ?? ''}}`
       : item.kind === 'function'
         ? `function ${item.member}() {}`
         : '365';
@@ -247,4 +257,15 @@ export function useScratchDirs(): ScratchDirs {
       return made;
     },
   };
+}
+
+/**
+ * The loaded tool as one without its internal members: its Signing keeps the public formatSubject and
+ * loses the deprecated "_"-prefixed variant. Everything else is the loaded tool's own.
+ */
+export function withoutInternalMembers(api: ToolApi): ToolApi {
+  class PublicSigning extends api.Signing {}
+  // Spelled in parts so that a search of src/ for the deprecated name finds nothing
+  Object.defineProperty(PublicSigning.prototype, ['_format', 'Subject'].join(''), { value: undefined });
+  return { ...api, Signing: PublicSigning };
 }

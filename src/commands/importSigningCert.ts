@@ -38,7 +38,7 @@ export async function importSigningCert(outputChannel: vscode.OutputChannel, too
   try {
     const certInfo = await signing.importCert(certResult[0].fsPath, keyResult[0].fsPath, scope);
     vscode.window.showInformationMessage(
-      `Certificate imported. Subject: ${signing._formatSubject(certInfo.subject)} | Fingerprint: ${certInfo.fingerprint}`
+      `Certificate imported. Subject: ${signing.formatSubject(certInfo.subject)} | Fingerprint: ${certInfo.fingerprint}`
     );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

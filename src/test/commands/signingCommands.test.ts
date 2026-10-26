@@ -15,7 +15,8 @@ import * as crypto from 'crypto';
 import { createCertFor, fixturePath } from '../helpers/scratchHome';
 import { useScratchState } from '../helpers/scratchState';
 import { requires } from '../harness/platform';
-import { testTool } from '../helpers/tool';
+import { withoutInternalMembers } from '../helpers/stubTool';
+import { testTool, useToolApi } from '../helpers/tool';
 
 const NO_FILE_MESSAGE = 'No file selected. Open a file or use the context menu.';
 
@@ -172,6 +173,25 @@ suite('Signing Commands', () => {
       assert.strictEqual(spy.callCount, 1);
       assert.strictEqual(spy.firstCall.args[0], program);
       assert.strictEqual(notificationCount(), 1);
+    });
+
+    test('verifySignature shows the signer through the tool\'s public formatSubject', async () => {
+      const config = new (testTool().Config)();
+      config.config.scopes['@only'].author.email = 'only@example.com';
+      config.saveConfig();
+      await createCertFor('@only');
+      const uri = vscode.Uri.file(program);
+      await vscode.commands.executeCommand('the-seed.signFile', uri, [uri]);
+      info.resetHistory();
+      warning.resetHistory();
+      error.resetHistory();
+      await useToolApi(withoutInternalMembers(testTool()));
+
+      await vscode.commands.executeCommand('the-seed.verifySignature', uri, [uri]);
+
+      const all = [...messages(info), ...messages(warning), ...messages(error)];
+      assert.strictEqual(all.length, 1, all.join('\n'));
+      assert.ok(all[0].includes('Signer: CN=Only Author, EMAIL=only@example.com, O=@only'), all[0]);
     });
 
     test('signFile with an editor open on another file signs the chosen file', async () => {

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { SectionLayout } from './SectionLayout';
+import { resourcePakHint, SELECTED_FILE_LABEL } from '../logic/resourcePakForm';
 import type {
   ResourcePakStatusPayload,
   ResourcePakBuildProgressPayload,
@@ -11,6 +12,7 @@ interface ResourcePakSectionProps {
   error: string | null;
   success: string | null;
   buildProgress: ResourcePakBuildProgressPayload | null;
+  onChooseResourcePak: () => void;
   onBrowseResourceFile: () => void;
   onAddResource: (resourceName: string, filePath: string) => void;
   onBuildResourcePak: () => void;
@@ -28,6 +30,7 @@ export const ResourcePakSection: React.FC<ResourcePakSectionProps> = ({
   error,
   success,
   buildProgress,
+  onChooseResourcePak,
   onBrowseResourceFile,
   onAddResource,
   onBuildResourcePak,
@@ -140,7 +143,7 @@ export const ResourcePakSection: React.FC<ResourcePakSectionProps> = ({
       {/* Hint when no pak detected */}
       {!isDetected && status !== null && (
         <p className="resourcepak-no-detect">
-          No ResourcePak detected in workspace. Create one from the Templates section.
+          {resourcePakHint(status!.choices ?? 0)}
         </p>
       )}
 
@@ -187,6 +190,13 @@ export const ResourcePakSection: React.FC<ResourcePakSectionProps> = ({
           >
             {isBuildRunning ? 'Building...' : 'Build'}
           </vscode-button>
+          <vscode-button
+            appearance="secondary"
+            disabled={loading || undefined}
+            onClick={onChooseResourcePak}
+          >
+            Choose ResourcePak
+          </vscode-button>
         </div>
       )}
 
@@ -199,7 +209,7 @@ export const ResourcePakSection: React.FC<ResourcePakSectionProps> = ({
           {hasBrowsedFile && (
             <>
               <div className="resourcepak-browsed-file">
-                <span className="resourcepak-form-label">Selected file:</span>
+                <span className="resourcepak-form-label">{SELECTED_FILE_LABEL}</span>
                 <span>{browsedFileName}</span>
               </div>
               <div className="resourcepak-form-field">

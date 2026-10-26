@@ -224,6 +224,20 @@ suite('Resource Pak Commands', () => {
       assert.ok(error.notCalled);
     });
 
+    test('reports the path the tool\'s build returned', async () => {
+      const packageDir = openPakProject();
+      fs.writeFileSync(path.join(packageDir, 'hero.png'), 'pixels');
+      new (testTool().ResourcePak)(new (testTool().Config)()).addResource('hero', 'hero.png', packageDir);
+      const elsewhere = path.join(state.dir('output'), 'renamed.pak');
+      assert.notStrictEqual(elsewhere, path.join(packageDir, `${NAME}.pak`), 'the case needs a path other than <dir>/<name>.pak');
+      sinon.stub(testTool().ResourcePak.prototype, 'build').returns(elsewhere);
+
+      await vscode.commands.executeCommand('the-seed.buildResourcePak');
+
+      assert.deepStrictEqual(messages(info), [`ResourcePak built successfully: ${elsewhere}`]);
+      assert.ok(error.notCalled);
+    });
+
     test('a refusal from the tool is shown and nothing is written', async () => {
       const packageDir = openPakProject();
       const description = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf-8'));

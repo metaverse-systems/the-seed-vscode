@@ -1,10 +1,13 @@
 import React from 'react';
+import { projectCount } from '../../types/projectCount';
 import { SectionLayout } from './SectionLayout';
+import { buildNotice } from '../logic/buildNotice';
+import type { ConfigState } from '../logic/buildNotice';
 import type { BuildStatusPayload, RecursiveBuildProgressPayload, RecursiveBuildCompletePayload } from '../../types/messages';
 
 interface BuildSectionProps {
   buildStatus: BuildStatusPayload;
-  hasProject: boolean;
+  configState: ConfigState;
   onStartBuild: (target: 'native' | 'windows' | 'incremental') => void;
   onCancelBuild: () => void;
   onStartRecursiveBuild: (target: 'native' | 'windows') => void;
@@ -15,7 +18,7 @@ interface BuildSectionProps {
 
 export const BuildSection: React.FC<BuildSectionProps> = ({
   buildStatus,
-  hasProject,
+  configState,
   onStartBuild,
   onCancelBuild,
   onStartRecursiveBuild,
@@ -24,7 +27,8 @@ export const BuildSection: React.FC<BuildSectionProps> = ({
   recursiveBuildComplete,
 }) => {
   const isRunning = buildStatus.state === 'running';
-  const isDisabled = !hasProject || isRunning;
+  const notice = buildNotice(configState);
+  const isDisabled = !notice.buttonsEnabled || isRunning;
 
   const getStatusIndicator = () => {
     switch (buildStatus.state) {
@@ -86,9 +90,9 @@ export const BuildSection: React.FC<BuildSectionProps> = ({
 
   return (
     <SectionLayout title="Build">
-      {!hasProject && (
+      {notice.text && (
         <div className="build-no-project">
-          No buildable project detected. Open a file in a The Seed project.
+          {notice.text}
         </div>
       )}
 
@@ -163,7 +167,7 @@ export const BuildSection: React.FC<BuildSectionProps> = ({
           <span className="build-status-icon">{recursiveBuildComplete.success ? '✓' : '✗'}</span>
           <span>
             {recursiveBuildComplete.success
-              ? `Recursive build complete: ${recursiveBuildComplete.completedCount} projects built`
+              ? `Recursive build complete: ${projectCount(recursiveBuildComplete.completedCount)} built`
               : recursiveBuildComplete.cancelled
                 ? `Recursive build cancelled. ${recursiveBuildComplete.completedCount}/${recursiveBuildComplete.totalCount} complete`
                 : `Recursive build failed on ${recursiveBuildComplete.failedProject}`

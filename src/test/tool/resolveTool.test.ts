@@ -59,7 +59,7 @@ suite('finding the tool', () => {
   }
 
   /** A global root holding a stub installation; returns the root and the package directory. */
-  function globalRoot(version = '2.0.0', label = 'root'): { root: string; pkg: string } {
+  function globalRoot(version = '2.1.1', label = 'root'): { root: string; pkg: string } {
     const root = scratch.dir(label);
     const pkg = makeStubTool(path.join(root, '@metaverse-systems', 'the-seed'), { version });
     return { root, pkg };
@@ -77,7 +77,7 @@ suite('finding the tool', () => {
       const found = only(report);
       assert.strictEqual(found.packageDir, pkg);
       assert.strictEqual(found.foundThrough, 'global');
-      assert.strictEqual(found.version, '2.0.0');
+      assert.strictEqual(found.version, '2.1.1');
       assert.strictEqual(found.verdict, 'compatible');
       assert.ok(found.detail.includes('npm root -g'), found.detail);
       assert.strictEqual(report.settingProblem, undefined);
@@ -95,7 +95,7 @@ suite('finding the tool', () => {
 
     test('is found through NPM_CONFIG_PREFIX', async () => {
       const prefix = scratch.dir('prefix');
-      const pkg = makeStubTool(path.join(prefix, 'lib', 'node_modules', '@metaverse-systems', 'the-seed'), { version: '2.1.0' });
+      const pkg = makeStubTool(path.join(prefix, 'lib', 'node_modules', '@metaverse-systems', 'the-seed'), { version: '2.1.1' });
       const report = await resolver().findCandidates(undefined, lookup({ env: { NPM_CONFIG_PREFIX: prefix } }));
       const found = only(report);
       assert.strictEqual(found.packageDir, pkg);
@@ -105,7 +105,7 @@ suite('finding the tool', () => {
 
     test('is found through npm_config_prefix', async () => {
       const prefix = scratch.dir('prefix');
-      const pkg = makeStubTool(path.join(prefix, 'lib', 'node_modules', '@metaverse-systems', 'the-seed'), { version: '2.0.0' });
+      const pkg = makeStubTool(path.join(prefix, 'lib', 'node_modules', '@metaverse-systems', 'the-seed'), { version: '2.1.1' });
       const report = await resolver().findCandidates(undefined, lookup({ env: { npm_config_prefix: prefix } }));
       assert.strictEqual(only(report).packageDir, pkg);
       assert.ok(/npm_config_prefix/i.test(only(report).detail), only(report).detail);
@@ -113,14 +113,14 @@ suite('finding the tool', () => {
 
     test('uses node_modules directly under the prefix on Windows', async () => {
       const prefix = scratch.dir('prefix');
-      const pkg = makeStubTool(path.join(prefix, 'node_modules', '@metaverse-systems', 'the-seed'), { version: '2.0.0' });
+      const pkg = makeStubTool(path.join(prefix, 'node_modules', '@metaverse-systems', 'the-seed'), { version: '2.1.1' });
       const report = await resolver().findCandidates(undefined, lookup({ platform: 'win32', env: { NPM_CONFIG_PREFIX: prefix } }));
       assert.strictEqual(only(report).packageDir, pkg);
     });
 
     test('is found through a prefix line in the .npmrc of the home directory, and nothing else of the file is kept', async () => {
       const prefix = scratch.dir('prefix');
-      const pkg = makeStubTool(path.join(prefix, 'lib', 'node_modules', '@metaverse-systems', 'the-seed'), { version: '2.0.0' });
+      const pkg = makeStubTool(path.join(prefix, 'lib', 'node_modules', '@metaverse-systems', 'the-seed'), { version: '2.1.1' });
       fs.writeFileSync(path.join(home, '.npmrc'), [
         '//registry.npmjs.org/:_authToken=SECRET-TOKEN-0123',
         'registry=https://private.example.invalid/',
@@ -148,7 +148,7 @@ suite('finding the tool', () => {
     });
 
     test('is not found in a default root that the environment does not list', async () => {
-      globalRoot('2.0.0', 'unlisted');
+      globalRoot('2.1.1', 'unlisted');
       const report = await resolver().findCandidates(undefined, lookup());
       assert.strictEqual(report.candidates.length, 0);
     });
@@ -163,7 +163,7 @@ suite('finding the tool', () => {
     });
 
     test('the first root that holds the tool wins', async () => {
-      const first = globalRoot('2.0.0', 'first');
+      const first = globalRoot('2.1.1', 'first');
       const second = globalRoot('2.5.0', 'second');
       const report = await resolver().findCandidates(undefined, lookup({
         runNpmRoot: async () => first.root,
@@ -174,7 +174,7 @@ suite('finding the tool', () => {
 
     test('a root that holds the package without a readable version still yields a candidate', async () => {
       const root = scratch.dir('badroot');
-      const pkg = makeStubTool(path.join(root, '@metaverse-systems', 'the-seed'), { version: '2.0.0', packageJson: 'malformed' });
+      const pkg = makeStubTool(path.join(root, '@metaverse-systems', 'the-seed'), { version: '2.1.1', packageJson: 'malformed' });
       const report = await resolver().findCandidates(undefined, lookup({ runNpmRoot: async () => root }));
       const found = only(report);
       assert.strictEqual(found.packageDir, pkg);
@@ -195,7 +195,7 @@ suite('finding the tool', () => {
       if (process.platform === 'win32') {
         this.skip();
       }
-      const pkg = makeStubTool(scratch.dir('elsewhere'), { version: '2.0.0' });
+      const pkg = makeStubTool(scratch.dir('elsewhere'), { version: '2.1.1' });
       const bin = scratch.dir('bin');
       makeCommandShim(bin, pkg, 'symlink');
       const report = await resolver().findCandidates(undefined, lookup({ env: { PATH: bin } }));
@@ -208,7 +208,7 @@ suite('finding the tool', () => {
     test('is found through the shim layout with the package under <bin>/node_modules', async () => {
       const bin = scratch.dir('bin');
       makeCommandShim(bin, bin, 'shim');
-      const pkg = makeStubTool(path.join(bin, 'node_modules', '@metaverse-systems', 'the-seed'), { version: '2.0.0' });
+      const pkg = makeStubTool(path.join(bin, 'node_modules', '@metaverse-systems', 'the-seed'), { version: '2.1.1' });
       const report = await resolver().findCandidates(undefined, lookup({ env: { PATH: bin } }));
       assert.strictEqual(only(report).packageDir, pkg);
       assert.strictEqual(only(report).foundThrough, 'path');
@@ -218,7 +218,7 @@ suite('finding the tool', () => {
       const prefix = scratch.dir('prefix');
       const bin = path.join(prefix, 'bin');
       makeCommandShim(bin, bin, 'shim');
-      const pkg = makeStubTool(path.join(prefix, 'lib', 'node_modules', '@metaverse-systems', 'the-seed'), { version: '2.0.0' });
+      const pkg = makeStubTool(path.join(prefix, 'lib', 'node_modules', '@metaverse-systems', 'the-seed'), { version: '2.1.1' });
       const report = await resolver().findCandidates(undefined, lookup({ env: { PATH: bin } }));
       assert.strictEqual(only(report).packageDir, pkg);
     });
@@ -226,14 +226,14 @@ suite('finding the tool', () => {
     test('uses the .cmd name on Windows', async () => {
       const bin = scratch.dir('bin');
       fs.writeFileSync(path.join(bin, 'the-seed.cmd'), '@ECHO off\r\n');
-      const pkg = makeStubTool(path.join(bin, 'node_modules', '@metaverse-systems', 'the-seed'), { version: '2.0.0' });
+      const pkg = makeStubTool(path.join(bin, 'node_modules', '@metaverse-systems', 'the-seed'), { version: '2.1.1' });
       const report = await resolver().findCandidates(undefined, lookup({ platform: 'win32', env: { PATH: bin } }));
       assert.strictEqual(only(report).packageDir, pkg);
       assert.ok(only(report).detail.includes('the-seed.cmd'), only(report).detail);
     });
 
     test('a directory on the path without the command is skipped', async () => {
-      const pkg = makeStubTool(scratch.dir('elsewhere'), { version: '2.0.0' });
+      const pkg = makeStubTool(scratch.dir('elsewhere'), { version: '2.1.1' });
       const bin = scratch.dir('bin');
       makeCommandShim(bin, pkg, 'symlink');
       const report = await resolver().findCandidates(undefined, lookup({ env: { PATH: [emptyBin, bin].join(path.delimiter) } }));
@@ -243,7 +243,7 @@ suite('finding the tool', () => {
 
   suite('the setting', () => {
     test('is used alone: no other step runs', async () => {
-      const mine = makeStubTool(scratch.dir('mine'), { version: '2.0.0' });
+      const mine = makeStubTool(scratch.dir('mine'), { version: '2.1.1' });
       let npmCalls = 0;
       const { root } = globalRoot();
       const report = await resolver().findCandidates(mine, lookup({
@@ -260,14 +260,14 @@ suite('finding the tool', () => {
 
     test('wins over a global installation', async () => {
       const mine = makeStubTool(scratch.dir('mine'), { version: '2.2.0' });
-      const { root } = globalRoot('2.0.0');
+      const { root } = globalRoot('2.1.1');
       const report = await resolver().findCandidates(mine, lookup({ runNpmRoot: async () => root }));
       assert.strictEqual(only(report).packageDir, mine);
       assert.strictEqual(only(report).version, '2.2.0');
     });
 
     test('may be the tool\'s command', async () => {
-      const mine = makeStubTool(scratch.dir('mine'), { version: '2.0.0' });
+      const mine = makeStubTool(scratch.dir('mine'), { version: '2.1.1' });
       const report = await resolver().findCandidates(path.join(mine, 'dist', 'scripts', 'the-seed.js'), lookup());
       assert.strictEqual(only(report).packageDir, mine);
       assert.strictEqual(only(report).foundThrough, 'setting');
@@ -277,7 +277,7 @@ suite('finding the tool', () => {
       if (process.platform === 'win32') {
         this.skip();
       }
-      const mine = makeStubTool(scratch.dir('mine'), { version: '2.0.0' });
+      const mine = makeStubTool(scratch.dir('mine'), { version: '2.1.1' });
       const bin = scratch.dir('bin');
       makeCommandShim(bin, mine, 'symlink');
       const report = await resolver().findCandidates(path.join(bin, 'the-seed'), lookup());
@@ -285,20 +285,20 @@ suite('finding the tool', () => {
     });
 
     test('may be a path inside the installation', async () => {
-      const mine = makeStubTool(scratch.dir('mine'), { version: '2.0.0' });
+      const mine = makeStubTool(scratch.dir('mine'), { version: '2.1.1' });
       const report = await resolver().findCandidates(path.join(mine, 'dist'), lookup());
       assert.strictEqual(only(report).packageDir, mine);
     });
 
     test('may be written with a leading ~', async () => {
-      const mine = makeStubTool(path.join(home, 'tools', 'the-seed'), { version: '2.0.0' });
+      const mine = makeStubTool(path.join(home, 'tools', 'the-seed'), { version: '2.1.1' });
       const report = await resolver().findCandidates('~/tools/the-seed', lookup());
       assert.strictEqual(only(report).packageDir, mine);
       assert.strictEqual(report.settingProblem, undefined);
     });
 
     test('is trimmed before it is used', async () => {
-      const mine = makeStubTool(scratch.dir('mine'), { version: '2.0.0' });
+      const mine = makeStubTool(scratch.dir('mine'), { version: '2.1.1' });
       const report = await resolver().findCandidates(`  ${mine}  `, lookup());
       assert.strictEqual(only(report).packageDir, mine);
     });
@@ -342,7 +342,7 @@ suite('finding the tool', () => {
     });
 
     test('that is inside another package names that package, and the walk stops there', async () => {
-      const outer = makeStubTool(scratch.dir('outer'), { version: '2.0.0' });
+      const outer = makeStubTool(scratch.dir('outer'), { version: '2.1.1' });
       const inner = path.join(outer, 'node_modules', 'other-package');
       fs.mkdirSync(inner, { recursive: true });
       fs.writeFileSync(path.join(inner, 'package.json'), JSON.stringify({ name: 'other-package', version: '1.0.0' }));
@@ -352,7 +352,7 @@ suite('finding the tool', () => {
     });
 
     test('that names a package with the wrong name is a problem even when it is the nearest', async () => {
-      const dir = makeStubTool(scratch.dir('wrongname'), { version: '2.0.0', name: 'something-else' });
+      const dir = makeStubTool(scratch.dir('wrongname'), { version: '2.1.1', name: 'something-else' });
       const report = await resolver().findCandidates(dir, lookup());
       assert.strictEqual(report.candidates.length, 0);
       assert.ok(report.settingProblem?.includes('it is the package something-else'), report.settingProblem);
@@ -395,7 +395,7 @@ suite('finding the tool', () => {
         this.skip();
       }
       const old = globalRoot('1.2.1', 'oldroot');
-      const newer = makeStubTool(scratch.dir('newer'), { version: '2.1.0' });
+      const newer = makeStubTool(scratch.dir('newer'), { version: '2.1.1' });
       const bin = scratch.dir('bin');
       makeCommandShim(bin, newer, 'symlink');
       const report = await resolver().findCandidates(undefined, lookup({ runNpmRoot: async () => old.root, env: { PATH: bin } }));

@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { ToolApi } from '../tool/toolApi';
+import { activeViewProvider } from '../panels/TheSeedViewProvider';
 
 export async function deleteScope(outputChannel: vscode.OutputChannel, tool: ToolApi): Promise<void> {
   const config = new tool.Config();
@@ -38,4 +39,5 @@ export async function deleteScope(outputChannel: vscode.OutputChannel, tool: Too
 
   outputChannel.appendLine(`Scope '${selectedScope}' deleted.`);
   vscode.window.showInformationMessage(`Scope '${selectedScope}' deleted.`);
+  await activeViewProvider()?.refreshConfig();
 }
