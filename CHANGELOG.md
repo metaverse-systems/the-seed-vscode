@@ -2,7 +2,7 @@
 
 All notable changes to The Seed extension are recorded in this file, in the format of [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [1.1.0] - 2026-10-27
 
 ### Added
 
