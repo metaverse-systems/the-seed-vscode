@@ -30,23 +30,26 @@ suite('packageOutcome', () => {
     };
   }
 
-  test('success maps fileCount, signatures included, to filesCopied and totalFiles', () => {
-    assert.deepStrictEqual(packageStatusFrom(result({}), timestamp), {
+  const out = '/home/me/release files';
+
+  test('success maps fileCount, signatures included, to filesCopied and totalFiles, and names the output directory', () => {
+    assert.deepStrictEqual(packageStatusFrom(result({}), timestamp, out), {
       state: 'completed',
       filesCopied: 4,
       totalFiles: 4,
+      outputDir: out,
       timestamp,
     });
   });
 
-  test('success notification names the count', () => {
-    assert.deepStrictEqual(packageNotification(result({})), { kind: 'info', text: 'Packaged 4 files into dist/' });
+  test('success notification names the count and the full output directory', () => {
+    assert.deepStrictEqual(packageNotification(result({}), out), { kind: 'info', text: 'Packaged 4 files into /home/me/release files' });
   });
 
   test('a refusal maps the message to errorMessage with no files copied', () => {
     const message = 'Two different files would be packaged as app:\n  build of @t/one\n  build of @t/two\nNothing was written.';
     const refused = result({ success: false, message, files: [], signatures: 0, fileCount: 0, projects: [] });
-    assert.deepStrictEqual(packageStatusFrom(refused, timestamp), {
+    assert.deepStrictEqual(packageStatusFrom(refused, timestamp, out), {
       state: 'failed',
       errorMessage: message,
       filesCopied: 0,
@@ -57,7 +60,7 @@ suite('packageOutcome', () => {
   test('a refusal notification shows the first line of the message', () => {
     const message = 'Two different files would be packaged as app:\n  build of @t/one';
     const refused = result({ success: false, message, fileCount: 0 });
-    assert.deepStrictEqual(packageNotification(refused), {
+    assert.deepStrictEqual(packageNotification(refused, out), {
       kind: 'error',
       text: 'Packaging failed: Two different files would be packaged as app:',
     });
@@ -65,13 +68,13 @@ suite('packageOutcome', () => {
 
   test('a failure with a null message says only Packaging failed', () => {
     const failed = result({ success: false, message: null, fileCount: 0 });
-    assert.deepStrictEqual(packageStatusFrom(failed, timestamp), {
+    assert.deepStrictEqual(packageStatusFrom(failed, timestamp, out), {
       state: 'failed',
       errorMessage: 'Packaging failed',
       filesCopied: 0,
       timestamp,
     });
-    assert.deepStrictEqual(packageNotification(failed), { kind: 'error', text: 'Packaging failed' });
+    assert.deepStrictEqual(packageNotification(failed, out), { kind: 'error', text: 'Packaging failed' });
   });
 
   suite('with the linked tool', () => {
@@ -103,7 +106,7 @@ suite('packageOutcome', () => {
       const packaged: PackageResult = await new (testTool().Package)(config).run(outputDir, dirs, { log: () => undefined });
 
       assert.strictEqual(packaged.success, false);
-      const status = packageStatusFrom(packaged, timestamp);
+      const status = packageStatusFrom(packaged, timestamp, outputDir);
       assert.strictEqual(status.state, 'failed');
       assert.strictEqual(status.filesCopied, 0);
       await onPlatform({
@@ -113,7 +116,7 @@ suite('packageOutcome', () => {
         },
         other: () => {
           assert.ok((status.errorMessage ?? '').includes('Two different files would be packaged as app:'), String(status.errorMessage));
-          assert.ok(packageNotification(packaged).text.startsWith('Packaging failed: Two different files'));
+          assert.ok(packageNotification(packaged, outputDir).text.startsWith('Packaging failed: Two different files'));
         },
       });
       assert.strictEqual(fs.existsSync(outputDir), false);

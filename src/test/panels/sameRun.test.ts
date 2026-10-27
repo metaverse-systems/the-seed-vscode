@@ -20,6 +20,7 @@ import type { Recorder, Recording } from '../helpers/operationRecorder';
 import { createCertFor } from '../helpers/scratchHome';
 import { useScratchState } from '../helpers/scratchState';
 import { testTool } from '../helpers/tool';
+import { answerWithNewProject, packageWithoutNativeCheck } from '../helpers/packagingDialogs';
 
 const NO_PREFIX = 'No prefix configured. Run "The Seed: Configure Project" first.';
 const GIT_NOT_FOUND = 'git not found. Please install git to install dependencies.';
@@ -162,6 +163,8 @@ suite('Sidebar and palette give the same run: dependency installation', function
     test('a sidebar start while a palette packaging run holds the lock is refused with the palette\'s text and leaves the packaging run alone', async () => {
       git.failing();
       let finish: (result: unknown) => void = () => undefined;
+      await packageWithoutNativeCheck();
+      answerWithNewProject(state.workspaceFolders[0]);
       const run = sinon.stub(testTool().Package.prototype, 'run').callsFake(() => new Promise((resolve) => { finish = resolve; }) as never);
       const packaging = vscode.commands.executeCommand('the-seed.packageProject');
       try {
@@ -452,20 +455,29 @@ suite('Sidebar and palette give the same run: builds', function () {
 
 suite('Sidebar and palette give the same run: packaging and the installer', function () {
   this.timeout(60000);
-  useScratchState({ workspaceFolders: 1 });
+  const state = useScratchState({ workspaceFolders: 1 });
   let recorder: Recorder;
   let prompts: Prompts;
+  let output: string;
 
-  setup(() => {
+  setup(async () => {
+    await packageWithoutNativeCheck();
     recorder = recordOperation();
-    prompts = stubPrompts();
+    // Packaging asks for the project, then the output directory
+    const root = fs.realpathSync(state.workspaceFolders[0]);
+    const project = path.join(root, 'game');
+    fs.mkdirSync(path.join(project, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(project, 'src', 'Makefile.am'), 'bin_PROGRAMS = game\n');
+    output = path.join(root, 'release');
+    prompts = stubPrompts({ open: [project, output] });
   });
 
-  async function compare(command: string, commandId: string, reply: string[]): Promise<Recording> {
+  async function compare(command: string, commandId: string, reply: string[], asked = 0): Promise<Recording> {
     const side = await startFromSidebar(recorder, prompts, { command });
     const palette = await startFromPalette(recorder, prompts, commandId);
     assert.deepStrictEqual(replyTypes(side), reply, 'the sidebar\'s direct reply');
-    assert.strictEqual(side.prompts + palette.prompts, 0, 'neither start asks anything');
+    assert.strictEqual(side.prompts, asked, 'the sidebar start asks the same as the palette');
+    assert.strictEqual(palette.prompts, asked, 'the palette start asks the same as the sidebar');
     assertSameRun(side.recording, palette.recording);
     assert.strictEqual(getOperationLock().active, false, 'the lock is free afterwards');
     return palette.recording;
@@ -483,11 +495,11 @@ suite('Sidebar and palette give the same run: packaging and the installer', func
   test('a successful packaging run: both show the same result', async () => {
     const run = stubPackageRun(packageResult(true, null, ['game', 'libengine.so.1']));
 
-    const palette = await compare('startPackage', 'the-seed.packageProject', ['packageStarted']);
+    const palette = await compare('startPackage', 'the-seed.packageProject', ['packageStarted'], 2);
 
     assert.strictEqual(run.callCount, 2, 'each start packaged once');
-    assert.deepStrictEqual(shownOf(palette, 'info'), ['Packaged 2 files into dist/']);
-    assert.ok(panelText(palette).includes('── Packaged 2 files into dist/ ──'));
+    assert.deepStrictEqual(shownOf(palette, 'info'), [`Packaged 2 files into ${output}`]);
+    assert.ok(panelText(palette).includes(`── Packaged 2 files into ${output} ──`));
     assert.ok(panelText(palette).includes('\nCopying game...\n'), "the panel holds the tool's log line");
     assert.deepStrictEqual(postedTypes(palette), ['packageStatus:running', 'packageStatus:running', 'packageStatus:completed']);
   });
@@ -495,7 +507,7 @@ suite('Sidebar and palette give the same run: packaging and the installer', func
   test('a refused packaging run: both show the same refusal', async () => {
     stubPackageRun(packageResult(false, 'No buildable projects found.\nSecond line of the refusal'));
 
-    const palette = await compare('startPackage', 'the-seed.packageProject', ['packageStarted']);
+    const palette = await compare('startPackage', 'the-seed.packageProject', ['packageStarted'], 2);
 
     assert.deepStrictEqual(shownOf(palette, 'error'), ['Packaging failed: No buildable projects found.']);
     assert.ok(panelText(palette).includes('── Packaging failed ──\nNo buildable projects found.\nSecond line of the refusal\n'));
@@ -779,6 +791,13 @@ suite('Sidebar and palette give the same run: edge cases', function () {
 
     test('a sidebar start of startBuild while packaging runs is refused and leaves the packaging state alone', async () => {
       let finish: (result: unknown) => void = () => undefined;
+      await packageWithoutNativeCheck();
+      const root = fs.realpathSync(state.workspaceFolders[0]);
+      const project = path.join(root, 'packaged');
+      fs.mkdirSync(path.join(project, 'src'), { recursive: true });
+      fs.writeFileSync(path.join(project, 'src', 'Makefile.am'), 'bin_PROGRAMS = packaged\n');
+      const answers = [project, path.join(root, 'release')];
+      (vscode.window.showOpenDialog as sinon.SinonStub).callsFake(async () => [vscode.Uri.file(answers.shift()!)]);
       const run = sinon.stub(testTool().Package.prototype, 'run').callsFake(() => new Promise((resolve) => { finish = resolve; }) as never);
       const packaging = vscode.commands.executeCommand('the-seed.packageProject');
       try {

@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import { runProjectBuild } from '../build/projectBuild';
 import { describeBuildRejection, describeFailedStep } from '../build/buildFailure';
 import { startBuild } from '../build/buildStart';
+import type { BuildStart } from '../build/buildStart';
+import { effectiveLimits, limitsLine, processorCount } from '../build/buildLimits';
 import type { TheSeedViewProvider } from '../panels/TheSeedViewProvider';
 import type { BuildStatusPayload } from '../types/messages';
 import { releaseOperationLock, getOperationLock } from '../operationLock';
@@ -23,6 +25,18 @@ export function cancelActiveBuild(): boolean {
     return true;
   }
   return false;
+}
+
+/**
+ * Writes what a starting build uses to the output panel: first each saved default that was invalid (also
+ * shown once as a warning), then the build limits, with any reduction the tool makes.
+ */
+export function reportLimits(start: BuildStart, recursive: boolean, outputChannel: vscode.OutputChannel): void {
+  for (const problem of start.settingProblems) {
+    outputChannel.appendLine(problem.message);
+    vscode.window.showWarningMessage(problem.message);
+  }
+  outputChannel.appendLine(limitsLine(effectiveLimits(start.limits, recursive, processorCount())));
 }
 
 /**
@@ -71,6 +85,7 @@ async function executeBuild(
   const start = await startBuild({
     releaseDescription: 'Strip and sign the installed programs and libraries',
     projectPlaceHolder: 'Select a project to build',
+    recursive: false,
   });
   if (!start) {
     return;
@@ -93,6 +108,7 @@ async function executeBuild(
     outputChannel.appendLine(`Build ${buildLabel} started at ${timestamp}`);
     outputChannel.appendLine(`Project: ${projectPath}`);
     outputChannel.appendLine(`${'═'.repeat(60)}\n`);
+    reportLimits(start, false, outputChannel);
 
     const broadcastStatus = (payload: BuildStatusPayload) => {
       viewProvider.postMessage({ type: 'buildStatus', payload });
@@ -122,6 +138,7 @@ async function executeBuild(
                 release,
                 configDir: config.configDir,
                 signal: activeBuild.signal,
+                jobs: start.limits.jobs?.value,
               },
               {
                 append: (text) => outputChannel.append(text),

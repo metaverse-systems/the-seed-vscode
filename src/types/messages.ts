@@ -261,6 +261,8 @@ export interface PackageStatusPayload {
   filesCopied?: number;
   totalFiles?: number;
   errorMessage?: string;
+  /** Full path of the output directory; set when the run starts and when it completes. */
+  outputDir?: string;
   timestamp: string;
 }
 

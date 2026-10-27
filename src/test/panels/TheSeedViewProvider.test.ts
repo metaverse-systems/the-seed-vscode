@@ -8,6 +8,7 @@ import { activeToolService } from '../../tool/toolService';
 import type { ToolService } from '../../tool/toolService';
 import type { ToolApi } from '../../tool/toolApi';
 import { useScratchState } from '../helpers/scratchState';
+import { answerWithNewProject, packageWithoutNativeCheck } from '../helpers/packagingDialogs';
 import { testTool, withToolSetting } from '../helpers/tool';
 import { requires } from '../harness/platform';
 import { useFakeGit } from '../helpers/fakeGit';
@@ -387,7 +388,11 @@ suite('TheSeedViewProvider', () => {
 
   suite('replay when the sidebar is reopened', function () {
     this.timeout(60000);
-    useScratchState({ workspaceFolders: 1 });
+    const state = useScratchState({ workspaceFolders: 1 });
+
+    setup(async () => {
+      await packageWithoutNativeCheck();
+    });
 
     teardown(() => {
       (provider as unknown as { dispose?: () => void }).dispose?.();
@@ -465,6 +470,7 @@ suite('TheSeedViewProvider', () => {
         type: 'packageStatus',
         begin: () => {
           let finish: () => void = () => undefined;
+          answerWithNewProject(state.workspaceFolders[0]);
           const run = sinon.stub(testTool().Package.prototype, 'run').callsFake(() => new Promise((resolve) => {
             finish = () => resolve({ success: false, message: 'stubbed packaging run', outputDir: '', projects: [], files: [], signatures: 0, fileCount: 0, notPackaged: [] });
           }) as never);
