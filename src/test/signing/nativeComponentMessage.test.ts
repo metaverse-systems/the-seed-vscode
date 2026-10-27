@@ -75,7 +75,7 @@ suite('native component message in the editor', () => {
       fileCount: 0,
       notPackaged: [],
     };
-    const shown = packageNotification(result);
+    const shown = packageNotification(result, '/nowhere/out');
     assert.strictEqual(shown.kind, 'error');
     assert.strictEqual(shown.text, 'Packaging failed: ' + message);
   });

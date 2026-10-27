@@ -2,6 +2,17 @@
 
 All notable changes to The Seed extension are recorded in this file, in the format of [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.1.0] - 2026-10-27
+
+### Added
+
+- Build limits: any build can be given a job limit, and a recursive build a project count, from the Build limits item in the build-mode choice, like the tool's `--jobs` and `--parallel` options. The output channel states the limits each build uses, and any reduction the tool makes.
+- Workspace defaults for the build limits, in the settings `the-seed.build.parallel` and `the-seed.build.jobs`, which can be saved from the build start and changed or cleared in the Settings editor. A saved value that is not a positive whole number is reported and ignored.
+
+### Changed
+
+- Package Projects asks for the projects to package and the output directory, so it works when the workspace folder is not a project and can package several projects at once. It refuses an output directory that is or contains a chosen project or a workspace folder, asks before replacing a directory that already holds files, and puts the previous contents back if packaging fails. The messages name the full path of the output directory instead of `dist/`.
+
 ## [1.0.1] - 2026-10-25
 
 ### Changed

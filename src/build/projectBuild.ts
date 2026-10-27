@@ -16,7 +16,7 @@ export interface ProjectBuildUi {
  * otherwise) through `buildProject`, so the install step is staged, stripped
  * (release with a target), signed and placed exactly as the command line does.
  * Only `signal` is passed: the editor's cancellation is the graceful kind, so
- * an install phase in progress always finishes.
+ * an install phase in progress always finishes. `jobs` is passed only when set.
  */
 export async function runProjectBuild(
   build: Pick<Build, 'buildProject'>,
@@ -26,11 +26,15 @@ export async function runProjectBuild(
     release: boolean;
     configDir: string;
     signal: AbortSignal;
+    /** Most compile jobs at once; the tool uses the processor count when it is not given */
+    jobs?: number;
   },
   ui: ProjectBuildUi
 ): Promise<ProjectBuildResult> {
+  const { jobs, ...rest } = options;
   return build.buildProject({
-    ...options,
+    ...rest,
+    ...(jobs === undefined ? {} : { jobs }),
     output: {
       stdout: (chunk) => ui.append(chunk.toString()),
       stderr: (chunk) => ui.append(chunk.toString()),

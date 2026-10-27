@@ -61,6 +61,8 @@ Install in this order, which follows the tool's own [Installation](https://githu
 
 The extension looks for the tool in the global npm installation, then through the `the-seed` command on the path. If the tool is installed somewhere else, set **the-seed.toolPath** to its package directory, its `the-seed` command, or a path inside it; leave the setting empty to use the global installation. **The Seed: Check Tool** looks again and reports the version found, where it is and how it was found (the setting, the global installation or the command on the path), and whether the tool's native component is built; when it is not, it gives the tool's own message naming the step that builds it. When the tool is missing, older than 2.1.1, a 3.x or later, or cannot be loaded, it says so with the command that installs a supported version, and the other commands show the same message instead of running until a usable tool is found.
 
+The extension's other settings are **the-seed.build.parallel** and **the-seed.build.jobs**, the workspace defaults for the build limits (see Build limits below).
+
 ## Windows
 
 Use the extension with its host in WSL: install the [WSL extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-wsl), open a folder in WSL, and install the tool and the extension inside WSL as above. There every operation works as on Linux.
@@ -76,8 +78,34 @@ The Seed's view in the activity bar has these sections, each of which stays open
 - **Templates**: creates a component, system or program project, or a resource pak, in a scope, in the open folder or in a folder you choose.
 - **Build**: builds the project of the active file, or one you choose, for Linux or Windows, incrementally, or recursively with every project it depends on first; a running build can be cancelled.
 - **ResourcePaks**: for the resource pak in the open folder (or in a folder directly inside it), or one you choose with the Choose ResourcePak button, adds a file as a resource and builds the `.pak` file. A resource pak you create is the one the section then works on. The commands in the Command Palette use the same pak and ask only when there is none or several.
-- **Packaging**: copies the open project's programs and the shared libraries they load into its `dist/` directory, showing the tool's progress.
+- **Packaging**: asks for the projects to package and the directory to package them into, then copies their programs and the shared libraries they load there, showing the tool's progress (see Packaging projects below).
 - **Installer**: generates a Windows `.msi` installer for the open project, showing the tool's progress.
+
+## Build limits
+
+A build can be given two limits, the same as the tool's `--parallel` and `--jobs` options:
+
+- **The job limit**: the most compile jobs a build runs at once. Every build takes it. Without one, a build uses one job per processor.
+- **The project count**: the most projects a recursive build builds at once. Only the recursive builds take it. Without one, a recursive build builds one project at a time. The projects building at once share the job limit.
+
+The tool reduces the project count to the number of processors and to the job limit, as the command line does. The job limit is used as given.
+
+To set the limits for one build, choose **Build limits** at the bottom of the build-mode choice (where you pick Debug or Release). It asks for the project count (recursive builds only) and then the job limit, each filled in with the value in effect; an empty box means the workspace default, or the standard behaviour when there is none. Then choose **Use for this build only**, or **Use and save as workspace default** to keep the values for later builds in this workspace (saving with an empty box removes that default). You are then back at the build-mode choice. A build where you do not choose the item asks nothing more than before.
+
+The workspace defaults are the settings **the-seed.build.parallel** and **the-seed.build.jobs**. Change or clear them in the Settings editor under the Workspace tab; they are kept in the workspace's `.vscode/settings.json` (or the `.code-workspace` file). Only the workspace's values are used: a value in your user settings applies to no build. A saved value that is not a positive whole number is ignored for the build: a warning names the setting and its value, and the build uses the standard behaviour for that limit. A build reads the settings once, when it starts, so a change does not affect a build already running.
+
+At the start of every build the output channel states the limits it uses and where each came from, for example:
+
+```text
+Build limits: up to 2 projects at once (requested 16, reduced to the job limit), 2 compile jobs (this build)
+Build limits: 8 compile jobs (processor count)
+```
+
+## Packaging projects
+
+**The Seed: Package Projects** (also the Package button in the sidebar) asks for one or more project directories, then for the directory to package them into. The workspace folder does not have to be a project: choose any projects that were built, inside the workspace or outside it. A directory whose `src/Makefile.am` is missing or names no program or library is refused before anything is written.
+
+The output directory cannot be one of the chosen projects, nor a directory that contains one of them or a workspace folder; a directory inside a project, such as its `dist/`, is fine. When the chosen directory already holds files, you are asked first: packaging replaces everything in it with the new result. If packaging is refused or fails, the previous contents are put back as they were. Cancelling any of the prompts packages nothing. The messages at the end name the full path of the output directory.
 
 ## The explorer menu
 
@@ -110,7 +138,7 @@ All commands are in the Command Palette under "The Seed". Needs says what a comm
 | The Seed: Build (Incremental) | open project that was built before; native component when it produces Windows programs | Palette, Sidebar |
 | The Seed: Build Native (Recursive) | open project (of the active file, or chosen), libraries installed for Linux | Palette, Sidebar |
 | The Seed: Build Windows (Recursive) | open project (of the active file, or chosen), libraries installed for Windows, MinGW cross-compiler, native component | Palette, Sidebar |
-| The Seed: Package Projects | open project that was built, prefix, native component | Palette, Sidebar |
+| The Seed: Package Projects | prefix, native component, built projects and an output directory (both chosen) | Palette, Sidebar |
 | The Seed: Generate Windows Installer | wixl, native component, prefix, open project built for Windows | Palette, Sidebar |
 | The Seed: Create Signing Certificate | scope | Palette |
 | The Seed: Import Signing Certificate | scope, selected file (the certificate and its key) | Palette |

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import type { BuildableProject, BuildStep } from '@metaverse-systems/the-seed/types';
 import { startBuild } from '../build/buildStart';
+import { reportLimits } from './buildNative';
 import type { TheSeedViewProvider } from '../panels/TheSeedViewProvider';
 import type { BuildStatusPayload, RecursiveBuildProgressPayload, RecursiveBuildCompletePayload } from '../types/messages';
 import { projectCount } from '../types/projectCount';
@@ -60,11 +61,15 @@ async function executeRecursiveBuild(
   const start = await startBuild({
     releaseDescription: 'Strip debug symbols for production',
     projectPlaceHolder: 'Select a project to build recursively',
+    recursive: true,
   });
   if (!start) {
     return;
   }
   const { release, projectPath, abortController } = start;
+  // The requested values: the tool reduces the project count itself
+  const parallel = start.limits.parallel?.value;
+  const jobs = start.limits.jobs?.value;
 
   try {
     // Show output channel
@@ -75,6 +80,7 @@ async function executeRecursiveBuild(
     outputChannel.appendLine(`Recursive build ${buildLabel} started at ${timestamp}`);
     outputChannel.appendLine(`Project: ${projectPath}`);
     outputChannel.appendLine(`${'═'.repeat(60)}\n`);
+    reportLimits(start, true, outputChannel);
 
     const broadcastBuildStatus = (payload: BuildStatusPayload) => {
       viewProvider.postMessage({ type: 'buildStatus', payload });
@@ -122,6 +128,8 @@ async function executeRecursiveBuild(
               projectDir: projectPath,
               signal: abortController.signal,
               release,
+              ...(parallel === undefined ? {} : { parallel }),
+              ...(jobs === undefined ? {} : { jobs }),
               callbacks: {
                 onProjectStart: (project: BuildableProject, index: number, total: number) => {
                   const msg = `Building ${project.name} (${index + 1}/${total})`;

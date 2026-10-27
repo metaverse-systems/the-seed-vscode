@@ -13,7 +13,12 @@ import * as path from 'path';
 import { acquireOperationLock, getOperationLock } from '../../operationLock';
 import { useScratchState } from '../helpers/scratchState';
 import { requires } from '../harness/platform';
-import { testTool } from '../helpers/tool';
+import { testTool, useToolApi } from '../helpers/tool';
+import { fakeBuildSettings } from '../helpers/fakeSettings';
+import { panelText, recordOperation } from '../helpers/operationRecorder';
+import { until } from '../helpers/fakeView';
+import { processorCount } from '../../build/buildLimits';
+import type { ToolApi } from '../../tool/toolApi';
 
 const NO_PROJECT_MESSAGE = 'No buildable project found. Open a file in a The Seed project.';
 
@@ -209,5 +214,166 @@ suite('Build Commands', () => {
     assert.strictEqual(error.callCount, 1);
     assert.ok(String(error.firstCall.args[0]).includes('config unreadable'), 'the failure is reported');
     assert.strictEqual(getOperationLock().active, false, 'the lock is not held');
+  });
+  const recursiveCommands = ['the-seed.buildNativeRecursive', 'the-seed.buildWindowsRecursive'];
+
+  /** Makes the extension use the loaded tool with buildRecursive stubbed, until sinon is restored. */
+  async function stubRecursive(): Promise<sinon.SinonStub<Parameters<ToolApi['buildRecursive']>, ReturnType<ToolApi['buildRecursive']>>> {
+    const buildRecursive = sinon.stub<Parameters<ToolApi['buildRecursive']>, ReturnType<ToolApi['buildRecursive']>>();
+    await useToolApi({ ...testTool(), buildRecursive } as ToolApi);
+    return buildRecursive;
+  }
+  const HEADER_END = `${'═'.repeat(60)}\n\n`;
+
+  /** Answers the build-mode choice (choosing the limits item when `inputs` is given), the limit boxes and the save choice. */
+  function answerLimits(inputs?: string[], use = 'Use for this build only'): void {
+    let limitsChosen = inputs === undefined;
+    sinon.stub(vscode.window, 'showQuickPick').callsFake((async (items: unknown, options?: vscode.QuickPickOptions) => {
+      const list = (await items) as (vscode.QuickPickItem | string)[];
+      if (options?.placeHolder === 'Select build mode') {
+        const modes = list as vscode.QuickPickItem[];
+        if (!limitsChosen) {
+          limitsChosen = true;
+          return modes.find((item) => item.label.startsWith('Build limits: '));
+        }
+        return modes.find((item) => item.label === 'Debug');
+      }
+      return use;
+    }) as never);
+    const boxes = [...(inputs ?? [])];
+    sinon.stub(vscode.window, 'showInputBox').callsFake(async () => boxes.shift());
+  }
+
+  /** The panel lines from the start header up to the first step or project line. */
+  function linesAfterHeader(panel: string): string[] {
+    const start = panel.indexOf(HEADER_END);
+    assert.ok(start >= 0, `the start header is in the panel, got: ${panel}`);
+    return panel.slice(start + HEADER_END.length).split('\n');
+  }
+
+  for (const commandId of plainCommands) {
+    test(`${commandId} passes the job limit entered for this build and states it after the header`, async () => {
+      fakeBuildSettings();
+      const recorder = recordOperation();
+      const buildProject = sinon
+        .stub(testTool().Build.prototype, 'buildProject')
+        .callsFake(async (options) => {
+          options.onStepStart?.({ label: 'Compile', command: 'make', args: [] } as never, 0, 1);
+          return { status: 'completed' } as never;
+        });
+      foundBy([writeProject('game')]);
+      answerLimits(['3']);
+
+      await vscode.commands.executeCommand(commandId);
+
+      assert.strictEqual(buildProject.callCount, 1);
+      assert.strictEqual(buildProject.firstCall.args[0].jobs, 3);
+      const lines = linesAfterHeader(panelText(recorder));
+      assert.strictEqual(lines[0], 'Build limits: 3 compile jobs (this build)');
+      assert.ok(lines.slice(1).some((line) => line.startsWith('── Step 1/1: Compile')), 'the step comes after the limits line');
+    });
+
+    test(`${commandId} with no limits passes no job limit (SC-001)`, async () => {
+      fakeBuildSettings();
+      const recorder = recordOperation();
+      const buildProject = sinon.stub(testTool().Build.prototype, 'buildProject').resolves({ status: 'completed' } as never);
+      foundBy([writeProject('game')]);
+      answerLimits();
+
+      await vscode.commands.executeCommand(commandId);
+
+      assert.strictEqual(buildProject.callCount, 1);
+      assert.ok(!('jobs' in buildProject.firstCall.args[0]), 'no jobs key');
+      assert.strictEqual(linesAfterHeader(panelText(recorder))[0], `Build limits: ${processorCount()} compile ${processorCount() === 1 ? 'job' : 'jobs'} (processor count)`);
+    });
+  }
+
+  for (const commandId of recursiveCommands) {
+    test(`${commandId} passes both limits unreduced and states the reduction`, async () => {
+      fakeBuildSettings();
+      const recorder = recordOperation();
+      const buildRecursive = (await stubRecursive()).callsFake(async (options) => {
+        options.callbacks?.onProjectStart?.({ name: '@test/game' } as never, 0, 1);
+        return { success: true, completed: [], remaining: [], failed: null, failureOutput: null, cancelled: false } as never;
+      });
+      foundBy([writeProject('game')]);
+      answerLimits(['16', '2']);
+
+      await vscode.commands.executeCommand(commandId);
+
+      assert.strictEqual(buildRecursive.callCount, 1);
+      assert.strictEqual(buildRecursive.firstCall.args[0].parallel, 16);
+      assert.strictEqual(buildRecursive.firstCall.args[0].jobs, 2);
+      const lines = linesAfterHeader(panelText(recorder));
+      assert.strictEqual(lines[0], 'Build limits: up to 2 projects at once (requested 16, reduced to the job limit), 2 compile jobs (this build)');
+      assert.ok(lines.slice(1).some((line) => line.includes('[1/1] @test/game')), 'the project comes after the limits line');
+    });
+
+    test(`${commandId} with no limits passes neither key (SC-001)`, async () => {
+      fakeBuildSettings();
+      const recorder = recordOperation();
+      const buildRecursive = (await stubRecursive()).resolves(
+        { success: true, completed: [], remaining: [], failed: null, failureOutput: null, cancelled: false } as never
+      );
+      foundBy([writeProject('game')]);
+      answerLimits();
+
+      await vscode.commands.executeCommand(commandId);
+
+      const options = buildRecursive.firstCall.args[0];
+      assert.ok(!('parallel' in options) && !('jobs' in options), 'neither key is passed');
+      assert.ok(
+        linesAfterHeader(panelText(recorder))[0].startsWith('Build limits: 1 project at a time (default), '),
+        'the default is stated'
+      );
+    });
+
+    test(`${commandId} with an invalid saved value warns once, states it before the limits and builds with the standard behaviour`, async () => {
+      fakeBuildSettings({ workspace: { parallel: 2, jobs: 'six' } });
+      const recorder = recordOperation();
+      const buildRecursive = (await stubRecursive()).resolves(
+        { success: true, completed: [], remaining: [], failed: null, failureOutput: null, cancelled: false } as never
+      );
+      foundBy([writeProject('game')]);
+      answerLimits();
+
+      await vscode.commands.executeCommand(commandId);
+
+      const message = 'The setting "the-seed.build.jobs" is "six"; expected a positive whole number. Using the processor count for this build.';
+      assert.deepStrictEqual(recorder.notifications.filter((entry) => entry.kind === 'warning'), [{ kind: 'warning', text: message }]);
+      const lines = linesAfterHeader(panelText(recorder));
+      assert.strictEqual(lines[0], message);
+      assert.ok(lines[1].startsWith('Build limits: '), `the limits line follows, got: ${lines[1]}`);
+      assert.ok(lines[1].endsWith(' (processor count)'), `the job limit is the processor count, got: ${lines[1]}`);
+      const options = buildRecursive.firstCall.args[0];
+      assert.strictEqual(options.parallel, 2);
+      assert.ok(!('jobs' in options), 'the invalid value is not passed');
+    });
+  }
+
+  test('a settings change during a build does not change what that build passed or stated', async () => {
+    const settings = fakeBuildSettings({ workspace: { parallel: 2, jobs: 4 } });
+    const recorder = recordOperation();
+    let finish: () => void = () => undefined;
+    const buildRecursive = (await stubRecursive()).callsFake(() => new Promise((resolve) => {
+      finish = () => resolve({ success: true, completed: [], remaining: [], failed: null, failureOutput: null, cancelled: false } as never);
+    }));
+    foundBy([writeProject('game')]);
+    answerLimits();
+
+    const building = vscode.commands.executeCommand('the-seed.buildNativeRecursive');
+    await until(() => buildRecursive.called, 'the build to start');
+    settings.workspace.parallel = 8;
+    settings.workspace.jobs = 'six';
+    finish();
+    await building;
+
+    const options = buildRecursive.firstCall.args[0];
+    assert.strictEqual(options.parallel, 2);
+    assert.strictEqual(options.jobs, 4);
+    const lines = linesAfterHeader(panelText(recorder));
+    assert.ok(lines[0].startsWith('Build limits: up to 2 projects at once') || lines[0].startsWith('Build limits: 1 project at a time'), lines[0]);
+    assert.ok(lines[0].endsWith('4 compile jobs (workspace default)'), lines[0]);
+    assert.deepStrictEqual(recorder.notifications.filter((entry) => entry.kind === 'warning'), [], 'no warning');
   });
 });

@@ -296,8 +296,9 @@ if (SESSION === '2') {
     test('Package Projects', () => step('the-seed.packageProject', async () => {
       assert.ok(built, 'the native build did not pass');
       const projectDir = workspaceFolder();
-      await runCommand('the-seed.packageProject', [], { timeout: 10 * MINUTE });
       const dist = path.join(projectDir, 'dist');
+      // The projects and output are passed with the command; the folder dialogs cannot be answered here
+      await runCommand('the-seed.packageProject', [{ projects: [projectDir], output: dist }], { timeout: 10 * MINUTE });
       assert.ok(fs.existsSync(dist) && fs.readdirSync(dist).length > 0, `${dist} is missing or empty`);
     }));
 

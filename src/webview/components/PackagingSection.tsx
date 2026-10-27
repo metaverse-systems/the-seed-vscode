@@ -38,7 +38,8 @@ export const PackagingSection: React.FC<PackagingSectionProps> = ({
           <div className="build-status build-status--completed">
             <span className="build-status-icon">✓</span>
             <span>
-              Packaged {packageStatus.filesCopied ?? packageStatus.totalFiles ?? 0} files into dist/
+              Packaged {packageStatus.filesCopied ?? packageStatus.totalFiles ?? 0} files
+              {packageStatus.outputDir ? ` into ${packageStatus.outputDir}` : ''}
             </span>
             {packageStatus.timestamp && (
               <span className="build-timestamp">

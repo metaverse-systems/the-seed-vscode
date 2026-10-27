@@ -1,5 +1,7 @@
 // Packaging commands: no workspace folder open, the installer's prefix check and
-// operation lock, the previous packaging output kept unless a run produces a
+// operation lock, choosing the projects and the output directory (and every
+// refusal before anything is written), the confirmation before replacing an
+// output that holds files, the previous output kept unless a run produces a
 // new one, and the tool's output taken through its per-run options rather than
 // the shared console.
 import * as assert from 'assert';
@@ -14,7 +16,9 @@ import { activeToolService } from '../../tool/toolService';
 import { requires } from '../harness/platform';
 import { locateBuildDeps, requireProgram } from '../helpers/buildDeps';
 import { useScratchState } from '../helpers/scratchState';
-import { testTool } from '../helpers/tool';
+import { testTool, useToolApi } from '../helpers/tool';
+import { answerPackagingDialogs, OUTPUT_LABEL, packageWithoutNativeCheck, PROJECTS_LABEL, writePackagingProject } from '../helpers/packagingDialogs';
+import { NO_PROJECT_CHOSEN, REPLACE_CONTENTS, replaceWarning } from '../../commands/packageProject';
 import { fakeView, until } from '../helpers/fakeView';
 import { readTree } from '../helpers/workspaceStub';
 import { panelText, recordOperation } from '../helpers/operationRecorder';
@@ -227,10 +231,9 @@ const PREVIOUS_OUTPUT: { relative: string; mode: number; text: string | null }[]
   { relative: 'README', mode: 0o444, text: 'previous readme\n' },
 ];
 
-/** Writes PREVIOUS_OUTPUT into <projectDir>/dist and returns its tree. */
-function writePreviousOutput(projectDir: string): Map<string, { mode: number; bytes: string | null }> {
-  const outputDir = path.join(projectDir, 'dist');
-  fs.mkdirSync(outputDir);
+/** Writes PREVIOUS_OUTPUT into `outputDir` and returns its tree. */
+function writePreviousOutput(outputDir: string): Map<string, { mode: number; bytes: string | null }> {
+  fs.mkdirSync(outputDir, { recursive: true });
   for (const entry of PREVIOUS_OUTPUT) {
     const full = path.join(outputDir, entry.relative);
     if (entry.text === null) {
@@ -246,9 +249,10 @@ function writePreviousOutput(projectDir: string): Map<string, { mode: number; by
   return readTree(outputDir);
 }
 
-/** The moved-aside directories left in a project. */
-function leftAside(projectDir: string): string[] {
-  return fs.readdirSync(projectDir).filter((name) => name.startsWith('.dist-previous-'));
+/** The moved-aside directories left beside an output directory. */
+function leftAside(outputDir: string): string[] {
+  const prefix = `.${path.basename(outputDir)}-previous-`;
+  return fs.readdirSync(path.dirname(outputDir)).filter((name) => name.startsWith(prefix));
 }
 
 /**
@@ -284,69 +288,420 @@ function refuseWritesIn(dir: string): () => void {
   };
 }
 
-suite('Packaging Commands: previous output', function () {
+/** What one packaging case records: the calls to Package.run and what was shown. */
+interface PackagingCase {
+  warning: sinon.SinonStub;
+  error: sinon.SinonStub;
+  info: sinon.SinonStub;
+  packageRun: sinon.SinonStub;
+  /** Each Package.run call: the output, the projects, and whether the output existed then. */
+  runs: { output: string; projects: string[]; existed: boolean }[];
+  /** The answer to the replace confirmation; undefined dismisses it. */
+  confirm: string | undefined;
+  /** Each confirmation shown: its text, and whether the lock was free and the tree untouched then. */
+  confirmations: { text: string; modal: boolean; items: unknown[]; lockFree: boolean }[];
+}
+
+/** Stubs the messages and Package.run for a packaging case; the replace confirmation answers `confirm`. */
+function usePackagingCase(): PackagingCase {
+  const current = {} as PackagingCase;
+  setup(async () => {
+    await packageWithoutNativeCheck();
+    current.runs = [];
+    current.confirmations = [];
+    current.confirm = undefined;
+    current.warning = sinon.stub(vscode.window, 'showWarningMessage').callsFake((async (text: string, ...rest: unknown[]) => {
+      const options = rest[0];
+      if (typeof options === 'object' && options !== null && (options as vscode.MessageOptions).modal) {
+        current.confirmations.push({ text, modal: true, items: rest.slice(1), lockFree: !getOperationLock().active });
+        return current.confirm;
+      }
+      return undefined;
+    }) as never);
+    current.error = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+    current.info = sinon.stub(vscode.window, 'showInformationMessage').resolves(undefined);
+    current.packageRun = sinon.stub(testTool().Package.prototype, 'run');
+  });
+  return current;
+}
+
+/** Makes Package.run record its call, then do what `act` does with the output directory it was given. */
+function runDoes(c: PackagingCase, act: (output: string) => Promise<PackageRunResult>): void {
+  c.packageRun.callsFake(async (output: string, projects: string[]) => {
+    c.runs.push({ output, projects: [...projects], existed: fs.existsSync(output) });
+    return act(output);
+  });
+}
+
+function shownBy(stub: sinon.SinonStub): unknown[] {
+  return stub.getCalls().map((call) => call.args[0]);
+}
+
+const REFUSE = async (output: string): Promise<PackageRunResult> => packageResult(output, false, 'stubbed refusal');
+const SUCCEED = async (output: string): Promise<PackageRunResult> => {
+  fs.mkdirSync(output, { recursive: true });
+  fs.writeFileSync(path.join(output, 'new'), 'the new result');
+  return packageResult(output, true, null, ['new']);
+};
+
+suite('Packaging Commands: choosing projects and output', function () {
   this.timeout(60000);
   const state = useScratchState({ workspaceFolders: 1 });
+  const c = usePackagingCase();
 
-  let warning: sinon.SinonStub;
-  let error: sinon.SinonStub;
-  let info: sinon.SinonStub;
-  let packageRun: sinon.SinonStub;
-  /** Whether the output directory existed each time Package.run was called (the tool refuses one that does). */
-  let existedAtRun: boolean[];
-  /** The output directory each Package.run call was given. */
-  let outputDirs: string[];
+  /** The workspace folder, which is not a project itself. */
+  function root(): string {
+    return fs.realpathSync(state.workspaceFolders[0]);
+  }
 
-  setup(() => {
-    warning = sinon.stub(vscode.window, 'showWarningMessage').resolves(undefined);
-    error = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
-    info = sinon.stub(vscode.window, 'showInformationMessage').resolves(undefined);
-    existedAtRun = [];
-    outputDirs = [];
-    packageRun = sinon.stub(testTool().Package.prototype, 'run');
+  function assertRefusedBeforeWriting(before: Map<string, unknown>, shown: string): void {
+    assert.deepStrictEqual(shownBy(c.error), [shown]);
+    assert.ok(c.packageRun.notCalled, 'Package.run is not called');
+    assert.deepStrictEqual(readTree(root()), before, 'the workspace is unchanged');
+    assert.strictEqual(getOperationLock().active, false, 'the lock is free');
+  }
+
+  test('a workspace whose root is not a project packages the two projects chosen, in order', async () => {
+    const one = writePackagingProject(root(), 'one');
+    const two = writePackagingProject(root(), 'two');
+    const output = path.join(root(), 'release');
+    const dialogs = answerPackagingDialogs({ projects: [two, one], output });
+    runDoes(c, SUCCEED);
+
+    await vscode.commands.executeCommand('the-seed.packageProject');
+
+    assert.deepStrictEqual(c.runs, [{ output, projects: [two, one], existed: false }]);
+    assert.deepStrictEqual(dialogs.map((dialog) => [dialog.openLabel, dialog.canSelectFolders, dialog.canSelectFiles, dialog.canSelectMany]), [
+      [PROJECTS_LABEL, true, false, true],
+      [OUTPUT_LABEL, true, false, false],
+    ]);
+    assert.strictEqual(dialogs[0].defaultUri?.fsPath, vscode.Uri.file(state.workspaceFolders[0]).fsPath, 'the dialogs open in the workspace folder');
+    assert.deepStrictEqual(shownBy(c.info), [`Packaged 1 files into ${output}`]);
+    assert.deepStrictEqual(c.confirmations, [], 'a new output needs no confirmation');
+    assert.strictEqual(getOperationLock().active, false, 'the lock is free');
   });
 
-  function projectDir(): string {
-    return state.workspaceFolders[0];
-  }
+  test('projects and an output given with the command are used without the dialogs, with the same checks', async () => {
+    const one = writePackagingProject(root(), 'one');
+    const output = path.join(root(), 'release');
+    const dialogs = answerPackagingDialogs({});
+    runDoes(c, SUCCEED);
 
-  function outputDir(): string {
-    return path.join(projectDir(), 'dist');
-  }
+    await vscode.commands.executeCommand('the-seed.packageProject', { projects: [one], output });
+    await vscode.commands.executeCommand('the-seed.packageProject', { projects: [one], output: root() });
 
-  /** Makes Package.run record its call, then do what `act` does with the output directory it was given. */
-  function runDoes(act: (output: string) => Promise<PackageRunResult>): void {
-    packageRun.callsFake(async (output: string) => {
-      outputDirs.push(output);
-      existedAtRun.push(fs.existsSync(output));
-      return act(output);
+    assert.deepStrictEqual(dialogs, [], 'no dialog');
+    assert.deepStrictEqual(c.runs, [{ output, projects: [one], existed: false }]);
+    assert.deepStrictEqual(shownBy(c.error), [`Cannot package into "${root()}": it contains the project "${one}".`]);
+    assert.deepStrictEqual(c.confirmations, [], 'nothing to confirm');
+  });
+
+  test('a project chosen twice, or by two spellings, is packaged once', async () => {
+    const one = writePackagingProject(root(), 'one');
+    const link = path.join(root(), 'link-to-one');
+    let linked = true;
+    try {
+      fs.symlinkSync(one, link, 'dir');
+    } catch {
+      linked = false;
+    }
+    const output = path.join(root(), 'release');
+    answerPackagingDialogs({ projects: [one, path.join(one, '..', 'one'), one + path.sep, ...(linked ? [link] : [])], output });
+    runDoes(c, SUCCEED);
+
+    await vscode.commands.executeCommand('the-seed.packageProject');
+
+    assert.deepStrictEqual(c.runs.map((run) => run.projects), [[one]]);
+  });
+
+  const dismissals: { name: string; dialogs: () => { projects?: string[]; output?: string } }[] = [
+    { name: 'the project dialog', dialogs: () => ({}) },
+    { name: 'the output dialog', dialogs: () => ({ projects: [path.join(root(), 'one')] }) },
+  ];
+
+  for (const { name, dialogs } of dismissals) {
+    test(`dismissing ${name} packages nothing, shows nothing and leaves the lock free`, async () => {
+      writePackagingProject(root(), 'one');
+      const before = readTree(root());
+      answerPackagingDialogs(dialogs());
+
+      await vscode.commands.executeCommand('the-seed.packageProject');
+
+      assert.ok(c.packageRun.notCalled, 'Package.run is not called');
+      assert.ok(c.error.notCalled && c.warning.notCalled && c.info.notCalled, 'no message');
+      assert.deepStrictEqual(readTree(root()), before, 'the workspace is unchanged');
+      assert.strictEqual(getOperationLock().active, false, 'the lock is free');
     });
   }
 
-  function errors(): unknown[] {
-    return error.getCalls().map((call) => call.args[0]);
-  }
+  test('confirming the project dialog with nothing chosen is refused', async () => {
+    const before = readTree(root());
+    const dialogs = answerPackagingDialogs({ projects: [], output: path.join(root(), 'release') });
+
+    await vscode.commands.executeCommand('the-seed.packageProject');
+
+    assertRefusedBeforeWriting(before, NO_PROJECT_CHOSEN);
+    assert.strictEqual(dialogs.length, 1, 'the output dialog is not shown');
+  });
+
+  test('a directory without src/Makefile.am is refused, naming it and the tool\'s reason', async () => {
+    const one = writePackagingProject(root(), 'one');
+    const plain = path.join(root(), 'plain');
+    fs.mkdirSync(plain);
+    const before = readTree(root());
+    const dialogs = answerPackagingDialogs({ projects: [one, plain], output: path.join(root(), 'release') });
+
+    await vscode.commands.executeCommand('the-seed.packageProject');
+
+    assertRefusedBeforeWriting(before, `"${plain}" is not a buildable project: src/Makefile.am not found in ${plain}`);
+    assert.strictEqual(dialogs.length, 1, 'the output dialog is not shown');
+  });
+
+  test('a directory whose Makefile.am names no program or library is refused, naming it and the tool\'s reason', async () => {
+    const odd = writePackagingProject(root(), 'odd', 'SUBDIRS = .\n');
+    const before = readTree(root());
+    answerPackagingDialogs({ projects: [odd], output: path.join(root(), 'release') });
+
+    await vscode.commands.executeCommand('the-seed.packageProject');
+
+    assertRefusedBeforeWriting(
+      before,
+      `"${odd}" is not a buildable project: Could not determine binary type from ${path.join(odd, 'src', 'Makefile.am')}`
+    );
+  });
+
+  test('an output that is a chosen project is refused', async () => {
+    const one = writePackagingProject(root(), 'one');
+    const before = readTree(root());
+    answerPackagingDialogs({ projects: [one], output: one });
+
+    await vscode.commands.executeCommand('the-seed.packageProject');
+
+    assertRefusedBeforeWriting(before, `Cannot package into "${one}": it is the project "${one}".`);
+  });
+
+  test('an output that contains a chosen project is refused', async () => {
+    const games = path.join(root(), 'games');
+    fs.mkdirSync(games);
+    const one = writePackagingProject(games, 'one');
+    const before = readTree(root());
+    answerPackagingDialogs({ projects: [one], output: games });
+
+    await vscode.commands.executeCommand('the-seed.packageProject');
+
+    assertRefusedBeforeWriting(before, `Cannot package into "${games}": it contains the project "${one}".`);
+  });
+
+  test('the workspace folder chosen as the output is refused', async () => {
+    const outside = writePackagingProject(fs.realpathSync(state.dir('elsewhere')), 'outside');
+    const before = readTree(root());
+    answerPackagingDialogs({ projects: [outside], output: root() });
+
+    await vscode.commands.executeCommand('the-seed.packageProject');
+
+    assertRefusedBeforeWriting(before, `Cannot package into "${root()}": it contains the workspace folder "${root()}".`);
+  });
+
+  test('an output that contains the second folder of a multi-root workspace is refused', async () => {
+    const outer = fs.realpathSync(state.dir('outer'));
+    const second = path.join(outer, 'second');
+    fs.mkdirSync(second);
+    state.setWorkspaceFolders([state.workspaceFolders[0], second]);
+    const one = writePackagingProject(root(), 'one');
+    const before = readTree(outer);
+    answerPackagingDialogs({ projects: [one], output: outer });
+
+    await vscode.commands.executeCommand('the-seed.packageProject');
+
+    assert.deepStrictEqual(shownBy(c.error), [`Cannot package into "${outer}": it contains the workspace folder "${second}".`]);
+    assert.ok(c.packageRun.notCalled, 'Package.run is not called');
+    assert.deepStrictEqual(readTree(outer), before, 'nothing is touched');
+  });
+
+  test('an output that is a file is refused', async () => {
+    const one = writePackagingProject(root(), 'one');
+    const file = path.join(root(), 'notes.txt');
+    fs.writeFileSync(file, 'keep me');
+    const before = readTree(root());
+    answerPackagingDialogs({ projects: [one], output: file });
+
+    await vscode.commands.executeCommand('the-seed.packageProject');
+
+    assertRefusedBeforeWriting(before, `Cannot package into "${file}": it is a file.`);
+  });
+
+  test('an output inside a project is allowed', async () => {
+    const one = writePackagingProject(root(), 'one');
+    const output = path.join(one, 'dist');
+    answerPackagingDialogs({ projects: [one], output });
+    runDoes(c, SUCCEED);
+
+    await vscode.commands.executeCommand('the-seed.packageProject');
+
+    assert.deepStrictEqual(c.runs, [{ output, projects: [one], existed: false }]);
+    assert.deepStrictEqual(shownBy(c.error), []);
+  });
+
+  test('a project outside the workspace is allowed', async () => {
+    const outside = writePackagingProject(fs.realpathSync(state.dir('elsewhere')), 'outside');
+    const output = path.join(root(), 'release');
+    answerPackagingDialogs({ projects: [outside], output });
+    runDoes(c, SUCCEED);
+
+    await vscode.commands.executeCommand('the-seed.packageProject');
+
+    assert.deepStrictEqual(c.runs.map((run) => run.projects), [[outside]]);
+  });
+
+  test('names with spaces work end to end', async () => {
+    const game = writePackagingProject(root(), 'my game');
+    const output = path.join(root(), 'release files');
+    answerPackagingDialogs({ projects: [game], output });
+    runDoes(c, SUCCEED);
+
+    await vscode.commands.executeCommand('the-seed.packageProject');
+
+    assert.deepStrictEqual(c.runs, [{ output, projects: [game], existed: false }]);
+    assert.deepStrictEqual(shownBy(c.info), [`Packaged 1 files into ${output}`]);
+    assert.deepStrictEqual([...readTree(output).keys()], ['new']);
+  });
+
+  test('while another operation holds the lock: refused before any dialog', async () => {
+    const held = acquireOperationLock('build');
+    assert.ok(held.success, 'the case holds the lock');
+    const dialogs = answerPackagingDialogs({});
+
+    await vscode.commands.executeCommand('the-seed.packageProject');
+
+    assert.deepStrictEqual(shownBy(c.warning), ['Cannot package while a build operation is in progress.']);
+    assert.deepStrictEqual(dialogs, [], 'no dialog');
+    assert.strictEqual(getOperationLock().abortController, held.abortController, 'the holder is unchanged');
+  });
+
+  test('with no prefix: refused before any dialog', async () => {
+    sinon.stub(testTool().Config.prototype, 'loadConfig').callsFake(function (this: { config: { prefix: string } }) {
+      this.config.prefix = '';
+    });
+    const dialogs = answerPackagingDialogs({});
+
+    await vscode.commands.executeCommand('the-seed.packageProject');
+
+    assert.deepStrictEqual(shownBy(c.error), [NO_PREFIX]);
+    assert.deepStrictEqual(dialogs, [], 'no dialog');
+    assert.strictEqual(getOperationLock().active, false, 'the lock is free');
+  });
+
+  test('with no folder open: refused before any dialog', async () => {
+    state.setWorkspaceFolders([]);
+    const dialogs = answerPackagingDialogs({});
+
+    await vscode.commands.executeCommand('the-seed.packageProject');
+
+    assert.deepStrictEqual(shownBy(c.error), ['No workspace folder open. Open a project folder first.']);
+    assert.deepStrictEqual(dialogs, [], 'no dialog');
+  });
+
+  test('a missing native component: the tool\'s message, before any dialog', async () => {
+    const missing = new (testTool().NativeComponentMissingError)();
+    // Put back the tool the case's setup gave the extension, which finds the native component
+    (activeToolService().acquire as unknown as sinon.SinonStub).restore();
+    await useToolApi({ ...testTool(), requireNativeComponent: () => { throw missing; } } as ToolApi);
+    const before = readTree(root());
+    const dialogs = answerPackagingDialogs({});
+
+    await vscode.commands.executeCommand('the-seed.packageProject');
+
+    assert.deepStrictEqual(shownBy(c.error), [`Packaging failed: ${missing.message}`]);
+    assert.deepStrictEqual(dialogs, [], 'no dialog');
+    assert.ok(c.packageRun.notCalled, 'Package.run is not called');
+    assert.deepStrictEqual(readTree(root()), before, 'nothing is touched');
+    assert.strictEqual(getOperationLock().active, false, 'the lock is free');
+  });
+});
+
+suite('Packaging Commands: existing output', function () {
+  this.timeout(60000);
+  const state = useScratchState({ workspaceFolders: 1 });
+  const c = usePackagingCase();
+
+  let project: string;
+  let output: string;
+
+  setup(() => {
+    project = writePackagingProject(fs.realpathSync(state.workspaceFolders[0]), 'game');
+    output = path.join(fs.realpathSync(state.dir('out')), 'release');
+    answerPackagingDialogs({ projects: [project], output });
+  });
+
+  test('a new empty output needs no confirmation, and a refusal leaves it empty', async () => {
+    fs.mkdirSync(output);
+    runDoes(c, REFUSE);
+
+    await vscode.commands.executeCommand('the-seed.packageProject');
+
+    assert.deepStrictEqual(c.confirmations, [], 'no confirmation');
+    assert.deepStrictEqual(c.runs, [{ output, projects: [project], existed: false }], 'the run proceeds with the output out of the way');
+    assert.ok(fs.statSync(output).isDirectory(), 'the empty output is still there');
+    assert.deepStrictEqual(fs.readdirSync(output), [], 'and still empty');
+    assert.deepStrictEqual(leftAside(output), [], 'no aside is left');
+    assert.deepStrictEqual(shownBy(c.error), ['Packaging failed: stubbed refusal']);
+  });
+
+  test('an empty output with a succeeding run gets the new result', async () => {
+    fs.mkdirSync(output);
+    runDoes(c, SUCCEED);
+
+    await vscode.commands.executeCommand('the-seed.packageProject');
+
+    assert.deepStrictEqual(c.confirmations, [], 'no confirmation');
+    assert.deepStrictEqual([...readTree(output).keys()], ['new']);
+  });
+
+  test('an output that holds files asks first, before the lock is taken and before anything is written', async () => {
+    const before = writePreviousOutput(output);
+
+    await vscode.commands.executeCommand('the-seed.packageProject');
+
+    assert.deepStrictEqual(c.confirmations, [
+      { text: replaceWarning(output), modal: true, items: [REPLACE_CONTENTS], lockFree: true },
+    ]);
+    assert.strictEqual(
+      replaceWarning(output),
+      `"${output}" already holds files. Packaging will replace everything in it with the new result; if packaging fails, the current contents are put back.`
+    );
+    assert.ok(c.packageRun.notCalled, 'dismissed: Package.run is not called');
+    assert.deepStrictEqual(readTree(output), before, 'the output is unchanged');
+    assert.deepStrictEqual(leftAside(output), [], 'nothing was moved aside');
+    assert.ok(c.error.notCalled && c.info.notCalled, 'no further message');
+    assert.strictEqual(getOperationLock().active, false, 'the lock is free');
+  });
+
+  test('declining with Cancel packages nothing', async () => {
+    const before = writePreviousOutput(output);
+    c.confirm = 'Cancel';
+
+    await vscode.commands.executeCommand('the-seed.packageProject');
+
+    assert.ok(c.packageRun.notCalled, 'Package.run is not called');
+    assert.deepStrictEqual(readTree(output), before, 'the output is unchanged');
+  });
 
   const unsuccessful: { name: string; act: (output: string) => Promise<PackageRunResult>; shown: string }[] = [
-    {
-      name: 'refuses',
-      act: async (output) => packageResult(output, false, 'stubbed refusal'),
-      shown: 'Packaging failed: stubbed refusal',
-    },
+    { name: 'refuses', act: REFUSE, shown: 'Packaging failed: stubbed refusal' },
     {
       name: 'fails after writing part of the output',
-      act: async (output) => {
-        fs.mkdirSync(output, { recursive: true });
-        fs.writeFileSync(path.join(output, 'partial'), 'half a copy');
-        return packageResult(output, false, 'stubbed copy failure');
+      act: async (out) => {
+        fs.mkdirSync(out, { recursive: true });
+        fs.writeFileSync(path.join(out, 'partial'), 'half a copy');
+        return packageResult(out, false, 'stubbed copy failure');
       },
       shown: 'Packaging failed: stubbed copy failure',
     },
     {
       name: 'throws after writing part of the output',
-      act: async (output) => {
-        fs.mkdirSync(output, { recursive: true });
-        fs.writeFileSync(path.join(output, 'partial'), 'half a copy');
+      act: async (out) => {
+        fs.mkdirSync(out, { recursive: true });
+        fs.writeFileSync(path.join(out, 'partial'), 'half a copy');
         throw new Error('stubbed packaging throw');
       },
       shown: 'Packaging failed: stubbed packaging throw',
@@ -354,74 +709,68 @@ suite('Packaging Commands: previous output', function () {
   ];
 
   for (const { name, act, shown } of unsuccessful) {
-    test(`a run that ${name} keeps the previous output file for file`, async () => {
-      const before = writePreviousOutput(projectDir());
-      runDoes(act);
+    test(`confirmed, then a run that ${name}: the previous output is kept file for file`, async () => {
+      const before = writePreviousOutput(output);
+      c.confirm = REPLACE_CONTENTS;
+      runDoes(c, act);
 
       await vscode.commands.executeCommand('the-seed.packageProject');
 
-      assert.strictEqual(packageRun.callCount, 1, 'Package.run is called once');
-      assert.deepStrictEqual(outputDirs, [outputDir()], 'the tool is given <project>/dist');
-      assert.deepStrictEqual(existedAtRun, [false], 'the previous output is out of the way when the tool runs');
-      assert.ok(fs.existsSync(outputDir()), 'dist/ exists afterwards');
-      assert.deepStrictEqual(readTree(outputDir()), before, 'dist/ holds the previous output, contents and modes');
-      assert.deepStrictEqual(leftAside(projectDir()), [], 'no .dist-previous-* remains');
-      assert.deepStrictEqual(errors(), [shown]);
-      assert.ok(warning.notCalled, 'no warning is shown');
+      assert.deepStrictEqual(c.runs, [{ output, projects: [project], existed: false }], 'the previous output is out of the way when the tool runs');
+      assert.deepStrictEqual(readTree(output), before, 'the output holds the previous files, contents and modes');
+      assert.deepStrictEqual(leftAside(output), [], 'no aside is left');
+      assert.deepStrictEqual(shownBy(c.error), [shown]);
       assert.strictEqual(getOperationLock().active, false, 'the lock is free');
     });
   }
 
-  test('a successful run leaves only the new result', async () => {
-    writePreviousOutput(projectDir());
-    runDoes(async (output) => {
-      fs.mkdirSync(output, { recursive: true });
-      fs.writeFileSync(path.join(output, 'new'), 'the new result');
-      return packageResult(output, true, null, ['new']);
-    });
+  test('confirmed, then a successful run: only the new result is left', async () => {
+    writePreviousOutput(output);
+    c.confirm = REPLACE_CONTENTS;
+    runDoes(c, SUCCEED);
 
     await vscode.commands.executeCommand('the-seed.packageProject');
 
-    assert.deepStrictEqual(existedAtRun, [false], 'the previous output is out of the way when the tool runs');
-    assert.deepStrictEqual([...readTree(outputDir()).keys()], ['new'], 'dist/ holds only the new result');
-    assert.strictEqual(fs.readFileSync(path.join(outputDir(), 'new'), 'utf-8'), 'the new result');
-    assert.deepStrictEqual(leftAside(projectDir()), [], 'no .dist-previous-* remains');
-    assert.deepStrictEqual(errors(), [], 'no error is shown');
-    assert.deepStrictEqual(info.getCalls().map((call) => call.args[0]), ['Packaged 1 files into dist/']);
+    assert.deepStrictEqual([...readTree(output).keys()], ['new'], 'the output holds only the new result');
+    assert.strictEqual(fs.readFileSync(path.join(output, 'new'), 'utf-8'), 'the new result');
+    assert.deepStrictEqual(leftAside(output), [], 'no aside is left');
+    assert.deepStrictEqual(shownBy(c.error), []);
+    assert.deepStrictEqual(shownBy(c.info), [`Packaged 1 files into ${output}`]);
     assert.strictEqual(getOperationLock().active, false, 'the lock is free');
   });
 
-  test('a refusal with no previous output leaves no dist/ and nothing else in the project', async () => {
-    runDoes(async (output) => packageResult(output, false, 'stubbed refusal'));
-
+  test('an output that does not exist is not left behind by a refusal or a failed run', async () => {
+    runDoes(c, REFUSE);
     await vscode.commands.executeCommand('the-seed.packageProject');
+    assert.strictEqual(fs.existsSync(output), false, 'no output after a refusal');
 
-    assert.strictEqual(packageRun.callCount, 1, 'Package.run is called once');
-    assert.deepStrictEqual(fs.readdirSync(projectDir()), [], 'the project holds nothing');
-    assert.deepStrictEqual(errors(), ['Packaging failed: stubbed refusal']);
-    assert.strictEqual(getOperationLock().active, false, 'the lock is free');
+    runDoes(c, unsuccessful[1].act);
+    await vscode.commands.executeCommand('the-seed.packageProject');
+    assert.strictEqual(fs.existsSync(output), false, 'no output after a partial failure');
+    assert.deepStrictEqual(fs.readdirSync(path.dirname(output)), [], 'nothing else is left beside it');
   });
 
   test('when the previous output cannot be moved aside the run is refused and nothing changes', async () => {
-    const before = writePreviousOutput(projectDir());
-    runDoes(async (output) => packageResult(output, false, 'stubbed refusal'));
-    const allowWrites = refuseWritesIn(projectDir());
+    const before = writePreviousOutput(output);
+    c.confirm = REPLACE_CONTENTS;
+    runDoes(c, REFUSE);
+    const allowWrites = refuseWritesIn(path.dirname(output));
     try {
       await vscode.commands.executeCommand('the-seed.packageProject');
     } finally {
       allowWrites();
     }
 
-    const shown = errors();
+    const shown = shownBy(c.error);
     assert.strictEqual(shown.length, 1, `one error is shown, got: ${JSON.stringify(shown)}`);
     const prefix = 'Packaging failed: could not move the previous output aside: ';
     assert.ok(
       typeof shown[0] === 'string' && shown[0].startsWith(prefix) && shown[0].length > prefix.length,
       `the error names the move and its reason, got: ${shown[0]}`
     );
-    assert.ok(packageRun.notCalled, 'Package.run is not called');
-    assert.deepStrictEqual(readTree(outputDir()), before, 'dist/ is unchanged');
-    assert.deepStrictEqual(fs.readdirSync(projectDir()), ['dist'], 'nothing else is in the project');
+    assert.ok(c.packageRun.notCalled, 'Package.run is not called');
+    assert.deepStrictEqual(readTree(output), before, 'the output is unchanged');
+    assert.deepStrictEqual(fs.readdirSync(path.dirname(output)), ['release'], 'nothing else is beside it');
     assert.strictEqual(getOperationLock().active, false, 'the lock is free');
   });
 });
@@ -507,12 +856,17 @@ function statusPosts(recording: { sidebar: unknown[] }, type: string): Record<st
 // nothing.
 suite('Packaging Commands: shared console', function () {
   this.timeout(60000);
-  useScratchState({ workspaceFolders: 1 });
 
+  const state = useScratchState({ workspaceFolders: 1 });
   let watch: ConsoleWatch | null = null;
   let recorder: Recorder;
+  let output: string;
 
-  setup(() => {
+  setup(async () => {
+    await packageWithoutNativeCheck();
+    const root = fs.realpathSync(state.workspaceFolders[0]);
+    output = path.join(root, 'release');
+    answerPackagingDialogs({ projects: [writePackagingProject(root, 'game')], output });
     recorder = recordOperation();
     watch = new ConsoleWatch();
     watch.assertUnchanged('before the run');
@@ -554,11 +908,16 @@ suite('Packaging Commands: shared console', function () {
     assert.ok(!panel.includes(OUTSIDE_LINE), 'the outside console line is not in the panel');
     assert.ok(panel.includes('\nCopying game...\nCopying game.sig...\n[WARNING] stubbed warning\n[ERROR] stubbed error\n'), `the tool's lines are in the panel with their levels, got: ${panel}`);
     assert.deepStrictEqual(statusPosts(recorder, 'packageStatus'), [
-      { state: 'running' },
+      { state: 'running', outputDir: output },
       { state: 'running', currentFile: 'Copying game...', filesCopied: 1, totalFiles: 2 },
       { state: 'running', currentFile: 'Copying game.sig...', filesCopied: 2, totalFiles: 2 },
-      { state: 'completed', filesCopied: 2, totalFiles: 2 },
+      { state: 'completed', filesCopied: 2, totalFiles: 2, outputDir: output },
     ]);
+    assert.ok(panel.includes(`\n── Packaged 2 files into ${output} ──\n`), 'the panel names the full output path');
+    assert.ok(
+      recorder.notifications.some((entry) => entry.kind === 'info' && entry.text === `Packaged 2 files into ${output}`),
+      'the notification names the full output path'
+    );
   });
 
   test('the installer reports through its options and leaves the console alone', async () => {
@@ -662,7 +1021,8 @@ suite('Packaging Commands: previous output, real run', function () {
     }) as never);
     sinon.stub(vscode.window, 'showInputBox').resolves('packprog');
     info = sinon.stub(vscode.window, 'showInformationMessage').resolves(undefined);
-    warning = sinon.stub(vscode.window, 'showWarningMessage').resolves(undefined);
+    // The second run replaces the first one's output, which the user confirms
+    warning = sinon.stub(vscode.window, 'showWarningMessage').resolves(REPLACE_CONTENTS as never);
     error = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
   });
 
@@ -694,22 +1054,23 @@ suite('Packaging Commands: previous output, real run', function () {
     assert.ok(info.calledWith('Build succeeded.'), `the build succeeds; information shown: ${JSON.stringify(shown(info))}`);
 
     state.setWorkspaceFolders([project]);
-    const output = path.join(project, 'dist');
+    const output = path.join(fs.realpathSync(project), 'dist');
+    answerPackagingDialogs({ projects: [project], output });
 
     info.resetHistory();
     await vscode.commands.executeCommand('the-seed.packageProject');
     assert.deepStrictEqual(shown(error), [], 'the first packaging run shows no error');
     const first = readTree(output);
     assert.ok(first.size > 0, 'the first run writes files');
-    assert.deepStrictEqual(shown(info), [`Packaged ${first.size} files into dist/`]);
+    assert.deepStrictEqual(shown(info), [`Packaged ${first.size} files into ${output}`]);
 
     info.resetHistory();
     await vscode.commands.executeCommand('the-seed.packageProject');
     assert.deepStrictEqual(shown(error), [], 'the second packaging run shows no error');
-    assert.deepStrictEqual(shown(warning), [], 'no warning is shown');
-    assert.deepStrictEqual(shown(info), [`Packaged ${first.size} files into dist/`]);
+    assert.deepStrictEqual(shown(warning), [replaceWarning(output)], 'only the replace confirmation is shown');
+    assert.deepStrictEqual(shown(info), [`Packaged ${first.size} files into ${output}`]);
     assert.deepStrictEqual(readTree(output), first, 'the second dist/ has the same files as the first');
-    assert.deepStrictEqual(leftAside(project), [], 'no .dist-previous-* remains');
+    assert.deepStrictEqual(leftAside(output), [], 'no .dist-previous-* remains');
     assert.strictEqual(getOperationLock().active, false, 'the lock is free');
   });
 });
