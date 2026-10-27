@@ -381,6 +381,21 @@ suite('Packaging Commands: choosing projects and output', function () {
     assert.strictEqual(getOperationLock().active, false, 'the lock is free');
   });
 
+  test('projects and an output given with the command are used without the dialogs, with the same checks', async () => {
+    const one = writePackagingProject(root(), 'one');
+    const output = path.join(root(), 'release');
+    const dialogs = answerPackagingDialogs({});
+    runDoes(c, SUCCEED);
+
+    await vscode.commands.executeCommand('the-seed.packageProject', { projects: [one], output });
+    await vscode.commands.executeCommand('the-seed.packageProject', { projects: [one], output: root() });
+
+    assert.deepStrictEqual(dialogs, [], 'no dialog');
+    assert.deepStrictEqual(c.runs, [{ output, projects: [one], existed: false }]);
+    assert.deepStrictEqual(shownBy(c.error), [`Cannot package into "${root()}": it contains the project "${one}".`]);
+    assert.deepStrictEqual(c.confirmations, [], 'nothing to confirm');
+  });
+
   test('a project chosen twice, or by two spellings, is packaged once', async () => {
     const one = writePackagingProject(root(), 'one');
     const link = path.join(root(), 'link-to-one');

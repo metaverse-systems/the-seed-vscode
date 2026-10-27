@@ -18,6 +18,24 @@ export function replaceWarning(outputDir: string): string {
   return `"${outputDir}" already holds files. Packaging will replace everything in it with the new result; if packaging fails, the current contents are put back.`;
 }
 
+/** Projects and output given with the command, in place of the two dialogs. */
+export interface PackagingChoice {
+  projects: string[];
+  output: string;
+}
+
+/** The choice passed as the command's first argument, if it is one. */
+function givenChoice(arg: unknown): PackagingChoice | undefined {
+  if (typeof arg !== 'object' || arg === null) {
+    return undefined;
+  }
+  const { projects, output } = arg as Partial<PackagingChoice>;
+  if (Array.isArray(projects) && projects.every((dir) => typeof dir === 'string') && typeof output === 'string') {
+    return { projects, output };
+  }
+  return undefined;
+}
+
 /** The workspace folder the dialogs open in: the active file's, else the first. */
 function dialogFolder(folders: readonly vscode.WorkspaceFolder[]): vscode.Uri {
   const active = vscode.window.activeTextEditor?.document.uri;
@@ -68,7 +86,9 @@ export function packageProjectCommand(
   outputChannel: vscode.OutputChannel,
   viewProvider: TheSeedViewProvider
 ): ToolHandler {
-  return async (_oc, tool) => {
+  return async (_oc, tool, arg) => {
+    // A caller (an automated check) may name the projects and output; the palette and sidebar pass nothing
+    const given = givenChoice(arg);
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!workspaceFolders || workspaceFolders.length === 0) {
       vscode.window.showErrorMessage('No workspace folder open. Open a project folder first.');
@@ -106,7 +126,7 @@ export function packageProjectCommand(
 
     // Nothing below writes, moves or deletes anything until the lock is taken
     const defaultUri = dialogFolder(workspaceFolders);
-    const chosen = await vscode.window.showOpenDialog({
+    const chosen = given ? given.projects.map((dir) => vscode.Uri.file(dir)) : await vscode.window.showOpenDialog({
       canSelectFiles: false,
       canSelectFolders: true,
       canSelectMany: true,
@@ -131,7 +151,7 @@ export function packageProjectCommand(
       }
     }
 
-    const outputChoice = await vscode.window.showOpenDialog({
+    const outputChoice = given ? [vscode.Uri.file(given.output)] : await vscode.window.showOpenDialog({
       canSelectFiles: false,
       canSelectFolders: true,
       canSelectMany: false,
